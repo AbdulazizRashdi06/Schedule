@@ -13,7 +13,8 @@ public static class AdminEndpoints
     public const long MaxUploadBytes = 5 * 1024 * 1024;
 
     public record SemesterBody(string? Term, int? Year);
-    public record MeetingBody(int Day, string? Start, string? End, string? Room);
+    /// <summary><paramref name="Date"/> ("2026-09-21") keeps a dated class on its date; its weekday wins over Day.</summary>
+    public record MeetingBody(int Day, string? Start, string? End, string? Room, string? Date = null);
     public record SectionBody(string? Instructor, List<MeetingBody>? Meetings);
     /// <summary><paramref name="Family"/>: null keeps it, "" takes the major out of its family.</summary>
     public record MajorBody(string? Code, string? Name, string? Family = null);
@@ -215,7 +216,7 @@ public static class AdminEndpoints
             var (meetings, problem) = ParseMeetings(body.Meetings);
             if (problem is not null) return Errors.BadRequest(problem);
             var instructor = body.Instructor?.Trim() ?? "";
-            var change = ScheduleImport.DescribeChange(section.Instructor, section.Meetings, instructor, meetings!.Select(m => (m.Day, m.Start, m.End, m.Room)));
+            var change = ScheduleImport.DescribeChange(section.Instructor, section.Meetings, instructor, meetings!.Select(ParsedMeeting.Of));
             if (change is null) return Results.Ok(Dto.Of(section));
             section.Instructor = instructor;
             db.Meetings.RemoveRange(section.Meetings);
@@ -394,17 +395,24 @@ public static class AdminEndpoints
     public static (List<Meeting>? Meetings, string? Problem) ParseMeetings(List<MeetingBody>? input)
     {
         if (input is null || input.Count == 0) return (null, "Add at least one meeting time.");
-        if (input.Count > 14) return (null, "Too many meetings.");
+        if (input.Count > 400) return (null, "Too many meetings.");
         var list = new List<Meeting>();
         foreach (var m in input)
         {
-            if (m.Day is < 0 or > 6) return (null, "Pick a day for every meeting.");
+            DateOnly? date = null;
+            if (!string.IsNullOrWhiteSpace(m.Date))
+            {
+                date = ScheduleImport.ParseDate(m.Date);
+                if (date is null) return (null, $"Can't read the date \"{m.Date}\".");
+            }
+            var day = date is null ? m.Day : (int)date.Value.DayOfWeek;
+            if (day is < 0 or > 6) return (null, "Pick a day for every meeting.");
             if (!TryTime(m.Start, out var start) || !TryTime(m.End, out var end)) return (null, "Enter times like 08:00.");
-            if (end <= start) return (null, $"On {Timeslots.DayNames[m.Day]} the class ends before it starts.");
+            if (end <= start) return (null, $"On {Timeslots.DayNames[day]} the class ends before it starts.");
             var room = m.Room?.Trim() ?? "";
             if (room.Length > 60) return (null, "The room name is too long.");
-            var meeting = new Meeting { Day = m.Day, Start = start, End = end, Room = room };
-            if (list.Any(x => Clashes.Overlap(x, meeting))) return (null, $"Two meetings overlap on {Timeslots.DayNames[m.Day]}.");
+            var meeting = new Meeting { Day = day, Start = start, End = end, Room = room, Date = date };
+            if (list.Any(x => Clashes.Overlap(x, meeting))) return (null, $"Two meetings overlap on {(date is null ? Timeslots.DayNames[day] : date.Value.ToString("d MMM"))}.");
             list.Add(meeting);
         }
         return (list, null);

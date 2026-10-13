@@ -7,7 +7,7 @@ namespace UniSchedule.Api.Schedule;
 public record ScheduleRow(
     int Line,
     string Code, string Name, string Majors, string Type, string Year, string Credits,
-    string Section, string Instructor, string Days, string Time, string Room);
+    string Section, string Instructor, string Days, string Time, string Room, string Date = "");
 
 /// <summary>
 /// Reads the semester upload: .xlsx, .csv, or text pasted straight from Excel (tab-separated).
@@ -30,9 +30,11 @@ public static class ScheduleFile
         ["start"] = ["start", "start time", "from"],
         ["end"] = ["end", "end time", "to"],
         ["room"] = ["room", "location", "venue", "classroom", "hall"],
+        ["date"] = ["date", "class date", "session date", "on"],
     };
 
-    public static readonly string[] Required = ["code", "section", "days"];
+    /// <summary>Days can be left out when a Date column gives each class its date.</summary>
+    public static readonly string[] Required = ["code", "section"];
 
     public record ReadResult(List<ScheduleRow> Rows, List<string> Problems);
 
@@ -73,6 +75,7 @@ public static class ScheduleFile
         }
         var problems = new List<string>();
         var missing = Required.Where(r => !index.ContainsKey(r)).ToList();
+        if (!index.ContainsKey("days") && !index.ContainsKey("date")) missing.Add("days");
         if (!index.ContainsKey("time") && !(index.ContainsKey("start") && index.ContainsKey("end"))) missing.Add("time");
         if (missing.Count > 0)
         {
@@ -92,7 +95,7 @@ public static class ScheduleFile
             rows.Add(new ScheduleRow(r + 1,
                 Cell(row, "code").ToUpperInvariant().Replace(" ", ""), Cell(row, "name"), Cell(row, "major"), Cell(row, "type"),
                 Cell(row, "year"), Cell(row, "credits"), Cell(row, "section"), Cell(row, "instructor"),
-                Cell(row, "days"), time, Cell(row, "room")));
+                Cell(row, "days"), time, Cell(row, "room"), Cell(row, "date")));
         }
         return new(rows, problems);
     }

@@ -60,7 +60,15 @@ export function buildSessions(tt: Timetable): Session[] {
       out.push({ cls, meeting, type: sessionType(meeting.room), slot: slotOf(start, end), start, end, clash: false })
     }
   for (const a of out)
-    a.clash = out.some((b) => b !== a && b.cls.courseId !== a.cls.courseId && b.meeting.day === a.meeting.day && a.start < b.end && b.start < a.end)
+    a.clash = out.some(
+      (b) =>
+        b !== a &&
+        b.cls.courseId !== a.cls.courseId &&
+        b.meeting.day === a.meeting.day &&
+        a.start < b.end &&
+        b.start < a.end &&
+        (!a.meeting.date || !b.meeting.date || a.meeting.date === b.meeting.date),
+    )
   return out.sort((a, b) => a.meeting.day - b.meeting.day || a.start - b.start)
 }
 
@@ -76,6 +84,19 @@ export function weekStart(now: Date, offset = 0) {
 }
 
 export const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n)
+
+/** "2026-10-13" for a local date. */
+export const isoDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+/** Whether a session happens on a date: a dated class only on its date, a weekly one on its weekday. */
+export const onDate = (s: Session, d: Date) => (s.meeting.date ? s.meeting.date === isoDate(d) : s.meeting.day === d.getDay())
+
+/** The sessions of the seven days from `start`: weekly classes, plus dated classes that fall in those days. */
+export function inWeek(sessions: Session[], start: Date) {
+  const from = isoDate(start)
+  const to = isoDate(addDays(start, 6))
+  return sessions.filter((s) => !s.meeting.date || (s.meeting.date >= from && s.meeting.date <= to))
+}
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 /** "11 Oct" */

@@ -5,6 +5,8 @@ export interface Meeting {
   start: string
   end: string
   room: string
+  /** "2026-09-21": a class on that date only (timetables that change week to week). Null = every week on `day`. */
+  date: string | null
 }
 
 export interface Section {

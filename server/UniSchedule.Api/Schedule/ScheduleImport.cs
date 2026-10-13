@@ -1,9 +1,14 @@
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using UniSchedule.Api.Data;
 
 namespace UniSchedule.Api.Schedule;
 
-public record ParsedMeeting(int Day, TimeOnly Start, TimeOnly End, string Room);
+/// <summary><paramref name="Date"/>: a class on that date only; null = every week.</summary>
+public record ParsedMeeting(int Day, TimeOnly Start, TimeOnly End, string Room, DateOnly? Date = null)
+{
+    public static ParsedMeeting Of(Meeting m) => new(m.Day, m.Start, m.End, m.Room, m.Date);
+}
 public record ParsedSection(string Number, string Instructor, List<ParsedMeeting> Meetings);
 public record ParsedCourse(string Code, string Name, CourseType Type, int? Year, int? Credits, List<string> Majors, List<ParsedSection> Sections);
 public record RowIssue(int Line, string Message);
@@ -49,8 +54,19 @@ public static class ScheduleImport
             if (row.Section.Length == 0) rowErrors.Add("section is empty");
             var type = row.Type.Length == 0 ? CourseType.Core : ParseType(row.Type);
             if (type is null) rowErrors.Add($"type \"{row.Type}\" should be Core, LS or Elective");
-            var days = Timeslots.ParseDays(row.Days);
-            if (days is null) rowErrors.Add(row.Days.Length == 0 ? "days are empty" : $"can't read days \"{row.Days}\"");
+            DateOnly? date = null;
+            List<int>? days;
+            if (row.Date.Length > 0)
+            {
+                date = ParseDate(row.Date);
+                if (date is null) rowErrors.Add($"can't read date \"{row.Date}\" (use 2026-09-21 or 21/09/2026)");
+                days = date is null ? null : [(int)date.Value.DayOfWeek];
+            }
+            else
+            {
+                days = Timeslots.ParseDays(row.Days);
+                if (days is null) rowErrors.Add(row.Days.Length == 0 ? "days are empty" : $"can't read days \"{row.Days}\"");
+            }
             var time = Timeslots.ParseRangeLoose(row.Time);
             if (time is null) rowErrors.Add(row.Time.Length == 0 ? "time is empty" : $"can't read time \"{row.Time}\"");
             int? year = null;
@@ -107,13 +123,24 @@ public static class ScheduleImport
             }
             foreach (var d in days!)
             {
-                var m = new ParsedMeeting(d, time!.Value.Start, time.Value.End, row.Room);
-                if (sec.Meetings.Contains(m)) warnings.Add(new(row.Line, $"{row.Code} section {section}: duplicate {Timeslots.DayNames[d]} meeting skipped"));
-                else sec.Meetings.Add(m);
+                var m = new ParsedMeeting(d, time!.Value.Start, time.Value.End, row.Room, date);
+                if (!sec.Meetings.Contains(m)) sec.Meetings.Add(m);
+                else if (date is null) warnings.Add(new(row.Line, $"{row.Code} section {section}: duplicate {Timeslots.DayNames[d]} meeting skipped"));
             }
         }
         var list = courses.Values.Select(v => v.Course).OrderBy(c => c.Code).ToList();
         return new(list, errors, warnings, rows.Count);
+    }
+
+    /// <summary>"2026-09-21", "21/09/2026", "21.09.2026" or EduWave's "Mon(21/09/2026)". Day first, as in Oman.</summary>
+    public static DateOnly? ParseDate(string raw)
+    {
+        var iso = Regex.Match(raw, @"(\d{4})-(\d{1,2})-(\d{1,2})");
+        if (iso.Success) return Make(int.Parse(iso.Groups[1].Value), int.Parse(iso.Groups[2].Value), int.Parse(iso.Groups[3].Value));
+        var dmy = Regex.Match(raw, @"(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})");
+        return dmy.Success ? Make(int.Parse(dmy.Groups[3].Value), int.Parse(dmy.Groups[2].Value), int.Parse(dmy.Groups[1].Value)) : null;
+
+        static DateOnly? Make(int y, int m, int d) => y is >= 2000 and <= 2100 && m is >= 1 and <= 12 && d >= 1 && d <= DateTime.DaysInMonth(y, m) ? new DateOnly(y, m, d) : null;
     }
 
     /// <summary>"01", "Sec 1", "S1" → "1"; anything else is kept as written.</summary>
@@ -127,18 +154,37 @@ public static class ScheduleImport
         return int.TryParse(t, out var n) ? n.ToString() : t.ToUpperInvariant();
     }
 
-    static string MeetingText(IEnumerable<(int Day, TimeOnly Start, TimeOnly End, string Room)> meetings) =>
-        string.Join(", ", meetings.OrderBy(m => m.Day).ThenBy(m => m.Start)
+    static string MeetingText(IEnumerable<ParsedMeeting> meetings)
+    {
+        var list = meetings.ToList();
+        var weekly = string.Join(", ", list.Where(m => m.Date is null).OrderBy(m => m.Day).ThenBy(m => m.Start)
             .Select(m => $"{Timeslots.DayNames[m.Day]} {Timeslots.Format(m.Start)}–{Timeslots.Format(m.End)}{(m.Room.Length > 0 ? " " + m.Room : "")}"));
+        var dated = list.Where(m => m.Date is not null).ToList();
+        if (dated.Count == 0) return weekly;
+        var span = $"{dated.Count} dated {(dated.Count == 1 ? "class" : "classes")}, {dated.Min(m => m.Date)!.Value:d MMM}–{dated.Max(m => m.Date)!.Value:d MMM}";
+        return weekly.Length == 0 ? span : $"{weekly}; {span}";
+    }
 
-    static string Signature(IEnumerable<(int Day, TimeOnly Start, TimeOnly End, string Room)> meetings) => MeetingText(meetings);
+    static string Signature(IEnumerable<ParsedMeeting> meetings) =>
+        string.Join("|", meetings.OrderBy(m => m.Date).ThenBy(m => m.Day).ThenBy(m => m.Start).Select(m => $"{m.Date}-{m.Day}-{m.Start}-{m.End}-{m.Room}"));
 
     /// <summary>Human summary of what changed in a section, e.g. "Room A101 → B202; Time Sun 08:00–09:15 → Mon 10:00–11:15".</summary>
-    public static string? DescribeChange(string oldInstructor, IEnumerable<Meeting> oldMeetings, string newInstructor, IEnumerable<(int Day, TimeOnly Start, TimeOnly End, string Room)> newMeetings)
+    public static string? DescribeChange(string oldInstructor, IEnumerable<Meeting> oldMeetings, string newInstructor, IEnumerable<ParsedMeeting> newMeetings)
     {
-        var oldList = oldMeetings.Select(m => (m.Day, m.Start, m.End, m.Room)).ToList();
+        var oldList = oldMeetings.Select(ParsedMeeting.Of).ToList();
         var newList = newMeetings.ToList();
         var parts = new List<string>();
+        if (oldList.Any(m => m.Date is not null) || newList.Any(m => m.Date is not null))
+        {
+            // Dated timetables: name the dates that changed rather than listing every class.
+            var gone = oldList.Except(newList).ToList();
+            var came = newList.Except(oldList).ToList();
+            var dates = gone.Concat(came).Select(m => m.Date).Where(d => d is not null).Distinct().Order().Select(d => d!.Value.ToString("d MMM")).ToList();
+            if (gone.Count + came.Count > 0)
+                parts.Add(dates.Count == 0 ? "Times changed" : $"Changes on {string.Join(", ", dates.Take(4))}{(dates.Count > 4 ? $" and {dates.Count - 4} more" : "")}");
+            if (!string.Equals(oldInstructor, newInstructor, StringComparison.Ordinal)) parts.Add($"Instructor: {(oldInstructor.Length > 0 ? oldInstructor : "none")} → {(newInstructor.Length > 0 ? newInstructor : "none")}");
+            return parts.Count == 0 ? null : string.Join("; ", parts);
+        }
         var oldTimes = string.Join(", ", oldList.OrderBy(m => m.Day).ThenBy(m => m.Start).Select(m => $"{Timeslots.DayNames[m.Day]} {Timeslots.Format(m.Start)}–{Timeslots.Format(m.End)}"));
         var newTimes = string.Join(", ", newList.OrderBy(m => m.Day).ThenBy(m => m.Start).Select(m => $"{Timeslots.DayNames[m.Day]} {Timeslots.Format(m.Start)}–{Timeslots.Format(m.End)}"));
         if (oldTimes != newTimes) parts.Add($"Time: {oldTimes} → {newTimes}");
@@ -197,10 +243,10 @@ public static class ScheduleImport
             {
                 if (!sections.TryGetValue(ps.Number, out var sec))
                 {
-                    added.Add(new("section", pc.Code, ps.Number, MeetingText(ps.Meetings.Select(m => (m.Day, m.Start, m.End, m.Room)))));
+                    added.Add(new("section", pc.Code, ps.Number, MeetingText(ps.Meetings)));
                     continue;
                 }
-                var change = DescribeChange(sec.Instructor, sec.Meetings, ps.Instructor, ps.Meetings.Select(m => (m.Day, m.Start, m.End, m.Room)));
+                var change = DescribeChange(sec.Instructor, sec.Meetings, ps.Instructor, ps.Meetings);
                 if (change is not null)
                 {
                     updated.Add(new("section", pc.Code, ps.Number, change));
@@ -209,7 +255,7 @@ public static class ScheduleImport
             }
             foreach (var sec in course.Sections.Where(s => !pc.Sections.Any(ps => string.Equals(ps.Number, s.Number, StringComparison.OrdinalIgnoreCase))))
             {
-                removed.Add(new("section", pc.Code, sec.Number, MeetingText(sec.Meetings.Select(m => (m.Day, m.Start, m.End, m.Room)))));
+                removed.Add(new("section", pc.Code, sec.Number, MeetingText(sec.Meetings.Select(ParsedMeeting.Of))));
                 affectedSections.Add(sec.Id);
             }
         }
@@ -283,14 +329,14 @@ public static class ScheduleImport
             foreach (var ps in pc.Sections)
             {
                 var sec = course.Sections.FirstOrDefault(s => string.Equals(s.Number, ps.Number, StringComparison.OrdinalIgnoreCase));
-                var newMeetings = ps.Meetings.Select(m => (m.Day, m.Start, m.End, m.Room)).ToList();
+                var newMeetings = ps.Meetings;
                 if (sec is null)
                 {
                     course.Sections.Add(new Section
                     {
                         Number = ps.Number,
                         Instructor = ps.Instructor,
-                        Meetings = ps.Meetings.Select(m => new Meeting { Day = m.Day, Start = m.Start, End = m.End, Room = m.Room }).ToList(),
+                        Meetings = ps.Meetings.Select(m => new Meeting { Day = m.Day, Start = m.Start, End = m.End, Room = m.Room, Date = m.Date }).ToList(),
                     });
                     continue;
                 }
@@ -298,7 +344,7 @@ public static class ScheduleImport
                 if (change is null) continue;
                 sec.Instructor = ps.Instructor;
                 db.Meetings.RemoveRange(sec.Meetings);
-                sec.Meetings = ps.Meetings.Select(m => new Meeting { Day = m.Day, Start = m.Start, End = m.End, Room = m.Room }).ToList();
+                sec.Meetings = ps.Meetings.Select(m => new Meeting { Day = m.Day, Start = m.Start, End = m.End, Room = m.Room, Date = m.Date }).ToList();
                 if (markChanges) { sec.ChangedAt = now; sec.ChangeSummary = change; }
             }
         }

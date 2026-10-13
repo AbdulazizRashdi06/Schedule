@@ -11,6 +11,7 @@ namespace UniSchedule.Api.Admin;
 /// <summary>Dashboard accounts (owners and RSA) and the owner-only student pages.</summary>
 public static partial class OwnerEndpoints
 {
+    public record DeleteAllBody(string? Confirm);
     public record AccountBody(string? Username, string? Role);
     public record ResetBody(string? What);
     public record OwnerBody(bool IsOwner);
@@ -182,6 +183,23 @@ public static partial class OwnerEndpoints
             await db.SaveChangesAsync(ct);
             return Results.NoContent();
         });
+
+        // Owners only, after three confirmations in the dashboard: every semester (courses, sections, picks, defaults, uploads),
+        // every major and every student who isn't an owner. Dashboard accounts and owners stay; owners start setup again.
+        api.MapPost("/admin/delete-all-data", async (DeleteAllBody body, AppDb db, CancellationToken ct) =>
+        {
+            if (body.Confirm != "DELETE ALL DATA") return Errors.BadRequest("Confirm with DELETE ALL DATA.");
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            var semesters = await db.Semesters.ExecuteDeleteAsync(ct);
+            var students = await db.Students.Where(s => !s.IsOwner).ExecuteDeleteAsync(ct);
+            await db.Students.ExecuteUpdateAsync(u => u
+                .SetProperty(s => s.MajorId, (int?)null).SetProperty(s => s.Year, (int?)null)
+                .SetProperty(s => s.SetupSemesterId, (int?)null).SetProperty(s => s.SetupStep, (string?)null)
+                .SetProperty(s => s.SetupCompletedAt, (DateTimeOffset?)null), ct);
+            var majors = await db.Majors.ExecuteDeleteAsync(ct);
+            await tx.CommitAsync(ct);
+            return Results.Ok(new { semesters, students, majors });
+        }).RequireAuthorization(Session.OwnerPolicy);
 
         students.MapDelete("/{id:int}", async (int id, HttpContext http, AppDb db, CancellationToken ct) =>
         {

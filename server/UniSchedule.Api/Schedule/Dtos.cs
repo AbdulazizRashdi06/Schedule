@@ -2,16 +2,17 @@ using UniSchedule.Api.Data;
 
 namespace UniSchedule.Api.Schedule;
 
-public record MeetingDto(int Day, string Start, string End, string Room);
+/// <summary><paramref name="Date"/>: "2026-09-21" for a class on that date only; null = every week.</summary>
+public record MeetingDto(int Day, string Start, string End, string Room, string? Date);
 public record SectionDto(int Id, string Number, string Instructor, List<MeetingDto> Meetings, string? ChangedAt, string? ChangeSummary);
 public record CourseDto(int Id, string Code, string Name, string Type, int? Year, int? Credits, List<string> Majors, List<SectionDto> Sections);
 
 public static class Dto
 {
-    public static MeetingDto Of(Meeting m) => new(m.Day, Timeslots.Format(m.Start), Timeslots.Format(m.End), m.Room);
+    public static MeetingDto Of(Meeting m) => new(m.Day, Timeslots.Format(m.Start), Timeslots.Format(m.End), m.Room, m.Date?.ToString("yyyy-MM-dd"));
 
     public static SectionDto Of(Section s) => new(s.Id, s.Number, s.Instructor,
-        s.Meetings.OrderBy(m => m.Day).ThenBy(m => m.Start).Select(Of).ToList(),
+        s.Meetings.OrderBy(m => m.Date).ThenBy(m => m.Day).ThenBy(m => m.Start).Select(Of).ToList(),
         s.ChangedAt?.ToString("O"), s.ChangeSummary);
 
     public static CourseDto Of(Course c) => new(c.Id, c.Code, c.Name, c.Type.ToString(), c.Year, c.Credits,
@@ -23,7 +24,9 @@ public static class Dto
 
 public static class Clashes
 {
-    public static bool Overlap(Meeting a, Meeting b) => a.Day == b.Day && a.Start < b.End && b.Start < a.End;
+    /// <summary>Same weekday and times overlap; two dated classes must also share the date.</summary>
+    public static bool Overlap(Meeting a, Meeting b) =>
+        a.Day == b.Day && a.Start < b.End && b.Start < a.End && (a.Date is null || b.Date is null || a.Date == b.Date);
 
     public static bool Overlap(Section a, Section b) => a.Meetings.Any(x => b.Meetings.Any(y => Overlap(x, y)));
 

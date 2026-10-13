@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { api, errorText } from '../lib/api'
 import { Button, Confirm, ErrorText, Loading, Modal, Tag, TextField, cx } from '../components/ui'
 import { PageTitle, seen, useAdmin } from './AdminLayout'
+import DeleteAllData from './DeleteAllData'
 
 interface Account {
   id: number
@@ -26,7 +27,7 @@ const signedIn = (iso: string | null) => {
 }
 
 export default function Accounts() {
-  const { isOwner } = useAdmin()
+  const { isOwner, reloadSemesters } = useAdmin()
   const [data, setData] = useState<Data | null>(null)
   const [error, setError] = useState('')
   const [adding, setAdding] = useState(false)
@@ -116,6 +117,15 @@ export default function Accounts() {
             </section>
           )}
         </>
+      )}
+
+      {isOwner && (
+        <DeleteAllData
+          onDone={async () => {
+            await reloadSemesters()
+            load()
+          }}
+        />
       )}
 
       <AddAccount

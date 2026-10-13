@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, errorText } from '../lib/api'
 import type { Course, Meeting, Section, Semester } from '../lib/types'
-import { DAY_LONG, DAY_SHORT } from '../lib/time'
+import { DAY_LONG, meetsText } from '../lib/time'
 import { SLOTS } from '../lib/slots'
 import { yearName } from '../lib/year'
 import { Button, Drawer, ErrorText, Loading, Notice, Select, Tag, TextField, Toast, useToast } from '../components/ui'
@@ -15,7 +15,7 @@ interface Detail {
   noSection: number
 }
 
-const meets = (s: Section) => s.meetings.map((m) => `${DAY_SHORT[m.day]} ${m.start}`).join(', ')
+const meets = (s: Section) => meetsText(s, ', ')
 const rooms = (s: Section) => [...new Set(s.meetings.map((m) => m.room).filter(Boolean))].join(', ')
 
 export default function CourseDetail() {

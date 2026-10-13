@@ -1,7 +1,7 @@
 import { Fragment } from 'react'
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { DAY_LONG, DAY_SHORT, minutes } from '../lib/time'
-import { SLOTS, TYPE_BG, TYPE_NAME, addDays, fmtDuration, fmtWeekRange, nowMinutes, weekDays, weekStart, weekTitle, type ClassType, type Session } from '../lib/slots'
+import { SLOTS, TYPE_BG, TYPE_NAME, addDays, fmtDuration, fmtWeekRange, inWeek, nowMinutes, weekDays, weekStart, weekTitle, type ClassType, type Session } from '../lib/slots'
 import { ErrorText, Sk, cx } from '../components/ui'
 import { Icon, NeedsSection, RoundButton, useBack, useNow, useTimetable } from './timetable'
 
@@ -9,7 +9,7 @@ const ROW = 86
 const GAP = 8
 
 export default function Schedule() {
-  const { me, tt, sessions, error } = useTimetable()
+  const { me, tt, sessions: all, error } = useTimetable()
   const now = useNow()
   const back = useBack('/')
   const navigate = useNavigate()
@@ -19,12 +19,14 @@ export default function Schedule() {
 
   const view = params.get('view') === 'day' ? 'day' : 'week'
   const offset = Number(params.get('w')) || 0
+  const start = weekStart(now, offset)
+  // Timetables change week to week: show this week's dated classes along with the weekly ones.
+  const sessions = inWeek(all, start)
   const days = weekDays(sessions)
   const today = now.getDay()
   const thisWeek = offset === 0
   const dayParam = Number(params.get('day'))
   const day = params.has('day') && days.includes(dayParam) ? dayParam : thisWeek && days.includes(today) ? today : days[0]
-  const start = weekStart(now, offset)
 
   const go = (next: { view?: string; w?: number; day?: number }) => {
     const p = new URLSearchParams(params)

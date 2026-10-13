@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { DAY_LONG, DAY_SHORT } from '../lib/time'
-import { TYPE_NAME, addDays, clock, fmtDate, fmtDuration, nowMinutes, type Session } from '../lib/slots'
+import { TYPE_NAME, addDays, clock, fmtDate, fmtDuration, nowMinutes, onDate, weekStart, type Session } from '../lib/slots'
 import { Button, ErrorText, Sk, cx } from '../components/ui'
 import { MenuSheet } from './StudentShell'
 import { Icon, NeedsSection, useNow, useTimetable } from './timetable'
@@ -15,17 +15,17 @@ export default function Today() {
   if (!error && (!me || !tt)) return <TodaySkeleton />
 
   const nowMin = nowMinutes(now)
-  const today = sessions.filter((s) => s.meeting.day === now.getDay())
+  const today = sessions.filter((s) => onDate(s, now))
   const live = today.find((s) => s.start <= nowMin && nowMin < s.end)
   const upcoming = today.filter((s) => s.start > nowMin)
   const next = live ? undefined : upcoming[0]
   const rest = upcoming.filter((s) => s !== next)
 
   // The next day with classes, for when today is over or free.
-  const nextDate = [1, 2, 3, 4, 5, 6, 7].map((i) => addDays(now, i)).find((d) => sessions.some((s) => s.meeting.day === d.getDay()))
-  const nextDay = nextDate ? sessions.filter((s) => s.meeting.day === nextDate.getDay()) : []
-  const nextWeek = nextDate && nextDate.getDay() < now.getDay() ? 1 : 0
-  const nextDayLink = nextDate && `/schedule?view=day&day=${nextDate.getDay()}${nextWeek ? '&w=1' : ''}`
+  const nextDate = Array.from({ length: 21 }, (_, i) => addDays(now, i + 1)).find((d) => sessions.some((s) => onDate(s, d)))
+  const nextDay = nextDate ? sessions.filter((s) => onDate(s, nextDate)) : []
+  const nextWeek = nextDate ? Math.round((weekStart(nextDate).getTime() - weekStart(now).getTime()) / (7 * 86_400_000)) : 0
+  const nextDayLink = nextDate && `/schedule?view=day&day=${nextDate.getDay()}${nextWeek ? `&w=${nextWeek}` : ''}`
   const tomorrow = nextDate && addDays(now, 1).toDateString() === nextDate.toDateString()
 
   return (

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
 import { DAY_SHORT } from '../lib/time'
-import { TYPE_NAME, initials, nowMinutes, type Session } from '../lib/slots'
+import { TYPE_NAME, inWeek, initials, nowMinutes, onDate, type Session } from '../lib/slots'
 import { ErrorText, Sk, cx } from '../components/ui'
 import NotFound from './NotFound'
 import { Icon, RoundButton, useBack, useNow, useTimetable } from './timetable'
@@ -22,14 +22,17 @@ export default function Course() {
 
   if (me && !me.setupDone) return <Navigate to="/setup" replace />
 
-  const mine = sessions.filter((s) => s.cls.courseId === Number(courseId))
-  const today = now.getDay()
+  const all = sessions.filter((s) => s.cls.courseId === Number(courseId))
+  // The coming seven days: weekly classes, plus dated ones (timetables that change week to week).
+  const mine = inWeek(all, new Date(now.getFullYear(), now.getMonth(), now.getDate()))
   const nowMin = nowMinutes(now)
-  const live = mine.find((s) => s.meeting.day === today && s.start <= nowMin && nowMin < s.end)
-  // The next session from now, wrapping round the week.
-  const next = [...mine]
+  const live = mine.find((s) => onDate(s, now) && s.start <= nowMin && nowMin < s.end)
+  // The next session from now.
+  const next = all
     .filter((s) => s !== live)
-    .sort((a, b) => order(a, today, nowMin) - order(b, today, nowMin))[0]
+    .map((s) => ({ s, wait: until(s, now) }))
+    .filter((x) => x.wait < Infinity)
+    .sort((a, b) => a.wait - b.wait)[0]?.s
   const types = [...new Set(mine.map((s) => TYPE_NAME[s.type]))].join(' & ')
 
   if (!error && me && tt && !cls) return <NotFound course />
@@ -149,9 +152,16 @@ export default function Course() {
   )
 }
 
-/** Minutes from now until the session next starts, counting round the week. */
-function order(s: Session, today: number, nowMin: number) {
-  let days = (s.meeting.day - today + 7) % 7
+/** Minutes from now until the session next starts: round the week for weekly classes, Infinity for a dated class that's over. */
+function until(s: Session, now: Date) {
+  const nowMin = nowMinutes(now)
+  if (s.meeting.date) {
+    const [y, m, d] = s.meeting.date.split('-').map(Number)
+    const days = Math.round((new Date(y, m - 1, d).getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 86_400_000)
+    const wait = days * 1440 + s.start - nowMin
+    return wait > 0 ? wait : Infinity
+  }
+  let days = (s.meeting.day - now.getDay() + 7) % 7
   if (days === 0 && s.start <= nowMin) days = 7
   return days * 1440 + s.start - nowMin
 }

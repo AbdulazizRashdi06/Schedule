@@ -18,8 +18,23 @@ export function fmtTime(hhmm: string) {
 
 export const fmtRange = (m: { start: string; end: string }) => `${fmtTime(m.start)} – ${fmtTime(m.end)}`
 
+/** Same weekday and times overlap; two dated classes must also share the date. */
 export const meetingsOverlap = (a: Meeting, b: Meeting) =>
-  a.day === b.day && minutes(a.start) < minutes(b.end) && minutes(b.start) < minutes(a.end)
+  a.day === b.day && minutes(a.start) < minutes(b.end) && minutes(b.start) < minutes(a.end) && (!a.date || !b.date || a.date === b.date)
+
+/** "Sun 08:00 · Tue 11:30". Dated classes fold into their usual weekly times, plus "changes by week" when some differ. */
+export function meetsText(s: Section, sep = '  ·  ') {
+  const count = new Map<string, number>()
+  for (const m of s.meetings) count.set(`${m.day}|${m.start}`, (count.get(`${m.day}|${m.start}`) ?? 0) + 1)
+  const dated = s.meetings.some((m) => m.date)
+  const keys = [...count.entries()]
+    .filter(([, n]) => !dated || n >= 2)
+    .map(([k]) => k)
+    .sort((a, b) => Number(a.split('|')[0]) - Number(b.split('|')[0]) || a.localeCompare(b))
+  const text = keys.map((k) => `${DAY_SHORT[Number(k.split('|')[0])]} ${k.split('|')[1]}`).join(sep)
+  if (!dated || keys.length === count.size) return text
+  return text ? `${text}${sep}changes by week` : 'Changes by week'
+}
 
 export const sectionsClash = (a: Section, b: Section) => a.meetings.some((x) => b.meetings.some((y) => meetingsOverlap(x, y)))
 

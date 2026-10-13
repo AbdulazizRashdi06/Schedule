@@ -224,6 +224,9 @@ namespace UniSchedule.Api.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateOnly?>("Date")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("Day")
                         .HasColumnType("INTEGER");
 

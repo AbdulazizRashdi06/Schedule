@@ -140,6 +140,8 @@ public class Meeting
     public TimeOnly Start { get; set; }
     public TimeOnly End { get; set; }
     public string Room { get; set; } = "";
+    /// <summary>A class on one date only (timetables that change week to week). Null = every week on <see cref="Day"/>.</summary>
+    public DateOnly? Date { get; set; }
 }
 
 /// <summary>A course a student takes this semester, and the section they picked (null until they pick one).</summary>

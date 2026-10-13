@@ -1,5 +1,5 @@
 import type { Course, Section } from '../lib/types'
-import { DAY_SHORT, meetingsOverlap, sectionsClash } from '../lib/time'
+import { DAY_SHORT, meetingsOverlap, meetsText, sectionsClash } from '../lib/time'
 import { Icon, cx } from './ui'
 
 /** courseId → picked sectionId (null: course ticked, no section yet). */
@@ -31,7 +31,7 @@ export function clashDetail(section: Section, courseId: number, picks: Picks, by
 }
 
 /** "Sun 09:45 · Tue 09:45" */
-export const meetsText = (s: Section, sep = '  ·  ') => s.meetings.map((m) => `${DAY_SHORT[m.day]} ${m.start}`).join(sep)
+export { meetsText }
 
 const kind = (c: Course) => (c.type === 'Elective' ? 'Elective' : c.type)
 
