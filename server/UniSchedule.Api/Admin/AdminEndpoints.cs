@@ -121,6 +121,10 @@ public static class AdminEndpoints
                 return Results.Json(new { error = $"{problems.Count} {(problems.Count == 1 ? "row has a problem" : "rows have problems")}. Nothing was saved.", problems }, statusCode: StatusCodes.Status400BadRequest);
             await db.CourseDefaults.Where(d => d.SemesterId == id).ExecuteDeleteAsync(ct);
             db.CourseDefaults.AddRange(rows);
+            // A course placed in another year takes that year (the one it's used in most; the lower on a tie).
+            var years = rows.GroupBy(r => r.CourseId).ToDictionary(g => g.Key, g => g.GroupBy(r => r.Year).OrderByDescending(y => y.Count()).ThenBy(y => y.Key).First().Key);
+            foreach (var course in await db.Courses.Where(c => years.Keys.Contains(c.Id)).ToListAsync(ct))
+                course.Year = years[course.Id];
             await db.SaveChangesAsync(ct);
             return Results.Ok(new { saved = rows.Count });
         });

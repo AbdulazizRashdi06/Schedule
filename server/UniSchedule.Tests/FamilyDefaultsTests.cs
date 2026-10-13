@@ -109,6 +109,23 @@ public class FamilyDefaultsTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task A_course_placed_in_another_year_takes_that_year()
+    {
+        var (owner, semester, _, _, _) = await Setup("FF", 2046);
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/semesters/{semester}/defaults", new object[]
+        {
+            new { id = "FF201", major = "FFCOMP", year = 3 },
+            new { id = "FF201", major = "FFAI", year = 3 },
+            new { id = "FF201", major = "FFCS", year = 2 },
+        })).StatusCode);
+        var years = (await Json(await owner.GetAsync($"/api/admin/semesters/{semester}/courses"))).EnumerateArray()
+            .ToDictionary(c => c.GetProperty("code").GetString()!, c => c.GetProperty("year").ValueKind == JsonValueKind.Number ? c.GetProperty("year").GetInt32() : (int?)null);
+        Assert.Equal(3, years["FF201"]);
+        // Not in any default: keeps the upload's year.
+        Assert.Equal(1, years["FF101"]);
+    }
+
+    [Fact]
     public async Task A_list_with_bad_rows_saves_nothing()
     {
         var (owner, semester, _, _, _) = await Setup("FC", 2043);
