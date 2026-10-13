@@ -68,7 +68,7 @@ export default function Majors() {
               }}
             />
           </section>
-          {major && <MajorPanel key={major.id} major={major} semesterId={semester?.id} onChanged={load} />}
+          {major && <MajorPanel key={major.id} major={major} families={[...new Set(list.flatMap((m) => (m.family ? [m.family] : [])))].sort()} semesterId={semester?.id} onChanged={load} />}
         </div>
       )}
     </>
@@ -112,7 +112,7 @@ function AddMajor({ onAdded }: { onAdded: (id: number) => void }) {
   )
 }
 
-function MajorPanel({ major, semesterId, onChanged }: { major: MajorRow; semesterId?: number; onChanged: () => void }) {
+function MajorPanel({ major, families, semesterId, onChanged }: { major: MajorRow; families: string[]; semesterId?: number; onChanged: () => void }) {
   const [data, setData] = useState<Electives | null>(null)
   const [allowed, setAllowed] = useState<Set<string>>(new Set())
   const [renaming, setRenaming] = useState(false)
@@ -173,7 +173,13 @@ function MajorPanel({ major, semesterId, onChanged }: { major: MajorRow; semeste
         >
           <TextField label="Code" hideLabel value={code} onChange={(e) => setCode(e.target.value)} mono className="w-24" boxClassName="h-[52px]" />
           <TextField label="Major name" hideLabel autoFocus value={name} onChange={(e) => setName(e.target.value)} className="min-w-0 flex-1" boxClassName="h-[52px] [&_input]:text-[20px] [&_input]:font-extrabold" />
-          <TextField label="Family" hideLabel placeholder="Family" value={family} onChange={(e) => setFamily(e.target.value)} mono className="w-28" boxClassName="h-[52px]" />
+          {/* Suggest existing families so "CS0" and "CSO" don't end up as two. */}
+          <TextField label="Family" hideLabel placeholder="Family" list="families" value={family} onChange={(e) => setFamily(e.target.value)} mono className="w-28" boxClassName="h-[52px]" />
+          <datalist id="families">
+            {families.map((f) => (
+              <option key={f} value={f} />
+            ))}
+          </datalist>
           <Button type="submit" className="h-[52px] px-5 text-[15px]">
             Save
           </Button>
