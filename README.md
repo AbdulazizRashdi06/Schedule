@@ -42,7 +42,7 @@ One row per section meeting time; the header row names the columns (any order, c
 | Course Name | `Data Structures` | |
 | Major | `CS` or `CS;LOG` | required for Core; empty Elective = open to all majors; ignored for LS |
 | Type | `Core` / `LS` / `Elective` | empty = Core |
-| Year | `2` | the study year a core course is pre-ticked for |
+| Year | `2` | the study year a core course is pre-ticked for (`Foundation` or `0` for the foundation year) |
 | Credits | `3` | |
 | Section | `1`, `01`, `Sec 1` | required |
 | Instructor | `Dr. Laura Becker` | |

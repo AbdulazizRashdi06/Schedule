@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, errorText } from '../lib/api'
 import type { Section, Semester } from '../lib/types'
 import { minutes } from '../lib/time'
+import { yearName } from '../lib/year'
 import { SLOTS, sessionType, slotOf, type ClassType } from '../lib/slots'
 import { Button, Confirm, ErrorText, Loading, Tag, cx } from '../components/ui'
 import { shortDate, seen } from './AdminLayout'
@@ -82,7 +83,7 @@ export default function StudentDetail() {
       <div className="flex flex-col gap-2">
         <h1 className="font-mono text-[56px] leading-none font-bold tracking-[-0.02em]">{d.universityId}</h1>
         <span className="flex flex-wrap items-center gap-2 text-[17px] font-bold">
-          {d.major ? `${d.major.name}${d.year != null ? `, Year ${d.year}` : ''}` : 'No major yet'}
+          {d.major ? `${d.major.name}${d.year != null ? `, ${yearName(d.year)}` : ''}` : 'No major yet'}
           <SetupTag step={d.step} done={d.done} />
           {d.isOwner && <Tag tone="navy">Owner</Tag>}
         </span>

@@ -26,7 +26,10 @@ public static partial class StudentIds
     /// <summary>Intake calendar year, e.g. 2024 for "24-0161".</summary>
     public static int IntakeYear(string id) => 2000 + int.Parse(id[..2]);
 
-    /// <summary>Study year for an academic year that started in <paramref name="academicStartYear"/>, clamped to 1–5.</summary>
+    /// <summary>
+    /// Study year for an academic year that started in <paramref name="academicStartYear"/>, clamped to 0–5.
+    /// 0 is the foundation year: everyone starts there, so "24-" students are in Year 2 during 2026/27.
+    /// </summary>
     public static int PredictYear(string id, int academicStartYear) =>
-        Math.Clamp(academicStartYear - IntakeYear(id) + 1, 1, 5);
+        Math.Clamp(academicStartYear - IntakeYear(id), 0, 5);
 }

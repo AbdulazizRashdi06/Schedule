@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { api, errorText } from '../lib/api'
 import type { Course, Me, Options, PickRow } from '../lib/types'
+import { yearName } from '../lib/year'
 import { ErrorText, Sheet, Sk, TextField, Toast, cx, useToast } from '../components/ui'
 import { ClashNotice, SectionChips, clashDetail, meetsText, type Picks } from '../components/CourseRow'
 import { BackButton, clearTimetableCache } from './timetable'
@@ -230,7 +231,7 @@ function AddSheet({ open, courses, me, onClose, onAdd }: { open: boolean; course
               <span className="text-[16px] font-extrabold">{c.name}</span>
               <span className="label text-[10px] text-muted">
                 {c.code} · {KIND[c.type]}
-                {c.type === 'Core' && c.year ? ` · Year ${c.year}` : ''}
+                {c.type === 'Core' && c.year != null ? ` · ${yearName(c.year)}` : ''}
               </span>
             </span>
             <button type="button" onClick={() => onAdd(c)} aria-label={`Add ${c.name}`} className="press h-10 shrink-0 rounded-full bg-ice px-4 text-[14px] font-extrabold">

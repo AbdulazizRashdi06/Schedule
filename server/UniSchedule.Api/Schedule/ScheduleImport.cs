@@ -29,6 +29,9 @@ public static class ScheduleImport
         _ => null,
     };
 
+    /// <summary>Year 0 in the file: "Foundation", "FY", "F" or "Foundation year".</summary>
+    public static bool IsFoundation(string raw) => raw.Trim().ToLowerInvariant() is "foundation" or "foundation year" or "fy" or "f";
+
     public static List<string> SplitMajors(string raw) =>
         raw.Split([';', ',', '/', '|', '+'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
@@ -54,8 +57,9 @@ public static class ScheduleImport
             if (row.Year.Length > 0)
             {
                 var digits = new string(row.Year.Where(char.IsAsciiDigit).ToArray());
-                if (int.TryParse(digits, out var y) && y is >= 1 and <= 6) year = y;
-                else rowErrors.Add($"year \"{row.Year}\" should be 1–5");
+                if (IsFoundation(row.Year)) year = 0;
+                else if (int.TryParse(digits, out var y) && y is >= 0 and <= 6) year = y;
+                else rowErrors.Add($"year \"{row.Year}\" should be Foundation or 1–5");
             }
             int? credits = int.TryParse(row.Credits, out var cr) && cr is > 0 and < 20 ? cr : null;
             var majors = SplitMajors(row.Majors);

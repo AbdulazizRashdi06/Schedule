@@ -90,7 +90,7 @@ export default function Students() {
                     </span>
                   </td>
                   <td className="px-2 py-3 font-bold">{s.major ?? <span className="text-muted">No major</span>}</td>
-                  <td className="px-2 py-3 text-right font-bold tabular-nums">{s.year ?? '-'}</td>
+                  <td className="px-2 py-3 text-right font-bold tabular-nums">{s.year === 0 ? 'F' : (s.year ?? '-')}</td>
                   <td className="px-2 py-3 text-right font-bold tabular-nums">{s.courses || '-'}</td>
                   <td className="px-2 py-3">
                     <SetupTag step={s.step} done={s.done} />

@@ -16,6 +16,7 @@ public class Student
     public bool IsOwner { get; set; }
     public int? MajorId { get; set; }
     public Major? Major { get; set; }
+    /// <summary>Study year: 0 is the foundation year, then 1–5.</summary>
     public int? Year { get; set; }
 
     /// <summary>The semester the setup steps below belong to (null while nothing is published).</summary>
@@ -99,7 +100,7 @@ public class Course
     public string Code { get; set; } = "";
     public string Name { get; set; } = "";
     public CourseType Type { get; set; }
-    /// <summary>Study year a core course belongs to; null for LS and most electives.</summary>
+    /// <summary>Study year a core course belongs to (0 = foundation); null for LS and most electives.</summary>
     public int? Year { get; set; }
     public int? Credits { get; set; }
     public List<CourseMajor> Majors { get; set; } = [];

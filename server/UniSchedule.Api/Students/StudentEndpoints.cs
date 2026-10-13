@@ -129,7 +129,7 @@ public static class StudentEndpoints
             }
             if (body.Year is int year)
             {
-                if (year is < 1 or > 5) return Errors.BadRequest("Pick a year from 1 to 5.");
+                if (year is < 0 or > 5) return Errors.BadRequest("Pick Foundation or a year from 1 to 5.");
                 if (s.Year != year && current is not null && s.SetupSemesterId == current.Id && s.SetupStep is "major" or "year" or "core")
                 {
                     // Different year before setup is done: re-tick the right core courses.

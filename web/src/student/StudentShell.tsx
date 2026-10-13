@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { store } from '../lib/api'
 import { useSession } from '../lib/session'
 import type { Me } from '../lib/types'
+import { yearName } from '../lib/year'
 import { Sheet, Tag, cx } from '../components/ui'
 
 const THEMES = [
@@ -24,7 +25,7 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
         {me?.major && (
           <span className="text-[16px] font-bold">
             {me.major.name}
-            {me.year != null && `, Year ${me.year}`}
+            {me.year != null && `, ${yearName(me.year)}`}
           </span>
         )}
         {me?.email && <span className="text-[14px] font-semibold break-all text-muted">{me.email}</span>}

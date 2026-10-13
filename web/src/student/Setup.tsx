@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { api, errorText, store } from '../lib/api'
 import { useSession } from '../lib/session'
 import type { Course, CourseType, Major, Me, Options, PickRow } from '../lib/types'
+import { yearName } from '../lib/year'
 import { ErrorText, Icon, Sk, cx } from '../components/ui'
 import { CourseRow, clashDetail, type Picks } from '../components/CourseRow'
 import { BackButton, clearTimetableCache } from './timetable'
@@ -245,7 +246,7 @@ function MajorStep({ me, onNext }: { me: Me; onNext: () => void }) {
   )
 }
 
-const YEAR_LABEL = ['', 'Just started', 'Second year', 'Third year', 'Final year']
+const YEAR_LABEL = ['Before Year 1', 'First year', 'Second year', 'Third year', 'Final year']
 
 function YearStep({ me, onNext }: { me: Me; onNext: () => void }) {
   // The guess from the ID is picked already; the student confirms with Continue. It never moves on by itself.
@@ -259,12 +260,12 @@ function YearStep({ me, onNext }: { me: Me; onNext: () => void }) {
         title="Which year are you in?"
         sub={
           <>
-            Your ID starts with <span className="rounded-md bg-ice px-1.5 py-0.5 font-mono text-[14px]">{me.universityId.slice(0, 2)}</span>, so we guessed Year {guess}. Change it if we’re off.
+            Your ID starts with <span className="rounded-md bg-ice px-1.5 py-0.5 font-mono text-[14px]">{me.universityId.slice(0, 2)}</span>, so we guessed {guess === 0 ? 'the foundation year' : `Year ${guess}`} (counting Foundation). Change it if we’re off.
           </>
         }
       />
       <div role="radiogroup" aria-label="Year" className="grid grid-cols-2 gap-2.5 px-6 pt-[26px]">
-        {[1, 2, 3, 4].map((y, i) => {
+        {[0, 1, 2, 3, 4].map((y, i) => {
           const on = year === y
           return (
             <button
@@ -275,23 +276,30 @@ function YearStep({ me, onNext }: { me: Me; onNext: () => void }) {
               onClick={() => setYear(y)}
               style={delay((i + 2) * 50)}
               className={cx(
-                'press flex h-[168px] flex-col items-start justify-between rounded-[24px] p-4 text-left',
+                'press flex flex-col items-start justify-between rounded-[24px] p-4 text-left',
+                y === 0 ? 'col-span-2 h-[104px]' : 'h-[148px]',
                 y === guess ? 'pulse-once opacity-0' : 'rise',
                 on ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_rgb(11_25_87/0.16)]',
               )}
             >
               <span className="flex w-full items-start justify-between">
-                <span className="label text-[11px] tracking-[0.12em]">Year</span>
+                <span className="label text-[11px] tracking-[0.12em]">{y === 0 ? YEAR_LABEL[0] : 'Year'}</span>
                 {y === guess && <span className={cx('label rounded-full px-[7px] py-1 text-[10px]', on ? 'bg-sky text-navy' : 'bg-ice text-navy')}>From ID</span>}
               </span>
-              <span className="display text-[88px] leading-[0.8] tracking-[-0.06em]">{y}</span>
-              <span className="text-[13px] font-semibold opacity-85">{YEAR_LABEL[y]}</span>
+              {y === 0 ? (
+                <span className="display text-[44px] leading-[0.8] tracking-[-0.04em]">Foundation</span>
+              ) : (
+                <>
+                  <span className="display text-[80px] leading-[0.8] tracking-[-0.06em]">{y}</span>
+                  <span className="text-[13px] font-semibold opacity-85">{YEAR_LABEL[y]}</span>
+                </>
+              )}
             </button>
           )
         })}
       </div>
       {me.predictedYear >= 5 && <p className="px-6 pt-3 text-[14px] font-semibold text-muted">Fifth year or later? Pick Year 4 and add any other courses on the next steps.</p>}
-      <BottomBar error={error} summary={<span className="font-display text-[14px] font-semibold tracking-normal normal-case">{year === guess ? 'Looks right? Tap continue.' : `Got it, Year ${year}, not ${guess}.`}</span>}>
+      <BottomBar error={error} summary={<span className="font-display text-[14px] font-semibold tracking-normal normal-case">{year === guess ? 'Looks right? Tap continue.' : `Got it, ${yearName(year)}, not ${yearName(guess)}.`}</span>}>
         <Primary
           busy={busy}
           onClick={async () => {
@@ -328,7 +336,7 @@ function Waiting({ me, onChange }: { me: Me; onChange: () => void }) {
         <span className="label text-[12px] tracking-[0.14em]">
           {me.universityId}
           {me.major && ` · ${me.major.code}`}
-          {me.year != null && ` · Year ${me.year}`}
+          {me.year != null && ` · ${yearName(me.year)}`}
         </span>
         <button type="button" onClick={out} className="label flex h-11 items-center text-[12px] link-hover">
           Log out
@@ -453,8 +461,8 @@ function PickSteps({ me, view, go }: { me: Me; view: View; go: (v: View, persist
     const pairs = Math.ceil(clashes / 2)
     return (
       <>
-        <Heading size={46} title="Your core courses." sub={`Already ticked for ${me.major?.code} · Year ${me.year}. Pick a section for each.`} />
-        {cores.length === 0 ? <p className="px-6 pt-5 text-[16px] font-semibold text-muted">No core courses are listed for Year {me.year} this semester.</p> : list(cores)}
+        <Heading size={46} title="Your core courses." sub={`Already ticked for ${me.major?.code} · ${yearName(me.year ?? 0)}. Pick a section for each.`} />
+        {cores.length === 0 ? <p className="px-6 pt-5 text-[16px] font-semibold text-muted">No core courses are listed for {yearName(me.year ?? 0)} this semester.</p> : list(cores)}
         <button type="button" onClick={() => save('editcore', 'core')} className="label mx-6 mb-4 h-11 self-start text-[12px] link-hover">
           + Add a core course from another year
         </button>
@@ -474,17 +482,17 @@ function PickSteps({ me, view, go }: { me: Me; view: View; go: (v: View, persist
   }
 
   if (view === 'editcore') {
-    const years = [...new Set(ofType('Core').map((c) => c.year ?? 0))].sort((a, b) => (a === me.year ? -1 : b === me.year ? 1 : a - b))
+    const years = [...new Set(ofType('Core').map((c) => c.year ?? -1))].sort((a, b) => (a === me.year ? -1 : b === me.year ? 1 : a - b))
     return (
       <>
         <Heading size={46} title="Core from any year." sub="Tick a core course from another year if you’re behind or ahead." />
         {years.map((y) => (
           <section key={y} className="pt-4">
             <h2 className="label px-6 text-[11px] tracking-[0.12em] text-muted">
-              {y === 0 ? 'Any year' : `Year ${y}`}
+              {y === -1 ? 'Any year' : yearName(y)}
               {y === me.year && ' · your year'}
             </h2>
-            {list(ofType('Core').filter((c) => (c.year ?? 0) === y))}
+            {list(ofType('Core').filter((c) => (c.year ?? -1) === y))}
           </section>
         ))}
         <BottomBar error={error}>
@@ -568,7 +576,7 @@ function PickSteps({ me, view, go }: { me: Me; view: View; go: (v: View, persist
             {all.length} {all.length === 1 ? 'course' : 'courses'}
           </span>
           <span className="label text-[12px] text-ice">
-            {me.major?.code} · Year {me.year}
+            {me.major?.code} · {yearName(me.year ?? 0)}
           </span>
         </div>
         <ul className="flex flex-col">

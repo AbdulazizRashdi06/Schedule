@@ -4,6 +4,7 @@ import { api, errorText } from '../lib/api'
 import type { Course, Meeting, Section, Semester } from '../lib/types'
 import { DAY_LONG, DAY_SHORT } from '../lib/time'
 import { SLOTS } from '../lib/slots'
+import { yearName } from '../lib/year'
 import { Button, Drawer, ErrorText, Loading, Notice, Select, Tag, TextField, Toast, useToast } from '../components/ui'
 import { PageTitle, Th, shortDate } from './AdminLayout'
 
@@ -45,7 +46,7 @@ export default function CourseDetail() {
         size={64}
         kicker={[c.code, c.majors.join(', ')].filter(Boolean).join(' · ')}
         title={c.name}
-        sub={[c.type === 'LS' ? 'Life Skills' : c.type, c.year && `Year ${c.year}`, c.credits && `${c.credits} credits`, `${total} ${total === 1 ? 'student' : 'students'} across ${c.sections.length} ${c.sections.length === 1 ? 'section' : 'sections'}`]
+        sub={[c.type === 'LS' ? 'Life Skills' : c.type, c.year != null && yearName(c.year), c.credits && `${c.credits} credits`, `${total} ${total === 1 ? 'student' : 'students'} across ${c.sections.length} ${c.sections.length === 1 ? 'section' : 'sections'}`]
           .filter(Boolean)
           .join(', ')}
       />
