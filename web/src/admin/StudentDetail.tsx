@@ -82,7 +82,7 @@ export default function StudentDetail() {
       <div className="flex flex-col gap-2">
         <h1 className="font-mono text-[56px] leading-none font-bold tracking-[-0.02em]">{d.universityId}</h1>
         <span className="flex flex-wrap items-center gap-2 text-[17px] font-bold">
-          {d.major ? `${d.major.name}, Year ${d.year ?? '?'}` : 'No major yet'}
+          {d.major ? `${d.major.name}${d.year != null ? `, Year ${d.year}` : ''}` : 'No major yet'}
           <SetupTag step={d.step} done={d.done} />
           {d.isOwner && <Tag tone="navy">Owner</Tag>}
         </span>

@@ -28,9 +28,11 @@ export default function AdminLogin() {
   const [show, setShow] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  // Set while we navigate ourselves, so the signed-in redirect below doesn't drop the temporary password.
+  const [entering, setEntering] = useState(false)
   const { shakeClass, shake } = useShake()
 
-  if (session?.kind === 'admin') return <Navigate to={session.mustChangePassword ? '/admin/password' : '/admin'} replace />
+  if (!entering && session?.kind === 'admin') return <Navigate to={session.mustChangePassword ? '/admin/password' : '/admin'} replace />
 
   return (
     <SplitPage kicker="Uni Schedule" title="Staff." foot="Lost access? Ask an owner to reset your password.">
@@ -49,6 +51,7 @@ export default function AdminLogin() {
           setError('')
           try {
             const r = await api.post<{ mustChangePassword: boolean }>('/auth/admin-login', { username, password })
+            setEntering(true)
             await refresh()
             // The temporary password is the "current" one on the next screen, so it isn't asked for twice.
             navigate(r.mustChangePassword ? '/admin/password' : '/admin', { replace: true, state: r.mustChangePassword ? { current: password } : undefined })
