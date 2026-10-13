@@ -1,0 +1,45 @@
+# Deploys to the Zarqa VPS from GitHub. Secrets: DEPLOY_SSH_KEY (required), DEPLOY_KNOWN_HOSTS (optional).
+name: Deploy
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet test
+        working-directory: server
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci && npx eslint . && npm run build
+        working-directory: web
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up the SSH key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          if [ -z "$DEPLOY_SSH_KEY" ]; then echo "Add the DEPLOY_SSH_KEY secret first." >&2; exit 1; fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/zarqa_vps && chmod 600 ~/.ssh/zarqa_vps
+          if [ -n "$DEPLOY_KNOWN_HOSTS" ]; then printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else ssh-keyscan -H 173.249.40.122 > ~/.ssh/known_hosts 2>/dev/null; fi
+      - run: ./deploy/deploy.sh
+      - name: Remove the key
+        if: always()
+        run: rm -f ~/.ssh/zarqa_vps

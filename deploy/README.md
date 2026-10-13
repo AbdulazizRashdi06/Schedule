@@ -53,3 +53,14 @@ Use `owner` instead of `rsa` for an owner account. Running it again for an exist
 - **Backup the database:**
   `ssh -i ~/.ssh/zarqa_vps deploy@173.249.40.122 "docker run --rm -v uni-schedule_data:/d -v /opt/uni-schedule:/b alpine tar czf /b/backup-\$(date +%F).tgz -C /d ."`
 - Database migrations run automatically at startup.
+
+## Deploying from GitHub
+
+`.github/workflows/deploy.yml` runs the tests and the web build, then runs the same `./deploy/deploy.sh` on a GitHub runner. It deploys on every push to `main`, or by hand from Actions → Deploy → Run workflow. This works when the laptop is away or on campus Wi-Fi.
+
+It needs repository secrets (Settings → Secrets and variables → Actions):
+
+- `DEPLOY_SSH_KEY` (required): the whole private key, `~/.ssh/zarqa_vps` including the BEGIN/END lines. If the laptop key is lost, make a new ed25519 key, add its public half to `/home/deploy/.ssh/authorized_keys` from the hosting provider's web console, and use the new private key here.
+- `DEPLOY_KNOWN_HOSTS` (optional): the server's `known_hosts` line (`ssh-keygen -F 173.249.40.122`) to pin the host key. Without it the job trusts whatever key the server presents.
+
+The server's `deploy/.env` is kept as is, like a laptop deploy. `./deploy/deploy.sh` still works from the laptop.
