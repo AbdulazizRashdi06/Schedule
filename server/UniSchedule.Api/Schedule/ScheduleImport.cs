@@ -267,8 +267,12 @@ public static class ScheduleImport
 
             foreach (var sec in course.Sections.Where(s => !pc.Sections.Any(ps => string.Equals(ps.Number, s.Number, StringComparison.OrdinalIgnoreCase))).ToList())
             {
-                await db.Picks.Where(p => p.SectionId == sec.Id)
-                    .ExecuteUpdateAsync(u => u.SetProperty(p => p.SectionId, (int?)null).SetProperty(p => p.SectionRemoved, true), ct);
+                foreach (var pick in await db.Picks.Where(p => p.SectionId == sec.Id).ToListAsync(ct))
+                {
+                    pick.SectionId = null;
+                    pick.Section = null;
+                    pick.SectionRemoved = true;
+                }
                 course.Sections.Remove(sec);
                 db.Sections.Remove(sec);
             }
