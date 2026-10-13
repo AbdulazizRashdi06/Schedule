@@ -2,7 +2,7 @@ import { Fragment } from 'react'
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { DAY_LONG, DAY_SHORT, minutes } from '../lib/time'
 import { SLOTS, TYPE_BG, TYPE_NAME, addDays, fmtDuration, fmtWeekRange, nowMinutes, weekDays, weekStart, weekTitle, type ClassType, type Session } from '../lib/slots'
-import { ErrorText, Loading, cx } from '../components/ui'
+import { ErrorText, Sk, cx } from '../components/ui'
 import { Icon, NeedsSection, RoundButton, useBack, useNow, useTimetable } from './timetable'
 
 const ROW = 86
@@ -36,17 +36,17 @@ export default function Schedule() {
     <div className="min-h-dvh bg-navy font-display text-cream">
       <div className="mx-auto max-w-md px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         <header className="flex items-center justify-between gap-3">
-          <RoundButton label="Back" onClick={back} className="bg-navy-800 text-cream hover:bg-navy-700">
+          <RoundButton label="Back to today" onClick={back} className="border-[2.5px] border-sky text-sky">
             <Icon name="back" />
           </RoundButton>
-          <div className="label flex rounded-full bg-navy-800 p-1 text-[11px]">
+          <div role="group" aria-label="View" className="label flex gap-0.5 rounded-full border-2 border-navy-line p-1 text-[11px]">
             {(['day', 'week'] as const).map((v) => (
               <button
                 key={v}
                 type="button"
                 aria-pressed={view === v}
                 onClick={() => go({ view: v, day })}
-                className={cx('h-10 min-w-[72px] rounded-full px-4 transition', view === v ? 'bg-cream text-navy' : 'text-ice hover:text-cream')}
+                className={cx('press h-10 min-w-[72px] rounded-full px-4', view === v ? 'bg-sky text-navy' : 'text-ice tint-dark')}
               >
                 {v}
               </button>
@@ -55,21 +55,21 @@ export default function Schedule() {
         </header>
 
         <div className="mt-5 flex items-center justify-between gap-2">
-          <RoundButton label="Previous week" onClick={() => go({ w: offset - 1 })} className="bg-navy-800 hover:bg-navy-700">
+          <RoundButton label="Previous week" onClick={() => go({ w: offset - 1 })} className="size-11 bg-navy-800 tint-dark">
             <Icon name="prev" />
           </RoundButton>
           <div className="min-w-0 text-center">
-            <h1 className="display text-[30px] leading-none tracking-[-0.03em]">{weekTitle(offset)}</h1>
+            <h1 className="display text-[30px] leading-[0.9] tracking-[-0.03em] text-sky">{weekTitle(offset)}</h1>
             <p className="label mt-1.5 text-[10px] text-ice">
               {fmtWeekRange(start, days.length)}
               {!thisWeek && (
-                <button type="button" className="ml-2 text-sky underline-offset-2 hover:underline" onClick={() => go({ w: 0 })}>
+                <button type="button" className="ml-2 text-sky link-hover" onClick={() => go({ w: 0 })}>
                   · Today
                 </button>
               )}
             </p>
           </div>
-          <RoundButton label="Next week" onClick={() => go({ w: offset + 1 })} className="bg-navy-800 hover:bg-navy-700">
+          <RoundButton label="Next week" onClick={() => go({ w: offset + 1 })} className="size-11 bg-sky text-navy">
             <Icon name="next" />
           </RoundButton>
         </div>
@@ -78,8 +78,8 @@ export default function Schedule() {
           {error ? (
             <ErrorText>{error}</ErrorText>
           ) : !me || !tt ? (
-            <div className="text-ice">
-              <Loading />
+            <div aria-busy="true" aria-label="Loading your week" className="grid grid-cols-[38px_repeat(5,minmax(0,1fr))] gap-[5px]">
+              {Array.from({ length: 36 }, (_, i) => (i % 6 === 0 ? <span key={i} /> : <Sk key={i} dark className="h-[86px] rounded-[14px]" />))}
             </div>
           ) : (
             <>
@@ -146,7 +146,7 @@ function WeekGrid({ days, sessions, start, today, nowMin, onDay }: { days: numbe
               type="button"
               onClick={() => onDay(d)}
               aria-label={`${DAY_LONG[d]} ${date.getDate()}, open day view`}
-              className={cx('mb-2 flex h-14 flex-col items-center justify-center rounded-[14px] transition', isToday ? 'bg-cream text-navy' : 'text-ice hover:bg-navy-800')}
+              className={cx('press mb-2 flex h-14 flex-col items-center justify-center rounded-[14px]', isToday ? 'bg-cream text-navy' : 'text-ice tint-dark')}
             >
               <span className="label text-[9px]">{DAY_SHORT[d]}</span>
               <span className="display text-[20px] leading-tight">{date.getDate()}</span>
@@ -193,10 +193,10 @@ function WeekGrid({ days, sessions, start, today, nowMin, onDay }: { days: numbe
                       onClick={() => onDay(d)}
                       aria-label={blockLabel(s)}
                       className={cx(
-                        'relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[12px] p-1.5 text-left text-navy transition active:scale-[0.97]',
+                        'press relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[12px] p-1.5 text-left text-navy',
                         TYPE_BG[s.type],
                         live && 'ring-2 ring-cream ring-offset-2 ring-offset-navy',
-                        s.clash && 'outline-2 -outline-offset-2 outline-red-500',
+                        s.clash && 'outline-2 -outline-offset-2 outline-alert',
                       )}
                     >
                       <span className={cx('display leading-none tracking-[-0.03em]', cell.length > 1 ? 'text-[12px] break-all' : 'truncate text-[16px]')}>{s.cls.code}</span>
@@ -220,7 +220,7 @@ function DayView({ days, day, sessions, start, today, nowMin, onDay, onOpen }: {
   const total = list.reduce((sum, s) => sum + (s.end - s.start), 0)
   return (
     <div>
-      <h2 className="display text-[60px] leading-[0.9] tracking-[-0.05em]">{DAY_LONG[day]}.</h2>
+      <h2 className="display text-[60px] leading-[0.86] tracking-[-0.06em] text-sky">{DAY_LONG[day]}</h2>
       <p className="label mt-2 text-[10px] text-ice">
         {list.length === 0
           ? 'No classes'
@@ -238,7 +238,7 @@ function DayView({ days, day, sessions, start, today, nowMin, onDay, onOpen }: {
               role="tab"
               aria-selected={selected}
               onClick={() => onDay(d)}
-              className={cx('flex h-[76px] flex-col items-center justify-center rounded-[20px] transition', selected ? 'bg-cream text-navy' : 'bg-navy-800 text-cream hover:bg-navy-700')}
+              className={cx('press flex h-[76px] flex-col items-center justify-center rounded-[20px]', selected ? 'bg-cream text-navy' : 'bg-navy-800 text-cream tint-dark')}
             >
               <span className="label text-[9px]">{d === today ? 'Today' : DAY_SHORT[d]}</span>
               <span className="display text-[22px] leading-tight">{addDays(start, d).getDate()}</span>
@@ -268,7 +268,7 @@ function DayView({ days, day, sessions, start, today, nowMin, onDay, onOpen }: {
                 <button
                   type="button"
                   onClick={() => onOpen(s)}
-                  className={cx('min-w-0 flex-1 rounded-[20px] p-4 text-left text-navy transition active:scale-[0.99]', TYPE_BG[s.type], live && 'ring-2 ring-cream ring-offset-2 ring-offset-navy')}
+                  className={cx('press min-w-0 flex-1 rounded-[20px] p-4 text-left text-navy', TYPE_BG[s.type], live && 'ring-2 ring-cream ring-offset-2 ring-offset-navy')}
                 >
                   <span className="flex flex-wrap items-center gap-1.5">
                     <span className="label text-[10px]">
@@ -276,7 +276,7 @@ function DayView({ days, day, sessions, start, today, nowMin, onDay, onOpen }: {
                     </span>
                     {live && <span className="label rounded-full bg-navy px-2 py-0.5 text-[9px] text-cream">● Now</span>}
                     {s.cls.changed && <span className="label rounded-full bg-navy px-2 py-0.5 text-[9px] text-cream">Changed</span>}
-                    {s.clash && <span className="label rounded-full bg-red-600 px-2 py-0.5 text-[9px] text-white">Clash</span>}
+                    {s.clash && <span className="label rounded-full bg-alert-ink px-2 py-0.5 text-[9px] text-cream">Clash</span>}
                   </span>
                   <span className="display mt-1.5 block text-[20px] leading-[1.1] tracking-[-0.02em] break-words hyphens-auto">{s.cls.name}</span>
                   <span className="mt-1 flex items-center gap-1 text-[13px] font-semibold">
