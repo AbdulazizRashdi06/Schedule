@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\sample-data\fall-2026.csv" CopyToOutputDirectory="PreserveNewest" Link="fall-2026.csv" />
+    <None Include="..\..\sample-data\*.*" CopyToOutputDirectory="PreserveNewest" LinkBase="sample-data" />
   </ItemGroup>
 
   <ItemGroup>

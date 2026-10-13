@@ -62,16 +62,21 @@ public class ScheduleFileTests
         Assert.Equal("A101", row.Room);
     }
 
-    [Fact]
-    public void The_sample_file_parses_without_errors()
+    [Theory]
+    [InlineData("fall-2026.csv")]
+    [InlineData("spring-2027.csv")]
+    [InlineData("spring-2027.xlsx")]
+    public void Sample_files_parse_without_errors(string name)
     {
-        var path = Path.Combine(AppContext.BaseDirectory, "fall-2026.csv");
-        var read = ScheduleFile.ReadText(File.ReadAllText(path));
+        using var stream = File.OpenRead(Path.Combine(AppContext.BaseDirectory, "sample-data", name));
+        var read = ScheduleFile.Read(stream, name);
         Assert.Empty(read.Problems);
         var parsed = ScheduleImport.Parse(read.Rows);
         Assert.Empty(parsed.Errors);
-        Assert.Contains(parsed.Courses, c => c.Code == "CS201" && c.Sections.Count == 3);
+        Assert.Empty(parsed.Warnings);
+        Assert.Contains(parsed.Courses, c => c.Type == CourseType.Core);
         Assert.Contains(parsed.Courses, c => c.Type == CourseType.LS);
+        Assert.Contains(parsed.Courses, c => c.Type == CourseType.Elective);
     }
 
     [Fact]
