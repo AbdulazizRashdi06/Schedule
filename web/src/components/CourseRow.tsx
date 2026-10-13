@@ -152,7 +152,7 @@ export function CourseRow({
             {clash && (
               <div className="ml-11">
                 <ClashNotice>
-                  Clashes with {clash.code} on {clash.at}. Try another section.
+                  Clashes with {clash.code} on {clash.at}. Fine if you have a clash waiver, or pick another section.
                 </ClashNotice>
               </div>
             )}

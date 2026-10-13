@@ -461,10 +461,8 @@ function PickSteps({ me, view, go }: { me: Me; view: View; go: (v: View, persist
         <button type="button" onClick={() => save('editcore', 'core')} className="label mx-6 mb-4 h-11 self-start text-[12px] link-hover">
           + Add a core course from another year
         </button>
-        <BottomBar error={error} summary={`${n} ${n === 1 ? 'course' : 'courses'} · ${classes} ${classes === 1 ? 'class' : 'classes'} a week`}>
-          {clashes > 0 ? (
-            <Primary disabled>Fix {pairs} {pairs === 1 ? 'clash' : 'clashes'} to continue</Primary>
-          ) : missing.length > 0 ? (
+        <BottomBar error={error} summary={`${n} ${n === 1 ? 'course' : 'courses'} · ${classes} ${classes === 1 ? 'class' : 'classes'} a week${pairs ? ` · ${pairs} ${pairs === 1 ? 'clash' : 'clashes'}` : ''}`}>
+          {missing.length > 0 ? (
             <Primary disabled>Pick a section for {missing.join(', ')}</Primary>
           ) : (
             <Primary busy={busy} onClick={() => save('ls', 'ls')}>
@@ -503,7 +501,6 @@ function PickSteps({ me, view, go }: { me: Me; view: View; go: (v: View, persist
     const type: CourseType = view === 'ls' ? 'LS' : 'Elective'
     const courses = ofType(type)
     const n = pickedOf(type).length
-    const clashes = clashing(type)
     const missing = missingSection(type)
     const finish = async () => {
       setBusy(true)
@@ -537,9 +534,7 @@ function PickSteps({ me, view, go }: { me: Me; view: View; go: (v: View, persist
         />
         {courses.length === 0 ? <p className="px-6 pt-5 text-[16px] font-semibold text-muted">None are offered this semester.</p> : list(courses)}
         <BottomBar error={error} summary={summary}>
-          {clashes > 0 ? (
-            <Primary disabled>Fix the clash to continue</Primary>
-          ) : missing.length > 0 ? (
+          {missing.length > 0 ? (
             <Primary disabled>Pick a section for {missing.join(', ')}</Primary>
           ) : view === 'electives' && picks.size === 0 ? (
             <Primary disabled>Pick at least one course</Primary>

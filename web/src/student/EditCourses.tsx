@@ -49,12 +49,9 @@ export default function EditCourses() {
 
   let changes = addedRows.length
   for (const [id, sid] of saved) if (!picks.has(id) || picks.get(id) !== sid) changes++
-  const clashes = rows.filter((c) => {
-    const s = c.sections.find((x) => x.id === picks.get(c.id))
-    return picks.has(c.id) && s && clashDetail(s, c.id, picks, byId)
-  }).length
   const missing = rows.filter((c) => picks.has(c.id) && picks.get(c.id) == null && c.sections.length > 0).map((c) => c.code)
-  const blocker = clashes > 0 ? 'Fix the clash to save' : missing.length > 0 ? `Pick a section for ${missing.join(', ')}` : picks.size === 0 ? 'Keep at least one course' : null
+  // Clashes are allowed (some students have a clash waiver); the cards still flag them.
+  const blocker = missing.length > 0 ? `Pick a section for ${missing.join(', ')}` : picks.size === 0 ? 'Keep at least one course' : null
 
   const drop = (c: Course) => {
     const next = new Map(picks)
@@ -156,7 +153,7 @@ export default function EditCourses() {
                         {clash && (
                           <div className="ml-16">
                             <ClashNotice>
-                              Clashes with {clash.code} on {clash.at}.
+                              Clashes with {clash.code} on {clash.at}. Fine if you have a clash waiver.
                             </ClashNotice>
                           </div>
                         )}
