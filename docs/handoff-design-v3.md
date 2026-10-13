@@ -86,7 +86,8 @@ One migration: `20261013141344_UploadLog` (new `UploadLogs` table). Nothing remo
 - Dark theme, Arabic, reminders, notify-on-publish.
 - The upload step has no real upload progress (the bar runs while the preview request is in flight).
 - Section times that aren't on a slot show as a disabled "custom" option in the editor.
-- Spec open items still open: end of day 18:15 vs 18:45, placeholders, em-dash cleanup in copy that comes from the server.
+- End of day confirmed by the owner: 18:15 (six slots, 08:00 to 18:15, as built). No 7th slot.
+- Spec open items still open: placeholders, em-dash cleanup in copy that comes from the server.
 
 ## 8. Deploy (from the laptop)
 
