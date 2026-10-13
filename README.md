@@ -1,6 +1,6 @@
 # Uni Schedule
 
-A phone-first class timetable for GUtech students, with a dashboard for the RSA office and owners. The product plan is in [docs/plan.md](docs/plan.md).
+A phone-first class timetable for GUtech students, with a dashboard for the RSA office and owners. The product plan is in [docs/plan.md](docs/plan.md); the current status and next steps are in [docs/handoff.md](docs/handoff.md).
 
 - `server/` — ASP.NET Core (.NET 10) API, EF Core + SQLite. Also serves the built frontend.
 - `web/` — React + TypeScript + Vite + Tailwind.
