@@ -17,8 +17,10 @@ export interface Session {
   cls: TimetableClass
   meeting: Meeting
   type: ClassType
-  /** Index into SLOTS. */
+  /** Index into SLOTS: the slot the class starts in. */
   slot: number
+  /** How many slots it covers: 3 for 11:30–16:30. */
+  span: number
   /** Minutes since midnight. */
   start: number
   end: number
@@ -51,13 +53,25 @@ export function slotOf(start: number, end: number) {
   return best
 }
 
+/** The slot a class starts in and how many slots it runs through; times outside the day fall back to the nearest slot. */
+export function slotSpan(start: number, end: number) {
+  const first = SLOTS.findIndex(([, e]) => start < minutes(e))
+  if (first === -1) return { slot: slotOf(start, end), span: 1 }
+  let last = first
+  SLOTS.forEach(([s], i) => {
+    if (i > first && minutes(s) < end) last = i
+  })
+  return { slot: first, span: last - first + 1 }
+}
+
 export function buildSessions(tt: Timetable): Session[] {
   const out: Session[] = []
   for (const cls of tt.classes)
     for (const meeting of cls.section.meetings) {
       const start = minutes(meeting.start)
       const end = minutes(meeting.end)
-      out.push({ cls, meeting, type: sessionType(meeting.room), slot: slotOf(start, end), start, end, clash: false })
+      const { slot, span } = slotSpan(start, end)
+      out.push({ cls, meeting, type: sessionType(meeting.room), slot, span, start, end, clash: false })
     }
   for (const a of out)
     a.clash = out.some(

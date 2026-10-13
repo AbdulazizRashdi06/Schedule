@@ -185,7 +185,7 @@ function WeekGrid({ days, sessions, start, today, nowMin, onDay }: { days: numbe
             const cell = sessions.filter((s) => s.meeting.day === d && s.slot === slot)
             if (cell.length === 0) return null
             return (
-              <div key={`${d}-${slot}`} className="relative z-20 flex min-w-0 gap-0.5" style={{ gridColumn: c + 2, gridRow: slot + 1 }}>
+              <div key={`${d}-${slot}`} className="relative z-20 flex min-w-0 gap-0.5" style={{ gridColumn: c + 2, gridRow: `${slot + 1} / span ${Math.max(...cell.map((s) => s.span))}` }}>
                 {cell.map((s, i) => {
                   const live = d === today && s.start <= nowMin && nowMin < s.end
                   return (
@@ -202,7 +202,9 @@ function WeekGrid({ days, sessions, start, today, nowMin, onDay }: { days: numbe
                       )}
                     >
                       <span className={cx('display leading-none tracking-[-0.03em]', cell.length > 1 ? 'text-[12px] break-all' : 'truncate text-[16px]')}>{s.cls.code}</span>
-                      <span className="label mt-1 text-[9px] tracking-[0.04em]">{s.meeting.start}</span>
+                      <span className="label mt-1 text-[9px] tracking-[0.04em]">{s.meeting.start}
+                        {s.span > 1 && `–${s.meeting.end}`}
+                      </span>
                       {cell.length === 1 && <span className="mt-auto truncate text-[11px] font-semibold">{s.meeting.room}</span>}
                       {s.cls.changed && <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-navy" />}
                     </button>
