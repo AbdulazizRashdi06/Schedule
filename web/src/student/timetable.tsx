@@ -75,7 +75,7 @@ const PATHS = {
   arrow: 'M5 12h14M13 6l6 6-6 6',
   menu: 'M4 7h16M4 12h16M4 17h10',
   pin: 'M12 21s-7-6.2-7-11.5a7 7 0 0114 0C19 14.8 12 21 12 21zM12 12a2.5 2.5 0 100-5 2.5 2.5 0 000 5z',
-  pencil: 'M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4',
+  bell: 'M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 003.4 0',
 } as const
 
 export function Icon({ name, className }: { name: keyof typeof PATHS; className?: string }) {

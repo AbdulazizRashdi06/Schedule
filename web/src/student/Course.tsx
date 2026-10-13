@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { DAY_LONG } from '../lib/time'
 import { TYPE_NAME, initials, nowMinutes, type Session } from '../lib/slots'
@@ -10,6 +10,7 @@ export default function Course() {
   const { me, tt, sessions, error, markSeen } = useTimetable()
   const now = useNow()
   const back = useBack('/')
+  const [soon, setSoon] = useState(false)
 
   const cls = tt?.classes.find((c) => c.courseId === Number(courseId))
   const changed = cls?.changed
@@ -113,10 +114,18 @@ export default function Course() {
                 <span className="min-w-0 text-[16px] font-semibold">{cls.section.instructor || 'To be announced'}</span>
               </div>
 
-              <Link to="/edit" className="mt-7 flex h-14 items-center justify-center gap-2 rounded-full bg-cream text-[16px] font-semibold text-navy transition active:scale-[0.98]">
-                <Icon name="pencil" className="size-4" />
-                Change section
-              </Link>
+              {/* Reminders aren't built yet: the button is in place and says so when tapped. */}
+              <button
+                type="button"
+                onClick={() => setSoon(true)}
+                className="mt-7 flex h-14 w-full items-center justify-center gap-2 rounded-full bg-cream text-[16px] font-semibold text-navy transition active:scale-[0.98]"
+              >
+                <Icon name="bell" className="size-4" />
+                Remind me 15 min before
+              </button>
+              <p className="label mt-3 min-h-4 text-center text-[10px] text-ice" role="status">
+                {soon && 'Reminders are coming soon'}
+              </p>
             </div>
           </>
         )}
