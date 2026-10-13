@@ -77,6 +77,9 @@ export default function AdminLayout() {
           <NavLink to="/admin/majors" className={link}>
             Majors
           </NavLink>
+          <NavLink to="/admin/families" className={link}>
+            Families
+          </NavLink>
           <NavLink to="/admin/defaults" className={link}>
             Defaults
           </NavLink>
