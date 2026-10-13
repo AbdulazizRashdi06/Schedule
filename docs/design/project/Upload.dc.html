@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Upload timetable</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0B1957}a:hover{color:#1d2f80}
+.btn{transition:transform 160ms cubic-bezier(0.23,1,0.32,1),background-color 160ms ease,color 160ms ease,box-shadow 160ms ease}
+.btn:active{transform:scale(0.97)}
+.nav{transition:background-color 160ms ease}
+@media (hover: hover) and (pointer: fine){.nav:hover{background-color:rgba(11,25,87,0.06)}}
+.pane{animation:pane 240ms cubic-bezier(0.23,1,0.32,1)}
+.fill{transform-origin:left center;transition:transform 300ms cubic-bezier(0.77,0,0.175,1)}
+.bar{transform-origin:left center;animation:load 1200ms linear forwards}
+.in:focus{outline:none}
+.fld:focus-within{box-shadow:inset 0 0 0 2.5px #0B1957,0 0 0 4px #D1E8FF}
+@keyframes pane{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:none}}
+@keyframes load{from{transform:scaleX(0.04)}to{transform:scaleX(1)}}
+@media (prefers-reduced-motion: reduce){.pane{animation:none}.fill{transition:none}}
+</style>
+</helmet>
+<div style="min-height: 820px; box-sizing: border-box; background: #F8F3EA; color: #0B1957; font-family: 'Bricolage Grotesque', Georgia, serif; display: flex; flex-wrap: wrap">
+
+  <aside style="flex: 1 0 220px; max-width: 100%; box-sizing: border-box; padding: 28px 16px; border-right: 1.5px solid rgba(11, 25, 87, 0.1); display: flex; flex-direction: column; gap: 4px">
+    <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; padding: 0 12px 20px 12px">UNI SCHEDULE · STAFF</span>
+    <nav aria-label="Dashboard" style="display: flex; flex-direction: column; gap: 2px">
+      <a href="DashHome.dc.html" class="nav" style="height: 44px; border-radius: 12px; padding: 0 12px; display: flex; align-items: center; font-size: 16px; font-weight: 700; text-decoration: none">Home</a>
+      <a href="Upload.dc.html" aria-current="page" class="nav" style="height: 44px; border-radius: 12px; padding: 0 12px; display: flex; align-items: center; font-size: 16px; font-weight: 800; text-decoration: none; background: #0B1957; color: #F8F3EA">Upload</a>
+      <a href="Courses.dc.html" class="nav" style="height: 44px; border-radius: 12px; padding: 0 12px; display: flex; align-items: center; font-size: 16px; font-weight: 700; text-decoration: none">Courses</a>
+      <a href="Majors.dc.html" class="nav" style="height: 44px; border-radius: 12px; padding: 0 12px; display: flex; align-items: center; font-size: 16px; font-weight: 700; text-decoration: none">Majors</a>
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 0.14em; color: #3A4675; padding: 18px 12px 6px 12px">OWNERS</span>
+      <a href="Students.dc.html" class="nav" style="height: 44px; border-radius: 12px; padding: 0 12px; display: flex; align-items: center; font-size: 16px; font-weight: 700; text-decoration: none">Students</a>
+      <a href="Accounts.dc.html" class="nav" style="height: 44px; border-radius: 12px; padding: 0 12px; display: flex; align-items: center; font-size: 16px; font-weight: 700; text-decoration: none">Accounts</a>
+    </nav>
+    <div style="margin-top: auto; padding: 16px 12px 0 12px; border-top: 1.5px solid rgba(11, 25, 87, 0.1); display: flex; flex-direction: column; gap: 4px">
+      <span style="font-size: 15px; font-weight: 800">Abdulaziz</span>
+      <span style="font-size: 13px; font-weight: 600; color: #3A4675">Owner</span>
+      <a href="StaffSignIn.dc.html" style="font-size: 14px; font-weight: 700; padding-top: 8px">Log out</a>
+    </div>
+  </aside>
+
+  <main style="flex: 999 1 560px; min-width: 0; padding: 36px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 28px">
+    <h1 style="margin: 0; font-size: 56px; line-height: 0.9; font-weight: 800; letter-spacing: -0.05em">Upload a timetable</h1>
+
+    <ol aria-label="Progress" style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px">
+      <sc-for list="{{steps}}" as="s" hint-placeholder-count="4">
+        <li aria-current="{{s.current}}" style="display: flex; flex-direction: column; gap: 8px">
+          <span style="height: 6px; border-radius: 3px; background: rgba(11, 25, 87, 0.12); overflow: hidden"><span class="fill" style="{{s.fillStyle}}"></span></span>
+          <span style="{{s.labelStyle}}">{{s.label}}</span>
+        </li>
+      </sc-for>
+    </ol>
+
+    <sc-if value="{{is0}}" hint-placeholder-val="{{ true }}">
+      <section class="pane" style="display: flex; flex-direction: column; gap: 16px; max-width: 640px">
+        <h2 style="margin: 0; font-size: 26px; font-weight: 800">Which semester is this file for?</h2>
+        <div role="radiogroup" aria-label="Semester" style="display: flex; flex-direction: column; gap: 8px">
+          <sc-for list="{{sems}}" as="m" hint-placeholder-count="3">
+            <button role="radio" aria-checked="{{m.checked}}" onClick="{{m.pick}}" class="btn" style="{{m.style}}">
+              <span style="font-size: 17px; font-weight: 800">{{m.name}}</span>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.1em">{{m.meta}}</span>
+            </button>
+          </sc-for>
+        </div>
+        <sc-if value="{{isNew}}" hint-placeholder-val="{{ false }}">
+          <div class="pane" style="display: flex; flex-direction: column; gap: 8px">
+            <label for="sn" style="font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.12em">NEW SEMESTER NAME</label>
+            <div class="fld" style="height: 52px; border-radius: 16px; background: #FFFDF8; box-shadow: inset 0 0 0 2px rgba(11, 25, 87, 0.2); display: flex; align-items: center; padding: 0 16px">
+              <input id="sn" class="in" value="{{newName}}" onChange="{{onName}}" placeholder="Summer 2027" style="flex: 1; border: none; background: transparent; font-family: inherit; font-size: 17px; font-weight: 600; color: #0B1957">
+            </div>
+          </div>
+        </sc-if>
+        <div><button class="btn" onClick="{{next}}" style="{{primaryStyle}}">Continue</button></div>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{is1}}" hint-placeholder-val="{{ false }}">
+      <section class="pane" style="display: flex; flex-direction: column; gap: 16px; max-width: 640px">
+        <h2 style="margin: 0; font-size: 26px; font-weight: 800">Add the file for {{semName}}</h2>
+        <sc-if value="{{noFile}}" hint-placeholder-val="{{ true }}">
+          <div style="border: 2.5px dashed rgba(11, 25, 87, 0.3); border-radius: 24px; padding: 44px 24px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center">
+            <span style="font-size: 20px; font-weight: 800">Drop an .xlsx or .csv here</span>
+            <span style="font-size: 14px; font-weight: 600; color: #3A4675">One row per section: code, section, day, start time, room, instructor.</span>
+            <button class="btn" onClick="{{choose}}" style="height: 48px; padding: 0 22px; border-radius: 999px; border: none; background: #0B1957; color: #F8F3EA; font-family: inherit; font-size: 16px; font-weight: 800; cursor: pointer">Choose file</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{hasFile}}" hint-placeholder-val="{{ false }}">
+          <div class="pane" style="border-radius: 20px; background: #FFFDF8; box-shadow: inset 0 0 0 2px rgba(11, 25, 87, 0.12); padding: 18px 20px; display: flex; flex-direction: column; gap: 12px">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 12px">
+              <span style="font-size: 17px; font-weight: 800">fall-2026-v4.xlsx</span>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700">{{fileStatus}}</span>
+            </div>
+            <span style="height: 6px; border-radius: 3px; background: rgba(11, 25, 87, 0.12); overflow: hidden"><span class="bar" style="display: block; height: 100%; background: #0B1957"></span></span>
+          </div>
+        </sc-if>
+        <div style="display: flex; gap: 10px">
+          <button class="btn" onClick="{{back}}" style="height: 48px; padding: 0 20px; border-radius: 999px; border: none; background: transparent; box-shadow: inset 0 0 0 2px rgba(11, 25, 87, 0.25); color: #0B1957; font-family: inherit; font-size: 16px; font-weight: 800; cursor: pointer">Back</button>
+          <button class="btn" onClick="{{next}}" style="{{primaryStyle}}">Check the file</button>
+        </div>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{is2}}" hint-placeholder-val="{{ false }}">
+      <section class="pane" style="display: flex; flex-direction: column; gap: 18px">
+        <div role="tablist" aria-label="Changes" style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px">
+          <sc-for list="{{tabs}}" as="t" hint-placeholder-count="5">
+            <button role="tab" aria-selected="{{t.selected}}" onClick="{{t.pick}}" class="btn" style="{{t.style}}">
+              <span style="font-size: 34px; font-weight: 800; letter-spacing: -0.03em; line-height: 1">{{t.n}}</span>
+              <span style="font-size: 14px; font-weight: 700">{{t.label}}</span>
+            </button>
+          </sc-for>
+        </div>
+        <div role="tabpanel" style="display: flex; flex-direction: column; border-top: 2.5px solid #0B1957">
+          <sc-for list="{{rows}}" as="r" hint-placeholder-count="4">
+            <div style="display: grid; grid-template-columns: 90px minmax(0, 1fr) minmax(0, 1.4fr); gap: 16px; padding: 12px 4px; border-bottom: 1.5px solid rgba(11, 25, 87, 0.1); align-items: baseline">
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700">{{r.a}}</span>
+              <span style="font-size: 15px; font-weight: 800">{{r.b}}</span>
+              <span style="{{r.cStyle}}">{{r.c}}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap">
+          <button class="btn" onClick="{{back}}" style="height: 48px; padding: 0 20px; border-radius: 999px; border: none; background: transparent; box-shadow: inset 0 0 0 2px rgba(11, 25, 87, 0.25); color: #0B1957; font-family: inherit; font-size: 16px; font-weight: 800; cursor: pointer">Back</button>
+          <button class="btn" onClick="{{next}}" style="{{primaryStyle}}">Confirm and skip 3 bad rows</button>
+          <span style="font-size: 14px; font-weight: 600; color: #3A4675">Fix them in the file and upload again any time.</span>
+        </div>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{is3}}" hint-placeholder-val="{{ false }}">
+      <section class="pane" style="display: flex; flex-direction: column; gap: 18px; max-width: 640px">
+        <sc-if value="{{notPublished}}" hint-placeholder-val="{{ true }}">
+          <h2 style="margin: 0; font-size: 40px; font-weight: 800; letter-spacing: -0.03em; line-height: 1">Ready to publish {{semName}}.</h2>
+          <p style="margin: 0; font-size: 17px; font-weight: 600; line-height: 1.45">286 students get the new times right away. 17 of them lose a section and will be asked to pick again the next time they open the app.</p>
+          <div style="display: flex; gap: 10px">
+            <button class="btn" onClick="{{back}}" style="height: 52px; padding: 0 20px; border-radius: 999px; border: none; background: transparent; box-shadow: inset 0 0 0 2px rgba(11, 25, 87, 0.25); color: #0B1957; font-family: inherit; font-size: 16px; font-weight: 800; cursor: pointer">Back</button>
+            <button class="btn" onClick="{{publish}}" aria-disabled="{{pubBusy}}" style="height: 52px; padding: 0 28px; border-radius: 999px; border: none; background: #0B1957; color: #F8F3EA; font-family: inherit; font-size: 17px; font-weight: 800; cursor: pointer">{{pubLabel}}</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{published}}" hint-placeholder-val="{{ false }}">
+          <div class="pane" style="display: flex; flex-direction: column; gap: 14px">
+            <h2 style="margin: 0; font-size: 72px; font-weight: 800; letter-spacing: -0.05em; line-height: 0.86">Published.</h2>
+            <p style="margin: 0; font-size: 17px; font-weight: 600">{{semName}} is live. Students see it next time they open the app.</p>
+            <a href="DashHome.dc.html" class="btn" style="align-self: flex-start; height: 52px; padding: 0 24px; border-radius: 999px; background: #0B1957; color: #F8F3EA; display: flex; align-items: center; font-size: 17px; font-weight: 800; text-decoration: none">Back to home</a>
+          </div>
+        </sc-if>
+      </section>
+    </sc-if>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { step: 0, sem: 'fall', newName: '', file: 'none', tab: 'changed', pub: 'idle' };
+  }
+  componentWillUnmount() { clearTimeout(this.t1); clearTimeout(this.t2); }
+  renderVals() {
+    var self = this;
+    var s = this.state;
+    var LABELS = ['Semester', 'File', 'Check', 'Publish'];
+    var SEMS = [
+      { id: 'fall', name: 'Fall 2026', meta: 'PUBLISHED' },
+      { id: 'spring', name: 'Spring 2027', meta: 'DRAFT' },
+      { id: 'new', name: 'New semester', meta: 'CREATE' }
+    ];
+    var semName = s.sem === 'new' ? (s.newName.trim() || 'the new semester') : SEMS.filter(function (m) { return m.id === s.sem; })[0].name;
+    var canNext = s.step === 0 ? (s.sem !== 'new' || s.newName.trim().length > 0) : s.step === 1 ? s.file === 'ready' : true;
+    var DATA = {
+      added: { n: 12, label: 'Added', rows: [['NLP 2', 'Natural Language Proc.', 'Wed 15:00, Sun 11:30, C-204'], ['RL 1', 'Reinforcement Learning', 'Mon 13:15, Wed 16:45, B-110'], ['GER 3', 'German A2', 'Tue 15:00, Thu 15:00, A-012']] },
+      changed: { n: 7, label: 'Changed', rows: [['ML 1', 'Machine Learning', 'Room B-204 to C-310 (Tue)'], ['DS 2', 'Data Structures', 'Thu 11:30 to Thu 13:15'], ['STAT 1', 'Statistics for AI', 'New instructor']] },
+      removed: { n: 2, label: 'Removed', rows: [['LA2 2', 'Linear Algebra II', '17 students affected'], ['RS 3', 'Research Skills', 'No students yet']] },
+      errors: { n: 3, label: 'Errors', rows: [['ROW 88', 'CV 2', '13:45 is not a class start. Use 13:15.'], ['ROW 112', 'ETH 1', 'Room is empty'], ['ROW 140', 'XYZ 1', 'Unknown course code']] },
+      majors: { n: 1, label: 'New majors', rows: [['NEW', 'Data Science', 'Will be created. Set its electives in Majors.']] }
+    };
+    var keys = ['added', 'changed', 'removed', 'errors', 'majors'];
+    var primary = 'height: 48px; padding: 0 24px; border-radius: 999px; border: none; font-family: inherit; font-size: 16px; font-weight: 800; cursor: pointer; ' + (canNext ? 'background: #0B1957; color: #F8F3EA;' : 'background: rgba(11, 25, 87, 0.1); color: rgba(11, 25, 87, 0.55);');
+    return {
+      steps: LABELS.map(function (l, i) {
+        return {
+          label: l, current: i === s.step ? 'step' : 'false',
+          fillStyle: 'display: block; height: 100%; background: #0B1957; transform: scaleX(' + (i <= s.step ? 1 : 0) + ');',
+          labelStyle: 'font-size: 15px; font-weight: ' + (i === s.step ? '800' : '600') + '; color: ' + (i <= s.step ? '#0B1957' : '#3A4675') + ';'
+        };
+      }),
+      is0: s.step === 0, is1: s.step === 1, is2: s.step === 2, is3: s.step === 3,
+      semName: semName,
+      sems: SEMS.map(function (m) {
+        var on = m.id === s.sem;
+        return {
+          name: m.name, meta: m.meta, checked: on ? 'true' : 'false',
+          pick: function () { self.setState({ sem: m.id }); },
+          style: 'height: 60px; border-radius: 18px; border: none; padding: 0 18px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; font-family: inherit; text-align: left; ' + (on ? 'background: #0B1957; color: #F8F3EA;' : 'background: transparent; color: #0B1957; box-shadow: inset 0 0 0 2px rgba(11, 25, 87, 0.16);')
+        };
+      }),
+      isNew: s.sem === 'new',
+      newName: s.newName,
+      onName: function (e) { self.setState({ newName: e.target.value }); },
+      primaryStyle: primary,
+      next: function () { if (canNext) self.setState({ step: Math.min(3, self.state.step + 1) }); },
+      back: function () { self.setState({ step: Math.max(0, self.state.step - 1), pub: 'idle' }); },
+      noFile: s.file === 'none', hasFile: s.file !== 'none',
+      fileStatus: s.file === 'ready' ? '48 KB, 214 ROWS' : 'UPLOADING…',
+      choose: function () {
+        self.setState({ file: 'uploading' });
+        clearTimeout(self.t1);
+        self.t1 = setTimeout(function () { self.setState({ file: 'ready' }); }, 1200);
+      },
+      tabs: keys.map(function (k) {
+        var on = k === s.tab;
+        var bad = k === 'errors';
+        return {
+          n: DATA[k].n, label: DATA[k].label, selected: on ? 'true' : 'false',
+          pick: function () { self.setState({ tab: k }); },
+          style: 'min-height: 84px; border-radius: 18px; border: none; padding: 12px 14px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-start; cursor: pointer; font-family: inherit; text-align: left; ' + (on ? (bad ? 'background: #8F1D12; color: #F8F3EA;' : 'background: #0B1957; color: #F8F3EA;') : (bad ? 'background: #FBE3DF; color: #8F1D12;' : 'background: transparent; color: #0B1957; box-shadow: inset 0 0 0 2px rgba(11, 25, 87, 0.14);'))
+        };
+      }),
+      rows: DATA[s.tab].rows.map(function (r) {
+        return { a: r[0], b: r[1], c: r[2], cStyle: 'font-size: 15px; font-weight: 600; ' + (s.tab === 'errors' ? 'color: #B42318;' : '') };
+      }),
+      notPublished: s.pub !== 'done', published: s.pub === 'done',
+      pubBusy: s.pub === 'busy' ? 'true' : 'false',
+      pubLabel: s.pub === 'busy' ? 'Publishing…' : 'Publish',
+      publish: function () {
+        if (self.state.pub !== 'idle') return;
+        self.setState({ pub: 'busy' });
+        clearTimeout(self.t2);
+        self.t2 = setTimeout(function () { self.setState({ pub: 'done' }); }, 900);
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

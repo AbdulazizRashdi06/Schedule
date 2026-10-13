@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Loading</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;overflow:hidden}
+.sk{position:relative;overflow:hidden;background:rgba(11,25,87,0.08)}
+.sk.dark{background:#13226A}
+.sk::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(255,253,248,0.65) 50%,transparent 70%);transform:translateX(-100%);animation:sweep 1400ms linear infinite}
+.sk.dark::after{background:linear-gradient(100deg,transparent 30%,rgba(158,204,250,0.22) 50%,transparent 70%)}
+@keyframes sweep{to{transform:translateX(100%)}}
+@media (prefers-reduced-motion: reduce){.sk::after{animation:none;opacity:0}}
+</style>
+</helmet>
+<div aria-busy="true" aria-label="Loading your day" style="width: 390px; height: 844px; box-sizing: border-box; background: #F8F3EA; color: #0B1957; font-family: 'Bricolage Grotesque', Georgia, serif; position: relative; overflow: hidden; display: flex; flex-direction: column">
+  <header style="padding: 28px 24px 0 24px; display: flex; justify-content: space-between; align-items: flex-start">
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span class="sk" style="width: 110px; height: 14px; border-radius: 6px"></span>
+      <span style="font-size: 76px; line-height: 0.86; font-weight: 800; letter-spacing: -0.05em">Today.</span>
+    </div>
+    <span class="sk" style="width: 86px; height: 48px; border-radius: 999px; margin-top: 4px"></span>
+  </header>
+  <div style="margin: 22px 12px 0 12px; background: #0B1957; border-radius: 32px; padding: 22px; display: flex; flex-direction: column; gap: 16px">
+    <span class="sk dark" style="width: 220px; height: 76px; border-radius: 16px"></span>
+    <span class="sk dark" style="width: 240px; height: 26px; border-radius: 8px"></span>
+    <span class="sk dark" style="width: 160px; height: 16px; border-radius: 6px"></span>
+    <span class="sk dark" style="width: 100%; height: 14px; border-radius: 999px"></span>
+  </div>
+  <div style="padding: 26px 24px 0 24px; display: flex; flex-direction: column; gap: 18px">
+    <span class="sk" style="width: 120px; height: 20px; border-radius: 6px"></span>
+    <div style="display: flex; gap: 12px; align-items: center"><span class="sk" style="width: 84px; height: 30px; border-radius: 8px"></span><span style="display: flex; flex-direction: column; gap: 6px; flex: 1"><span class="sk" style="width: 70%; height: 16px; border-radius: 6px"></span><span class="sk" style="width: 40%; height: 12px; border-radius: 6px"></span></span></div>
+    <div style="display: flex; gap: 12px; align-items: center"><span class="sk" style="width: 84px; height: 30px; border-radius: 8px"></span><span style="display: flex; flex-direction: column; gap: 6px; flex: 1"><span class="sk" style="width: 60%; height: 16px; border-radius: 6px"></span><span class="sk" style="width: 35%; height: 12px; border-radius: 6px"></span></span></div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

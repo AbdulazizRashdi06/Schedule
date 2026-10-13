@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Waiting for the semester</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0B1957}a:hover{color:#1d2f80}
+.btn{transition:transform 160ms cubic-bezier(0.23,1,0.32,1),background-color 220ms ease,color 220ms ease}
+.btn:active{transform:scale(0.97)}
+.rise{opacity:0;animation:rise 560ms cubic-bezier(0.23,1,0.32,1) forwards}
+.d1{animation-delay:80ms}.d2{animation-delay:160ms}.d3{animation-delay:240ms}.d4{animation-delay:320ms}
+.cell{position:relative;overflow:hidden}
+.cell::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(158,204,250,0.55) 50%,transparent 70%);transform:translateX(-100%);animation:sweep 2400ms linear infinite}
+.swap{animation:swap 260ms cubic-bezier(0.23,1,0.32,1)}
+@keyframes rise{from{opacity:0;transform:translateY(14px);filter:blur(4px)}to{opacity:1;transform:none;filter:blur(0)}}
+@keyframes sweep{0%{transform:translateX(-100%)}60%,100%{transform:translateX(100%)}}
+@keyframes swap{from{opacity:0;filter:blur(3px);transform:translateY(4px)}to{opacity:1;filter:blur(0);transform:none}}
+@media (prefers-reduced-motion: reduce){.rise,.swap{animation:fade 200ms ease forwards}.cell::after{animation:none;opacity:0}@keyframes fade{from{opacity:0}to{opacity:1}}}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #F8F3EA; color: #0B1957; font-family: 'Bricolage Grotesque', Georgia, serif; position: relative; overflow: hidden; display: flex; flex-direction: column">
+
+  <header style="padding: 28px 24px 0 24px; display: flex; justify-content: space-between; align-items: center">
+    <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.14em">24-0161 · AI · YEAR 3</span>
+    <a href="SignIn.dc.html" class="btn" style="height: 44px; display: flex; align-items: center; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.1em">LOG OUT</a>
+  </header>
+
+  <div aria-hidden="true" class="rise" style="margin: 40px 24px 0 24px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px">
+    <sc-for list="{{cells}}" as="c" hint-placeholder-count="20">
+      <span class="cell" style="{{c.style}}"></span>
+    </sc-for>
+  </div>
+
+  <div style="padding: 36px 24px 0 24px; display: flex; flex-direction: column; gap: 12px">
+    <h1 class="rise d1" style="margin: 0; font-size: 64px; line-height: 0.86; font-weight: 800; letter-spacing: -0.05em">Not out yet.</h1>
+    <p class="rise d2" style="margin: 0; font-size: 17px; font-weight: 600; line-height: 1.4">The new semester’s timetable hasn’t been published. Once it is, you’ll set up your courses in about a minute.</p>
+  </div>
+
+  <div style="margin-top: auto; padding: 0 24px 28px 24px; display: flex; flex-direction: column; gap: 12px">
+    <button class="btn rise d3" onClick="{{toggle}}" aria-pressed="{{pressed}}" style="{{btnStyle}}">
+      <sc-if value="{{on}}" hint-placeholder-val="{{ false }}">
+        <span class="swap" style="display: flex; align-items: center; gap: 10px">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+          We’ll ping you
+        </span>
+      </sc-if>
+      <sc-if value="{{off}}" hint-placeholder-val="{{ true }}">
+        <span class="swap" style="display: flex; align-items: center; gap: 10px">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+          Notify me when it’s out
+        </span>
+      </sc-if>
+    </button>
+    <span class="rise d4" style="text-align: center; font-size: 14px; font-weight: 600">Wrong account? <a href="SignIn.dc.html">Sign in with another ID</a></span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { notify: false };
+  }
+  renderVals() {
+    var self = this;
+    var cells = [];
+    for (var i = 0; i < 20; i++) {
+      cells.push({ style: 'height: 44px; border-radius: 12px; border: 2px dashed rgba(11, 25, 87, 0.22); box-sizing: border-box;' });
+    }
+    var on = this.state.notify;
+    return {
+      cells: cells,
+      on: on, off: !on,
+      pressed: on ? 'true' : 'false',
+      toggle: function () { self.setState({ notify: !self.state.notify }); },
+      btnStyle: 'height: 60px; border-radius: 999px; border: none; display: flex; align-items: center; justify-content: center; font-family: inherit; font-size: 18px; font-weight: 800; cursor: pointer; ' + (on ? 'background: #9ECCFA; color: #0B1957;' : 'background: #0B1957; color: #F8F3EA;')
+    };
+  }
+}
+</script>
+</body>
+</html>

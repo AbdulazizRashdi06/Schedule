@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Staff sign-in</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0B1957}a:hover{color:#1d2f80}
+.btn{transition:transform 160ms cubic-bezier(0.23,1,0.32,1),background-color 160ms ease,color 160ms ease}
+.btn:active{transform:scale(0.97)}
+.fld{transition:box-shadow 160ms ease}
+.fld:focus-within{box-shadow:inset 0 0 0 2.5px #0B1957,0 0 0 4px #D1E8FF}
+.in:focus{outline:none}
+.msg{animation:msg 200ms cubic-bezier(0.23,1,0.32,1)}
+.shakeA{animation:shakeA 340ms cubic-bezier(0.36,0.07,0.19,0.97)}
+.shakeB{animation:shakeB 340ms cubic-bezier(0.36,0.07,0.19,0.97)}
+@keyframes msg{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+@keyframes shakeA{0%,100%{transform:none}25%{transform:translateX(-6px)}50%{transform:translateX(5px)}75%{transform:translateX(-3px)}}
+@keyframes shakeB{0%,100%{transform:none}25%{transform:translateX(-6px)}50%{transform:translateX(5px)}75%{transform:translateX(-3px)}}
+@media (prefers-reduced-motion: reduce){.msg{animation:none}.shakeA,.shakeB{animation:none}}
+</style>
+</helmet>
+<div style="min-height: 820px; box-sizing: border-box; background: #F8F3EA; color: #0B1957; font-family: 'Bricolage Grotesque', Georgia, serif; display: flex; flex-wrap: wrap">
+
+  <section style="flex: 1 1 420px; background: #0B1957; color: #F8F3EA; padding: 56px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; gap: 40px">
+    <span style="font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; letter-spacing: 0.14em; color: #D1E8FF">UNI SCHEDULE</span>
+    <div style="display: flex; flex-direction: column; gap: 16px">
+      <h1 style="margin: 0; font-size: 120px; line-height: 0.82; font-weight: 800; letter-spacing: -0.06em; color: #9ECCFA">Staff.</h1>
+      
+    </div>
+    <span style="font-size: 14px; font-weight: 600; color: #D1E8FF">Lost access? Ask an owner to reset your password.</span>
+  </section>
+
+  <section style="flex: 1 1 420px; padding: 56px; box-sizing: border-box; display: flex; align-items: center">
+    <form onSubmit="{{submit}}" class="{{formClass}}" style="width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 20px">
+      <h2 style="margin: 0; font-size: 40px; font-weight: 800; letter-spacing: -0.03em">Sign in</h2>
+
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <label for="u" style="font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.12em">USERNAME</label>
+        <div class="fld" style="height: 56px; border-radius: 16px; background: #FFFDF8; box-shadow: inset 0 0 0 2px rgba(11, 25, 87, 0.2); display: flex; align-items: center; padding: 0 16px">
+          <input id="u" class="in" autocomplete="username" value="{{user}}" onChange="{{onUser}}" style="flex: 1; border: none; background: transparent; font-family: inherit; font-size: 18px; font-weight: 600; color: #0B1957">
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <label for="p" style="font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.12em">PASSWORD</label>
+        <div class="fld" style="height: 56px; border-radius: 16px; background: #FFFDF8; box-shadow: inset 0 0 0 2px rgba(11, 25, 87, 0.2); display: flex; align-items: center; padding: 0 8px 0 16px; gap: 8px">
+          <input id="p" class="in" type="{{pwType}}" autocomplete="current-password" value="{{pass}}" onChange="{{onPass}}" style="flex: 1; min-width: 0; border: none; background: transparent; font-family: inherit; font-size: 18px; font-weight: 600; color: #0B1957">
+          <button type="button" class="btn" onClick="{{toggleShow}}" aria-pressed="{{showPressed}}" style="height: 40px; padding: 0 12px; border: none; border-radius: 999px; background: rgba(11, 25, 87, 0.07); color: #0B1957; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; cursor: pointer">{{showLabel}}</button>
+        </div>
+      </div>
+
+      <div aria-live="polite" style="min-height: 24px">
+        <sc-if value="{{hasError}}" hint-placeholder-val="{{ false }}">
+          <span class="msg" style="display: block; font-size: 15px; font-weight: 700; color: #B42318">{{errorText}}</span>
+        </sc-if>
+      </div>
+
+      <sc-if value="{{ready}}" hint-placeholder-val="{{ false }}">
+        <a href="ChangePassword.dc.html" class="btn" style="height: 56px; border-radius: 999px; background: #0B1957; color: #F8F3EA; display: flex; align-items: center; justify-content: center; font-size: 17px; font-weight: 800; text-decoration: none">Sign in</a>
+      </sc-if>
+      <sc-if value="{{notReady}}" hint-placeholder-val="{{ true }}">
+        <button type="submit" class="btn" style="height: 56px; border-radius: 999px; border: none; background: #0B1957; color: #F8F3EA; font-family: inherit; font-size: 17px; font-weight: 800; cursor: pointer">Sign in</button>
+      </sc-if>
+    </form>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"scenario":{"editor":"enum","options":["live","wrongPassword","locked"],"default":"live"},"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { user: '', pass: '', show: false, err: null, shake: 0 };
+  }
+  renderVals() {
+    var self = this;
+    var scenario = this.props.scenario || 'live';
+    var s = this.state;
+    var err = s.err || (scenario === 'wrongPassword' ? 'wrong' : scenario === 'locked' ? 'locked' : null);
+    var filled = s.user.trim() && s.pass;
+    var ready = filled && scenario === 'live';
+    var TEXT = {
+      empty: 'Enter your username and password.',
+      wrong: 'That username and password don’t match.',
+      locked: 'Too many tries. This account is locked for 15 minutes.'
+    };
+    return {
+      user: s.user, pass: s.pass,
+      onUser: function (e) { self.setState({ user: e.target.value, err: null }); },
+      onPass: function (e) { self.setState({ pass: e.target.value, err: null }); },
+      pwType: s.show ? 'text' : 'password',
+      showLabel: s.show ? 'HIDE' : 'SHOW',
+      showPressed: s.show ? 'true' : 'false',
+      toggleShow: function () { self.setState({ show: !self.state.show }); },
+      hasError: !!err, errorText: TEXT[err] || '',
+      ready: !!ready, notReady: !ready,
+      formClass: s.shake ? (s.shake % 2 ? 'shakeA' : 'shakeB') : '',
+      submit: function (e) {
+        if (e && e.preventDefault) e.preventDefault();
+        var why = !filled ? 'empty' : scenario === 'locked' ? 'locked' : 'wrong';
+        self.setState({ err: why, shake: self.state.shake + 1 });
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

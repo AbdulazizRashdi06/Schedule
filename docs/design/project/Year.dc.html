@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Setup — Year</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0B1957}a:hover{color:#1d2f80}
+.btn{transition:transform 160ms cubic-bezier(0.23,1,0.32,1),background-color 220ms ease,color 220ms ease,box-shadow 220ms ease}
+.btn:active{transform:scale(0.97)}
+.rise{opacity:0;animation:rise 520ms cubic-bezier(0.23,1,0.32,1) forwards}
+.d1{animation-delay:50ms}.d2{animation-delay:100ms}.d3{animation-delay:150ms}.d4{animation-delay:200ms}.d5{animation-delay:250ms}.d6{animation-delay:300ms}.d7{animation-delay:350ms}.d8{animation-delay:400ms}
+.grow{transform-origin:left center;animation:grow 700ms 150ms cubic-bezier(0.77,0,0.175,1) both}
+.pop{animation:pop 260ms cubic-bezier(0.23,1,0.32,1)}
+.rise.hint{animation:rise 520ms 200ms cubic-bezier(0.23,1,0.32,1) forwards,hint 1400ms 700ms cubic-bezier(0.23,1,0.32,1) both}
+@keyframes rise{from{opacity:0;transform:translateY(14px);filter:blur(4px)}to{opacity:1;transform:none;filter:blur(0)}}
+@keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes pop{from{opacity:0;transform:scale(0.7)}to{opacity:1;transform:scale(1)}}
+@keyframes hint{0%{box-shadow:0 0 0 0 rgba(158,204,250,0.9)}100%{box-shadow:0 0 0 14px rgba(158,204,250,0)}}
+@media (prefers-reduced-motion: reduce){.rise,.pop,.rise.hint{animation:fade 200ms ease forwards}.grow{animation:none}@keyframes fade{from{opacity:0}to{opacity:1}}}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #F8F3EA; color: #0B1957; font-family: 'Bricolage Grotesque', Georgia, serif; position: relative; overflow: hidden; display: flex; flex-direction: column">
+
+  <header style="padding: 28px 24px 0 24px; display: flex; flex-direction: column; gap: 18px">
+    <div style="display: flex; justify-content: space-between; align-items: center">
+      <a href="Major.dc.html" aria-label="Back" class="btn" style="width: 48px; height: 48px; border-radius: 999px; border: 2.5px solid #0B1957; display: flex; align-items: center; justify-content: center; box-sizing: border-box">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18 9 12l6-6"></path></svg>
+      </a>
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.14em">STEP 2 OF 5 · YEAR</span>
+    </div>
+    <div role="progressbar" aria-label="Setup progress" aria-valuemin="0" aria-valuemax="5" aria-valuenow="2" style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px">
+      <span style="height: 6px; border-radius: 3px; background: #0B1957"></span>
+      <span style="height: 6px; border-radius: 3px; background: rgba(11, 25, 87, 0.12); overflow: hidden"><span class="grow" style="display: block; height: 100%; background: #0B1957; border-radius: 3px"></span></span>
+      <span style="height: 6px; border-radius: 3px; background: rgba(11, 25, 87, 0.12)"></span>
+      <span style="height: 6px; border-radius: 3px; background: rgba(11, 25, 87, 0.12)"></span>
+      <span style="height: 6px; border-radius: 3px; background: rgba(11, 25, 87, 0.12)"></span>
+    </div>
+  </header>
+
+  <div style="padding: 30px 24px 0 24px; display: flex; flex-direction: column; gap: 8px">
+    <h1 class="rise" style="margin: 0; font-size: 52px; line-height: 0.88; font-weight: 800; letter-spacing: -0.05em">Which year are you in?</h1>
+    <p class="rise d1" style="margin: 0; font-size: 16px; font-weight: 600; line-height: 1.35">Your ID starts with <span style="font-family: 'JetBrains Mono', monospace; font-size: 14px; background: #D1E8FF; padding: 2px 6px; border-radius: 6px">24</span>, so we guessed Year 3. Change it if we’re off.</p>
+  </div>
+
+  <div role="radiogroup" aria-label="Year" style="padding: 26px 24px 0 24px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+    <sc-for list="{{years}}" as="y" hint-placeholder-count="4">
+      <button role="radio" aria-checked="{{y.checked}}" onClick="{{y.pick}}" class="{{y.cls}}" style="{{y.style}}">
+        <span style="display: flex; justify-content: space-between; align-items: flex-start; width: 100%">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.12em">YEAR</span>
+          <sc-if value="{{y.guess}}" hint-placeholder-val="{{ false }}">
+            <span style="{{y.badgeStyle}}">FROM ID</span>
+          </sc-if>
+        </span>
+        <span style="font-size: 88px; font-weight: 800; line-height: 0.8; letter-spacing: -0.06em">{{y.n}}</span>
+        <span style="font-size: 13px; font-weight: 600; opacity: 0.85">{{y.label}}</span>
+      </button>
+    </sc-for>
+  </div>
+
+  <div style="margin-top: auto; padding: 16px 24px 28px 24px; display: flex; flex-direction: column; gap: 10px">
+    <span style="text-align: center; font-size: 14px; font-weight: 600">{{summary}}</span>
+    <a href="Core.dc.html" class="btn rise d6" style="height: 60px; border-radius: 999px; background: #0B1957; color: #F8F3EA; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 18px; font-weight: 800; text-decoration: none">
+      Continue
+      <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+    </a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { picked: 3 };
+  }
+  renderVals() {
+    var self = this;
+    var GUESS = 3;
+    var LABELS = { 1: 'Just started', 2: 'Second year', 3: 'Third year', 4: 'Final year' };
+    var years = [1, 2, 3, 4].map(function (n, i) {
+      var on = self.state.picked === n;
+      var guess = n === GUESS;
+      return {
+        n: n, label: LABELS[n], guess: guess,
+        checked: on ? 'true' : 'false',
+        cls: 'btn rise d' + (i + 2) + (guess ? ' hint' : ''),
+        pick: function () { self.setState({ picked: n }); },
+        badgeStyle: 'font-family: \'JetBrains Mono\', monospace; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; padding: 4px 7px; border-radius: 999px; ' + (on ? 'background: #9ECCFA; color: #0B1957;' : 'background: #D1E8FF; color: #0B1957;'),
+        style: 'height: 168px; border-radius: 24px; border: none; padding: 16px; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; cursor: pointer; font-family: inherit; text-align: left; ' + (on ? 'background: #0B1957; color: #F8F3EA;' : 'background: transparent; color: #0B1957; box-shadow: inset 0 0 0 2px rgba(11, 25, 87, 0.16);')
+      };
+    });
+    var p = this.state.picked;
+    return {
+      years: years,
+      summary: p === GUESS ? 'Looks right? Tap continue.' : 'Got it — Year ' + p + ', not ' + GUESS + '.'
+    };
+  }
+}
+</script>
+</body>
+</html>

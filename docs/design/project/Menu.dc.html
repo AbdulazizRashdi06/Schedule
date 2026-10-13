@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Menu and profile</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;overflow:hidden}
+a{color:#0B1957}a:hover{color:#1d2f80}
+.btn{transition:transform 160ms cubic-bezier(0.23,1,0.32,1),background-color 200ms ease,color 200ms ease}
+.btn:active{transform:scale(0.97)}
+.item{transition:background-color 160ms ease}
+.item:active{background-color:rgba(11,25,87,0.06)}
+.scrim{transition:opacity 240ms ease}
+.sheet{transition:transform 340ms cubic-bezier(0.32,0.72,0,1)}
+.thumb{transition:transform 240ms cubic-bezier(0.77,0,0.175,1)}
+.seg{transition:color 200ms ease}
+@media (prefers-reduced-motion: reduce){.sheet{transition:opacity 200ms ease}.thumb{transition:none}}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #F8F3EA; color: #0B1957; font-family: 'Bricolage Grotesque', Georgia, serif; position: relative; overflow: hidden; display: flex; flex-direction: column">
+
+  <header style="padding: 28px 24px 0 24px; display: flex; justify-content: space-between; align-items: flex-start">
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.14em">SUN 11 OCT</span>
+      <span style="font-size: 76px; line-height: 0.86; font-weight: 800; letter-spacing: -0.05em">Today.</span>
+    </div>
+    <button class="btn" onClick="{{open}}" aria-label="Open menu" aria-expanded="{{expanded}}" style="height: 48px; padding: 0 18px; border-radius: 999px; border: 2.5px solid #0B1957; background: transparent; color: #0B1957; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; cursor: pointer; margin-top: 4px">MENU</button>
+  </header>
+  <div aria-hidden="true" style="margin: 22px 12px 0 12px; height: 300px; border-radius: 32px; background: #0B1957"></div>
+
+  <div class="scrim" onClick="{{close}}" style="{{scrimStyle}}"></div>
+  <section class="sheet" role="dialog" aria-modal="true" aria-label="Menu" style="{{sheetStyle}}">
+    <span aria-hidden="true" style="width: 40px; height: 5px; border-radius: 3px; background: rgba(11, 25, 87, 0.2); align-self: center"></span>
+
+    <div style="display: flex; flex-direction: column; gap: 4px; padding: 6px 0 16px 0; border-bottom: 1.5px solid rgba(11, 25, 87, 0.1)">
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 30px; font-weight: 700; letter-spacing: 0.02em">24-0161</span>
+      <span style="font-size: 16px; font-weight: 700">Artificial Intelligence, Year 3</span>
+      <span style="font-size: 14px; font-weight: 600; color: #3A4675">24-0161@[uni-domain]</span>
+    </div>
+
+    <nav aria-label="Menu" style="display: flex; flex-direction: column">
+      <a href="Main.dc.html" class="item" style="height: 56px; display: flex; align-items: center; justify-content: space-between; font-size: 22px; font-weight: 800; text-decoration: none; border-radius: 12px">Today<span aria-hidden="true" style="font-size: 18px">→</span></a>
+      <a href="Week.dc.html" class="item" style="height: 56px; display: flex; align-items: center; justify-content: space-between; font-size: 22px; font-weight: 800; text-decoration: none; border-radius: 12px">Full week<span aria-hidden="true" style="font-size: 18px">→</span></a>
+      <a href="EditCourses.dc.html" class="item" style="height: 56px; display: flex; align-items: center; justify-content: space-between; font-size: 22px; font-weight: 800; text-decoration: none; border-radius: 12px">Edit my courses<span aria-hidden="true" style="font-size: 18px">→</span></a>
+      <sc-if value="{{isStaff}}" hint-placeholder-val="{{ true }}">
+        <a href="DashHome.dc.html" class="item" style="height: 56px; display: flex; align-items: center; justify-content: space-between; font-size: 22px; font-weight: 800; text-decoration: none; border-radius: 12px">
+          <span style="display: flex; align-items: center; gap: 10px">Admin <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; background: #D1E8FF; padding: 4px 8px; border-radius: 999px">STAFF</span></span>
+          <span aria-hidden="true" style="font-size: 18px">→</span>
+        </a>
+      </sc-if>
+    </nav>
+
+    <div style="display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1.5px solid rgba(11, 25, 87, 0.1)">
+      <span id="theme-label" style="font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.12em">THEME</span>
+      <div role="radiogroup" aria-labelledby="theme-label" style="position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); background: rgba(11, 25, 87, 0.07); border-radius: 999px; padding: 4px">
+        <span aria-hidden="true" class="thumb" style="{{thumbStyle}}"></span>
+        <sc-for list="{{themes}}" as="t" hint-placeholder-count="3">
+          <button role="radio" aria-checked="{{t.checked}}" onClick="{{t.pick}}" class="seg" style="{{t.style}}">{{t.label}}</button>
+        </sc-for>
+      </div>
+    </div>
+
+    <a href="SignIn.dc.html" class="item" style="margin-top: auto; height: 56px; display: flex; align-items: center; font-size: 18px; font-weight: 800; color: #B42318; text-decoration: none; border-radius: 12px">Log out</a>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"staff":{"editor":"boolean","default":true},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { open: true, theme: 'light' };
+  }
+  renderVals() {
+    var self = this;
+    var THEMES = [{ id: 'light', label: 'Light' }, { id: 'dark', label: 'Dark' }, { id: 'auto', label: 'Auto' }];
+    var idx = 0;
+    THEMES.forEach(function (t, i) { if (t.id === self.state.theme) idx = i; });
+    var open = this.state.open;
+    return {
+      isStaff: this.props.staff ?? true,
+      expanded: open ? 'true' : 'false',
+      open: function () { self.setState({ open: true }); },
+      close: function () { self.setState({ open: false }); },
+      scrimStyle: 'position: absolute; inset: 0; background: rgba(11, 25, 87, 0.45); ' + (open ? 'opacity: 1;' : 'opacity: 0; pointer-events: none;'),
+      sheetStyle: 'position: absolute; left: 0; right: 0; bottom: 0; height: 640px; background: #F8F3EA; border-radius: 32px 32px 0 0; padding: 12px 24px 28px 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 -20px 40px -20px rgba(11, 25, 87, 0.5); transform: translateY(' + (open ? '0' : '100%') + ');',
+      thumbStyle: 'position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / 3); border-radius: 999px; background: #0B1957; transform: translateX(' + (idx * 100) + '%);',
+      themes: THEMES.map(function (t) {
+        var on = t.id === self.state.theme;
+        return {
+          label: t.label, checked: on ? 'true' : 'false',
+          pick: function () { self.setState({ theme: t.id }); },
+          style: 'position: relative; height: 44px; border: none; background: transparent; border-radius: 999px; font-family: inherit; font-size: 15px; font-weight: 800; cursor: pointer; color: ' + (on ? '#F8F3EA' : '#0B1957') + ';'
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

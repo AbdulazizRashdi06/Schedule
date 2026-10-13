@@ -1,0 +1,342 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "Accounts.dc.html": {
+      "expand": "fill",
+      "h": 820,
+      "is_interactive": true,
+      "title": "23 · Accounts",
+      "w": 1280,
+      "x": 5440,
+      "y": 6140
+    },
+    "ChangePassword.dc.html": {
+      "expand": "fill",
+      "h": 820,
+      "is_interactive": true,
+      "title": "15 · Change password",
+      "w": 1280,
+      "x": 1360,
+      "y": 5200
+    },
+    "Code.dc.html": {
+      "h": 844,
+      "is_interactive": true,
+      "title": "2 · Sign in — Code",
+      "w": 390,
+      "x": 470,
+      "y": 1300
+    },
+    "Core.dc.html": {
+      "h": 844,
+      "is_interactive": true,
+      "title": "5 · Setup — Core",
+      "w": 390,
+      "x": 1880,
+      "y": 1300
+    },
+    "Course.dc.html": {
+      "h": 844,
+      "title": "Course",
+      "w": 390,
+      "x": 940,
+      "y": 0
+    },
+    "CourseAdmin.dc.html": {
+      "expand": "fill",
+      "h": 820,
+      "is_interactive": true,
+      "title": "19 · Course detail",
+      "w": 1280,
+      "x": 0,
+      "y": 6140
+    },
+    "Courses.dc.html": {
+      "expand": "fill",
+      "h": 820,
+      "is_interactive": true,
+      "title": "18 · Courses",
+      "w": 1280,
+      "x": 5440,
+      "y": 5200
+    },
+    "DashHome.dc.html": {
+      "expand": "fill",
+      "h": 820,
+      "is_interactive": true,
+      "title": "16 · Dashboard home",
+      "w": 1280,
+      "x": 2720,
+      "y": 5200
+    },
+    "Done.dc.html": {
+      "h": 844,
+      "is_interactive": true,
+      "title": "8 · Setup — Done",
+      "w": 390,
+      "x": 3290,
+      "y": 1300
+    },
+    "EditCourses.dc.html": {
+      "h": 844,
+      "is_interactive": true,
+      "title": "10 · Edit my courses",
+      "w": 390,
+      "x": 0,
+      "y": 2600
+    },
+    "Electives.dc.html": {
+      "h": 844,
+      "is_interactive": true,
+      "title": "7 · Setup — Electives",
+      "w": 390,
+      "x": 2820,
+      "y": 1300
+    },
+    "LS.dc.html": {
+      "h": 844,
+      "is_interactive": true,
+      "title": "6 · Setup — LS",
+      "w": 390,
+      "x": 2350,
+      "y": 1300
+    },
+    "Loading.dc.html": {
+      "h": 844,
+      "title": "24a · Loading",
+      "w": 390,
+      "x": 0,
+      "y": 3900
+    },
+    "Main.dc.html": {
+      "h": 844,
+      "title": "Today",
+      "w": 390,
+      "x": 0,
+      "y": 0
+    },
+    "Major.dc.html": {
+      "h": 844,
+      "is_interactive": true,
+      "title": "3 · Setup — Major",
+      "w": 390,
+      "x": 940,
+      "y": 1300
+    },
+    "Majors.dc.html": {
+      "expand": "fill",
+      "h": 820,
+      "is_interactive": true,
+      "title": "20 · Majors",
+      "w": 1280,
+      "x": 1360,
+      "y": 6140
+    },
+    "Menu.dc.html": {
+      "h": 844,
+      "is_interactive": true,
+      "title": "11 · Menu / profile",
+      "w": 390,
+      "x": 470,
+      "y": 2600
+    },
+    "NotFound.dc.html": {
+      "h": 844,
+      "title": "24c · Not found",
+      "w": 390,
+      "x": 940,
+      "y": 3900
+    },
+    "Offline.dc.html": {
+      "h": 844,
+      "is_interactive": true,
+      "title": "24b · Error / offline",
+      "w": 390,
+      "x": 470,
+      "y": 3900
+    },
+    "SignIn.dc.html": {
+      "h": 844,
+      "is_interactive": true,
+      "title": "1 · Sign in — ID",
+      "w": 390,
+      "x": 0,
+      "y": 1300
+    },
+    "StaffSignIn.dc.html": {
+      "expand": "fill",
+      "h": 820,
+      "is_interactive": true,
+      "title": "14 · Staff sign-in",
+      "w": 1280,
+      "x": 0,
+      "y": 5200
+    },
+    "StudentDetail.dc.html": {
+      "expand": "fill",
+      "h": 820,
+      "is_interactive": true,
+      "title": "22 · Student detail",
+      "w": 1280,
+      "x": 4080,
+      "y": 6140
+    },
+    "Students.dc.html": {
+      "expand": "fill",
+      "h": 820,
+      "is_interactive": true,
+      "title": "21 · Students",
+      "w": 1280,
+      "x": 2720,
+      "y": 6140
+    },
+    "TodayDone.dc.html": {
+      "h": 844,
+      "title": "12b · Today — That's it",
+      "w": 390,
+      "x": 1410,
+      "y": 2600
+    },
+    "TodayEmpty.dc.html": {
+      "h": 844,
+      "title": "12d · Today — No classes yet",
+      "w": 390,
+      "x": 2350,
+      "y": 2600
+    },
+    "TodayFree.dc.html": {
+      "h": 844,
+      "title": "12c · Today — Free day",
+      "w": 390,
+      "x": 1880,
+      "y": 2600
+    },
+    "TodayNext.dc.html": {
+      "h": 844,
+      "is_interactive": true,
+      "title": "12a · Today — Next in",
+      "w": 390,
+      "x": 940,
+      "y": 2600
+    },
+    "Upload.dc.html": {
+      "expand": "fill",
+      "h": 820,
+      "is_interactive": true,
+      "title": "17 · Upload",
+      "w": 1280,
+      "x": 4080,
+      "y": 5200
+    },
+    "Waiting.dc.html": {
+      "h": 844,
+      "is_interactive": true,
+      "title": "9 · Waiting",
+      "w": 390,
+      "x": 3760,
+      "y": 1300
+    },
+    "Week.dc.html": {
+      "h": 844,
+      "is_interactive": true,
+      "title": "Week",
+      "w": 390,
+      "x": 470,
+      "y": 0
+    },
+    "Year.dc.html": {
+      "h": 844,
+      "is_interactive": true,
+      "title": "4 · Setup — Year",
+      "w": 390,
+      "x": 1410,
+      "y": 1300
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-10-11T10:00:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "t1": {
+      "kind": "title1",
+      "maxW": 1330,
+      "text": "Uni Schedule — loud edition",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "t2": {
+      "kind": "title1",
+      "maxW": 4150,
+      "text": "Sign in & setup",
+      "w": 240,
+      "x": 0,
+      "y": 1000
+    },
+    "t3": {
+      "kind": "title1",
+      "maxW": 3680,
+      "text": "Student, after setup",
+      "w": 240,
+      "x": 0,
+      "y": 2300
+    },
+    "t4": {
+      "kind": "title1",
+      "maxW": 1330,
+      "text": "Shared states",
+      "w": 240,
+      "x": 0,
+      "y": 3600
+    },
+    "t5": {
+      "kind": "title1",
+      "maxW": 6720,
+      "text": "Dashboard (RSA + owners)",
+      "w": 240,
+      "x": 0,
+      "y": 4900
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "Week.dc.html",
+    "Course.dc.html",
+    "SignIn.dc.html",
+    "Code.dc.html",
+    "Major.dc.html",
+    "Year.dc.html",
+    "Core.dc.html",
+    "LS.dc.html",
+    "Electives.dc.html",
+    "Done.dc.html",
+    "Waiting.dc.html",
+    "EditCourses.dc.html",
+    "Menu.dc.html",
+    "TodayNext.dc.html",
+    "TodayDone.dc.html",
+    "TodayFree.dc.html",
+    "TodayEmpty.dc.html",
+    "Loading.dc.html",
+    "Offline.dc.html",
+    "NotFound.dc.html",
+    "StaffSignIn.dc.html",
+    "ChangePassword.dc.html",
+    "DashHome.dc.html",
+    "Upload.dc.html",
+    "Courses.dc.html",
+    "CourseAdmin.dc.html",
+    "Majors.dc.html",
+    "Students.dc.html",
+    "StudentDetail.dc.html",
+    "Accounts.dc.html"
+  ],
+  "pages": [],
+  "title": "Uni Schedule"
+}

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Today</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0B1957}a:hover{color:#1d2f80}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #F8F3EA; color: #0B1957; font-family: 'Bricolage Grotesque', Georgia, serif; position: relative; overflow: hidden; display: flex; flex-direction: column">
+
+  <header style="padding: 28px 24px 0 24px; display: flex; justify-content: space-between; align-items: flex-start">
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.14em">SUN · 11 OCT · WEEK 7</span>
+      <h1 style="margin: 0; font-size: 76px; line-height: 0.86; font-weight: 800; letter-spacing: -0.05em">Today.</h1>
+    </div>
+    <button aria-label="Notifications" style="width: 48px; height: 48px; border-radius: 999px; border: 2.5px solid #0B1957; background: transparent; color: #0B1957; display: flex; align-items: center; justify-content: center; cursor: pointer; margin-top: 4px">
+      <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+    </button>
+  </header>
+
+  <section style="margin: 22px 12px 0 12px; background: #0B1957; color: #F8F3EA; border-radius: 32px; padding: 22px 22px 24px 22px; display: flex; flex-direction: column; gap: 14px; position: relative; overflow: hidden">
+    
+    <div style="font-size: 96px; font-weight: 800; line-height: 0.8; letter-spacing: -0.06em; color: {{accent}}">09:45</div>
+    <div style="display: flex; flex-direction: column; gap: 4px">
+      <h2 style="margin: 0; font-size: 30px; line-height: 1; font-weight: 800; letter-spacing: -0.02em">Machine Learning</h2>
+      <span style="font-size: 15px; color: #D1E8FF">Lecture · [Lecturer name]</span>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <div style="height: 14px; border-radius: 999px; background: #1f2f74; overflow: hidden">
+        <div style="width: 53%; height: 100%; background: {{accent}}; border-radius: 999px"></div>
+      </div>
+      <div style="display: flex; justify-content: space-between; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #D1E8FF">
+        <span>09:45</span><span style="color: #F8F3EA; font-weight: 700">42 MIN LEFT</span><span>11:15</span>
+      </div>
+    </div>
+  </section>
+
+  <section style="padding: 22px 24px 0 24px; display: flex; flex-direction: column; gap: 0px; flex: 1">
+    <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px">
+      <h3 style="margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.02em">Up next</h3>
+      <a href="Week.dc.html" style="font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; padding: 12px 0">FULL WEEK →</a>
+    </div>
+
+    <a href="Course.dc.html" style="display: grid; grid-template-columns: 84px minmax(0, 1fr) 28px; align-items: center; gap: 12px; padding: 14px 0; border-top: 2.5px solid #0B1957; text-decoration: none; color: #0B1957">
+      <span style="font-size: 34px; font-weight: 800; letter-spacing: -0.05em; line-height: 1">13:15</span>
+      <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+        <span style="font-size: 18px; font-weight: 800; line-height: 1.1">Linear Algebra II</span>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px">TUTORIAL · C-112</span>
+      </span>
+      <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"></path><path d="M8 7h9v9"></path></svg>
+    </a>
+
+    <a href="Course.dc.html" style="display: grid; grid-template-columns: 84px minmax(0, 1fr) 28px; align-items: center; gap: 12px; padding: 14px 0; border-top: 2.5px solid #0B1957; text-decoration: none; color: #0B1957">
+      <span style="font-size: 34px; font-weight: 800; letter-spacing: -0.05em; line-height: 1">15:00</span>
+      <span style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+        <span style="font-size: 18px; font-weight: 800; line-height: 1.1">Data Structures Lab</span>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px">LAB · IT-LAB 3</span>
+      </span>
+      <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"></path><path d="M8 7h9v9"></path></svg>
+    </a>
+
+    
+  </section>
+
+  
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"accent":{"editor":"color","default":"#9ECCFA","options":["#9ECCFA","#D1E8FF","#F8F3EA"]},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent ?? '#9ECCFA' };
+  }
+}
+</script>
+</body>
+</html>

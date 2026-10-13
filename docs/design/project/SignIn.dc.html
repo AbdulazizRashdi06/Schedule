@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sign in — University ID</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#0B1957}a:hover{color:#1d2f80}
+.btn{transition:transform 160ms cubic-bezier(0.23,1,0.32,1),background-color 200ms ease,color 200ms ease,opacity 200ms ease}
+.btn:active{transform:scale(0.97)}
+.rise{opacity:0;animation:rise 560ms cubic-bezier(0.23,1,0.32,1) forwards}
+.drop{opacity:0;animation:drop 700ms cubic-bezier(0.23,1,0.32,1) forwards}
+.d1{animation-delay:60ms}.d2{animation-delay:120ms}.d3{animation-delay:180ms}.d4{animation-delay:240ms}.d5{animation-delay:300ms}.d6{animation-delay:360ms}.d7{animation-delay:420ms}.d8{animation-delay:480ms}.d9{animation-delay:540ms}
+.shakeA{animation:shakeA 360ms cubic-bezier(0.36,0.07,0.19,0.97)}
+.shakeB{animation:shakeB 360ms cubic-bezier(0.36,0.07,0.19,0.97)}
+.msg{animation:rise 260ms cubic-bezier(0.23,1,0.32,1)}
+.field{transition:box-shadow 200ms ease}
+.field:focus-within{box-shadow:inset 0 0 0 2.5px #0B1957,0 0 0 4px #9ECCFA !important}
+.idin::placeholder{color:#9AA3C7}
+.idin:focus{outline:none}
+@keyframes rise{from{opacity:0;transform:translateY(14px);filter:blur(4px)}to{opacity:1;transform:none;filter:blur(0)}}
+@keyframes drop{from{opacity:0;transform:translateY(-28px) rotate(-4deg) scale(0.96)}to{opacity:1;transform:none}}
+@keyframes shakeA{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(7px)}60%{transform:translateX(-5px)}80%{transform:translateX(3px)}}
+@keyframes shakeB{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(7px)}60%{transform:translateX(-5px)}80%{transform:translateX(3px)}}
+@media (prefers-reduced-motion: reduce){.rise,.drop,.msg{animation:fade 200ms ease forwards}.shakeA,.shakeB{animation:none}@keyframes fade{from{opacity:0}to{opacity:1}}}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #F8F3EA; color: #0B1957; font-family: 'Bricolage Grotesque', Georgia, serif; position: relative; overflow: hidden; display: flex; flex-direction: column">
+
+  <div aria-hidden="true" style="height: 250px; margin: 40px 24px 0 24px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px">
+    <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 60px">
+      <div class="drop d1" style="height: 64px; border-radius: 14px; background: #0B1957"></div>
+      <div class="drop d6" style="height: 64px; border-radius: 14px; background: #D1E8FF"></div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 0px">
+      <div class="drop d3" style="height: 64px; border-radius: 14px; background: #D1E8FF"></div>
+      <div class="drop d8" style="height: 64px; border-radius: 14px; border: 2px dashed rgba(11, 25, 87, 0.25); box-sizing: border-box"></div>
+      <div class="drop d5" style="height: 64px; border-radius: 14px; background: #9ECCFA"></div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 104px">
+      <div class="drop d2" style="height: 64px; border-radius: 14px; background: #9ECCFA"></div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 30px">
+      <div class="drop d7" style="height: 64px; border-radius: 14px; background: #0B1957"></div>
+      <div class="drop d4" style="height: 64px; border-radius: 14px; background: #D1E8FF"></div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 140px">
+      <div class="drop d9" style="height: 64px; border-radius: 14px; background: #0B1957"></div>
+    </div>
+  </div>
+
+  <div style="padding: 28px 24px 0 24px; display: flex; flex-direction: column; gap: 8px">
+    <h1 class="rise d3" style="margin: 0; font-size: 84px; line-height: 0.82; font-weight: 800; letter-spacing: -0.06em; color: #0B1957">Ahlan.</h1>
+
+  </div>
+
+  <div class="rise d5" style="padding: 26px 24px 0 24px; display: flex; flex-direction: column; gap: 10px">
+    <label for="uid" style="font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; color: #3A4675">UNIVERSITY ID</label>
+    <div class="{{fieldClass}}" style="height: 72px; border-radius: 22px; background: #FFFDF8; color: #0B1957; box-shadow: inset 0 0 0 2.5px #0B1957; display: flex; align-items: center; padding: 0 20px; gap: 12px">
+      <input id="uid" class="idin" inputmode="numeric" autocomplete="username" placeholder="24-0161" value="{{id}}" onChange="{{onId}}" aria-invalid="{{ariaInvalid}}" aria-describedby="uid-msg" style="flex: 1; min-width: 0; border: none; background: transparent; color: #0B1957; font-family: 'JetBrains Mono', monospace; font-size: 30px; font-weight: 700; letter-spacing: 0.06em; padding: 0">
+      <sc-if value="{{valid}}" hint-placeholder-val="{{ false }}">
+        <span class="msg" style="width: 30px; height: 30px; border-radius: 999px; background: #0B1957; color: #9ECCFA; display: flex; align-items: center; justify-content: center">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+        </span>
+      </sc-if>
+    </div>
+    <div id="uid-msg" aria-live="polite" style="min-height: 44px">
+      <sc-if value="{{showHelp}}" hint-placeholder-val="{{ true }}">
+        <span style="font-size: 14px; font-weight: 600; color: #3A4675">It's on your student card. We'll email you a code — no password.</span>
+      </sc-if>
+      <sc-if value="{{showError}}" hint-placeholder-val="{{ false }}">
+        <span class="msg" style="display: flex; gap: 8px; align-items: flex-start; font-size: 14px; font-weight: 600; color: #B42318">
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 1px"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4M12 16h.01"></path></svg>
+          {{errorText}}
+        </span>
+      </sc-if>
+      <sc-if value="{{showWait}}" hint-placeholder-val="{{ false }}">
+        <span class="msg" style="display: flex; gap: 10px; align-items: center; font-size: 14px; font-weight: 600; color: #0B1957">
+          <svg aria-hidden="true" width="28" height="28" viewBox="0 0 36 36" style="flex: none; transform: rotate(-90deg)"><circle cx="18" cy="18" r="15" fill="none" stroke="#E3DCCD" stroke-width="4"></circle><circle cx="18" cy="18" r="15" fill="none" stroke="#0B1957" stroke-width="4" stroke-linecap="round" stroke-dasharray="94.25" style="{{ringStyle}}"></circle></svg>
+          Too many tries. Wait {{wait}} seconds, then try again.
+        </span>
+      </sc-if>
+    </div>
+  </div>
+
+  <div class="rise d6" style="margin-top: auto; padding: 0 24px 28px 24px; display: flex; flex-direction: column; gap: 14px">
+    <sc-if value="{{canGo}}" hint-placeholder-val="{{ true }}">
+      <a href="Code.dc.html" class="btn" style="height: 60px; border-radius: 999px; background: #0B1957; color: #F8F3EA; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 18px; font-weight: 800; text-decoration: none">
+        Send me a code
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+      </a>
+    </sc-if>
+    <sc-if value="{{cantGo}}" hint-placeholder-val="{{ false }}">
+      <button class="btn" onClick="{{tryGo}}" aria-disabled="{{waiting}}" style="{{btnStyle}}">{{btnLabel}}</button>
+    </sc-if>
+    <span style="text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; color: #3A4675">STAFF? <a href="#" style="color: #0B1957">SIGN IN HERE</a></span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"scenario":{"editor":"enum","options":["live","invalid","notFound","rateLimited"],"default":"live"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { id: '', err: null, shake: 0, wait: 34, lastScenario: null };
+  }
+  componentDidMount() {
+    var self = this;
+    this.timer = setInterval(function () {
+      if ((self.props.scenario || 'live') === 'rateLimited' && self.state.wait > 0) self.setState({ wait: self.state.wait - 1 });
+    }, 1000);
+  }
+  componentWillUnmount() { clearInterval(this.timer); }
+  renderVals() {
+    var self = this;
+    var scenario = this.props.scenario || 'live';
+    if (scenario !== this.state.lastScenario) {
+      var seed = { live: '', invalid: '24-01', notFound: '24-9999', rateLimited: '24-0161' }[scenario];
+      this.state.lastScenario = scenario;
+      this.state.id = seed;
+      this.state.wait = 34;
+      this.state.err = scenario === 'invalid' ? 'invalid' : scenario === 'notFound' ? 'notFound' : null;
+    }
+    var id = this.state.id;
+    var valid = /^\d{2}-\d{4}$/.test(id);
+    var waiting = scenario === 'rateLimited' && this.state.wait > 0;
+    var err = this.state.err;
+    var errorText = err === 'notFound'
+      ? 'We can’t find ' + id + '. Double-check the number on your student card.'
+      : 'IDs look like 24-0161 — two digits, a dash, then four.';
+    var canGo = valid && !waiting && !err;
+    var baseBtn = 'height: 60px; border-radius: 999px; border: none; display: flex; align-items: center; justify-content: center; font-family: inherit; font-size: 18px; font-weight: 800; cursor: pointer; width: 100%; ';
+    return {
+      id: id,
+      valid: valid && !err,
+      onId: function (e) {
+        var v = String(e.target.value || '').replace(/\D/g, '').slice(0, 6);
+        if (v.length > 2) v = v.slice(0, 2) + '-' + v.slice(2);
+        self.setState({ id: v, err: null });
+      },
+      tryGo: function () {
+        if (waiting) return;
+        self.setState({ err: valid ? self.state.err : 'invalid', shake: self.state.shake + 1 });
+      },
+      fieldClass: 'field' + (this.state.shake ? (this.state.shake % 2 ? ' shakeA' : ' shakeB') : ''),
+      ariaInvalid: err ? 'true' : 'false',
+      showHelp: !err && !waiting,
+      showError: !!err && !waiting,
+      showWait: waiting,
+      errorText: errorText,
+      wait: this.state.wait,
+      waiting: waiting ? 'true' : 'false',
+      ringStyle: 'stroke-dashoffset: ' + (94.25 * (1 - this.state.wait / 34)).toFixed(2) + '; transition: stroke-dashoffset 1000ms linear',
+      canGo: canGo,
+      cantGo: !canGo,
+      btnLabel: waiting ? 'Try again in 0:' + (this.state.wait < 10 ? '0' : '') + this.state.wait : 'Send me a code',
+      btnStyle: baseBtn + (waiting || !valid ? 'background: rgba(11, 25, 87, 0.1); color: rgba(11, 25, 87, 0.6);' : 'background: #0B1957; color: #F8F3EA;')
+    };
+  }
+}
+</script>
+</body>
+</html>

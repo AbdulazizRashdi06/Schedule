@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Schedule</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#9ECCFA}a:hover{color:#D1E8FF}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; background: #0B1957; color: #F8F3EA; font-family: 'Bricolage Grotesque', Georgia, serif; position: relative; overflow: hidden; display: flex; flex-direction: column">
+
+  <header style="padding: 28px 24px 0 24px; display: flex; flex-direction: column; gap: 14px">
+    <div style="display: flex; justify-content: space-between; align-items: center">
+      <a href="Main.dc.html" aria-label="Back to today" style="width: 48px; height: 48px; border-radius: 999px; border: 2.5px solid #9ECCFA; color: #9ECCFA; display: flex; align-items: center; justify-content: center; text-decoration: none; box-sizing: border-box">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18 9 12l6-6"></path></svg>
+      </a>
+      <div role="group" aria-label="View" style="display: flex; padding: 4px; border-radius: 999px; border: 2px solid #2C3D85; gap: 2px">
+        <button aria-pressed="{{dayPressed}}" onClick="{{showDay}}" style="{{dayBtnStyle}}">DAY</button>
+        <button aria-pressed="{{weekPressed}}" onClick="{{showWeek}}" style="{{weekBtnStyle}}">WEEK</button>
+      </div>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px">
+      <button aria-label="Previous week" onClick="{{prevWeek}}" style="width: 44px; height: 44px; border-radius: 999px; border: none; background: #13226A; color: #F8F3EA; display: flex; align-items: center; justify-content: center; cursor: pointer; flex: none">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"></path></svg>
+      </button>
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 4px">
+        <span style="font-size: 30px; font-weight: 800; line-height: 0.9; letter-spacing: -0.03em; color: #9ECCFA">{{weekTitle}}</span>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; color: #D1E8FF">{{weekRange}}</span>
+      </div>
+      <button aria-label="Next week" onClick="{{nextWeek}}" style="width: 44px; height: 44px; border-radius: 999px; border: none; background: #9ECCFA; color: #0B1957; display: flex; align-items: center; justify-content: center; cursor: pointer; flex: none">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+      </button>
+    </div>
+
+    <sc-if value="{{isDay}}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 4px">
+        <h1 style="margin: 0; font-size: 60px; line-height: 0.86; font-weight: 800; letter-spacing: -0.06em; color: #9ECCFA">{{dayName}}</h1>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.1em">{{daySummary}}</span>
+      </div>
+    </sc-if>
+  </header>
+
+  <sc-if value="{{isDay}}" hint-placeholder-val="{{ true }}">
+    <div role="tablist" aria-label="Day" style="margin: 18px 12px 0 12px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px">
+      <sc-for list="{{days}}" as="d" hint-placeholder-count="5">
+        <button role="tab" aria-selected="{{d.selected}}" onClick="{{d.pickDay}}" style="{{d.tileStyle}}">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 0.08em">{{d.short}}</span>
+          <span style="font-size: 24px; font-weight: 800; line-height: 1">{{d.date}}</span>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700">{{d.countLabel}}</span>
+        </button>
+      </sc-for>
+    </div>
+
+    <section aria-label="Classes" style="margin: 18px 12px 0 12px; display: flex; flex-direction: column; gap: 8px; flex: 1; overflow-y: auto">
+      <sc-for list="{{items}}" as="it" hint-placeholder-count="4">
+        <sc-if value="{{it.isClass}}" hint-placeholder-val="{{ true }}">
+          <a href="Course.dc.html" style="display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 10px; text-decoration: none; color: #F8F3EA">
+            <span style="display: flex; flex-direction: column; gap: 4px; padding-top: 12px">
+              <span style="font-size: 22px; font-weight: 800; letter-spacing: -0.04em; line-height: 1">{{it.start}}</span>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #D1E8FF">{{it.end}}</span>
+            </span>
+            <span style="{{it.cardStyle}}">
+              <span style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
+                <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 0.12em">{{it.typeLabel}}</span>
+                <sc-if value="{{it.live}}" hint-placeholder-val="{{ false }}">
+                  <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; background: #0B1957; color: #9ECCFA; padding: 4px 8px; border-radius: 999px">● NOW</span>
+                </sc-if>
+              </span>
+              <span style="font-size: 20px; font-weight: 800; line-height: 1.05; letter-spacing: -0.01em">{{it.title}}</span>
+              <span style="display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600">
+                <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                {{it.room}}
+              </span>
+            </span>
+          </a>
+        </sc-if>
+        <sc-if value="{{it.isGap}}" hint-placeholder-val="{{ false }}">
+          <div style="display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 10px">
+            <span></span>
+            <span style="border: 2px dashed #2C3D85; border-radius: 16px; padding: 8px 14px; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; color: #D1E8FF">{{it.label}}</span>
+          </div>
+        </sc-if>
+      </sc-for>
+    </section>
+  </sc-if>
+
+  <sc-if value="{{isWeek}}" hint-placeholder-val="{{ false }}">
+    <div style="margin: 16px 12px 0 12px; display: grid; grid-template-columns: 38px repeat(5, minmax(0, 1fr)); gap: 5px">
+      <span></span>
+      <sc-for list="{{days}}" as="d" hint-placeholder-count="5">
+        <button aria-label="{{d.openLabel}}" onClick="{{d.pickDay}}" style="{{d.headStyle}}">
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700">{{d.short}}</span>
+          <span style="font-size: 20px; font-weight: 800; line-height: 1">{{d.date}}</span>
+        </button>
+      </sc-for>
+    </div>
+
+    <div style="margin: 6px 12px 0 12px; display: grid; grid-template-columns: 38px repeat(5, minmax(0, 1fr)); gap: 5px; height: 556px; position: relative">
+      <div aria-hidden="true" style="position: absolute; top: 0; bottom: 0; left: 43px; right: 0">
+        <sc-for list="{{gridLines}}" as="l" hint-placeholder-count="5">
+          <span style="{{l.style}}"></span>
+        </sc-for>
+        <sc-if value="{{showNow}}" hint-placeholder-val="{{ false }}">
+          <span style="{{nowLineStyle}}"></span>
+        </sc-if>
+      </div>
+      <div style="position: relative; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700; color: #D1E8FF">
+        <sc-for list="{{hours}}" as="h" hint-placeholder-count="6">
+          <span style="{{h.labelStyle}}">
+            <span style="color: #F8F3EA">{{h.label}}</span>
+            <span style="font-weight: 500; opacity: 0.8">{{h.end}}</span>
+          </span>
+        </sc-for>
+      </div>
+      <sc-for list="{{days}}" as="d" hint-placeholder-count="5">
+        <div style="{{d.colStyle}}">
+          <sc-for list="{{d.blocks}}" as="b" hint-placeholder-count="2">
+            <button aria-label="{{b.aria}}" onClick="{{b.open}}" style="{{b.style}}">
+              <span style="font-size: 16px; font-weight: 800; line-height: 1">{{b.code}}</span>
+              <span style="font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 700">{{b.start}}</span>
+              <span style="font-size: 11px; font-weight: 600; line-height: 1.1">{{b.room}}</span>
+            </button>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+
+  <div style="margin: auto 12px 16px 12px; padding-top: 12px; display: flex; gap: 14px; justify-content: center; font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; color: #D1E8FF">
+    <span style="display: flex; align-items: center; gap: 6px"><span style="width: 10px; height: 10px; border-radius: 3px; background: #F8F3EA"></span>LECTURE</span>
+    <span style="display: flex; align-items: center; gap: 6px"><span style="width: 10px; height: 10px; border-radius: 3px; background: #D1E8FF"></span>LAB</span>
+    <span style="display: flex; align-items: center; gap: 6px"><span style="width: 10px; height: 10px; border-radius: 3px; background: #9ECCFA"></span>TUTORIAL</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { mode: 'week', day: 'sun', week: 7 };
+  }
+  renderVals() {
+    var self = this;
+    var THIS_WEEK = 7, TODAY = 'sun', NOW_MIN = 10 * 60 + 33;
+    // Uni day: every class 1h30 with 15 min breaks: 08:00 · 09:45 · 11:30 · 13:15 · 15:00 · 16:45
+    var SLOTS = [['08:00','09:30'],['09:45','11:15'],['11:30','13:00'],['13:15','14:45'],['15:00','16:30'],['16:45','18:15']];
+    var SLOT_H = 86, GAP = 8;
+    var slotTop = function (i) { return i * (SLOT_H + GAP); };
+    var MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+    var TIMETABLE = [
+      { id: 'sun', short: 'SUN', name: 'Sunday', classes: [
+        { code: 'ML', title: 'Machine Learning', type: 'lecture', start: '09:45', end: '11:15', room: 'B-204' },
+        { code: 'LA2', title: 'Linear Algebra II', type: 'tutorial', start: '13:15', end: '14:45', room: 'C-112' },
+        { code: 'DS', title: 'Data Structures Lab', type: 'lab', start: '15:00', end: '16:30', room: 'IT-Lab 3' }
+      ]},
+      { id: 'mon', short: 'MON', name: 'Monday', classes: [
+        { code: 'STAT', title: 'Statistics for AI', type: 'lab', start: '08:00', end: '09:30', room: 'IT-Lab 1' },
+        { code: 'ETH', title: 'AI Ethics', type: 'tutorial', start: '11:30', end: '13:00', room: 'A-010' }
+      ]},
+      { id: 'tue', short: 'TUE', name: 'Tuesday', classes: [
+        { code: 'ML', title: 'Machine Learning', type: 'lecture', start: '09:45', end: '11:15', room: 'B-204' },
+        { code: 'DS', title: 'Data Structures Lab', type: 'lab', start: '13:15', end: '14:45', room: 'IT-Lab 3' }
+      ]},
+      { id: 'wed', short: 'WED', name: 'Wednesday', classes: [
+        { code: 'LA2', title: 'Linear Algebra II', type: 'tutorial', start: '08:00', end: '09:30', room: 'C-112' },
+        { code: 'STAT', title: 'Statistics for AI', type: 'lab', start: '11:30', end: '13:00', room: 'IT-Lab 1' }
+      ]},
+      { id: 'thu', short: 'THU', name: 'Thursday', classes: [
+        { code: 'SEM', title: 'Research Seminar', type: 'lecture', start: '09:45', end: '11:15', room: 'B-101' },
+        { code: 'ETH', title: 'AI Ethics', type: 'tutorial', start: '16:45', end: '18:15', room: 'A-010' }
+      ]}
+    ];
+    var COLORS = { lecture: '#F8F3EA', lab: '#D1E8FF', tutorial: '#9ECCFA' };
+    var mins = function (t) { var p = t.split(':'); return (+p[0]) * 60 + (+p[1]); };
+    var fmtDur = function (m) { var h = Math.floor(m / 60), r = m % 60; return (h ? h + 'H' : '') + (h && r ? ' ' : '') + (r ? r + 'M' : ''); };
+
+    var week = this.state.week, mode = this.state.mode;
+    var isThisWeek = week === THIS_WEEK;
+    var dates = TIMETABLE.map(function (_, i) { return new Date(2026, 9, 11 + (week - THIS_WEEK) * 7 + i); });
+    var first = dates[0], last = dates[4];
+    var weekRange = first.getMonth() === last.getMonth()
+      ? first.getDate() + '–' + last.getDate() + ' ' + MONTHS[first.getMonth()]
+      : first.getDate() + ' ' + MONTHS[first.getMonth()] + ' – ' + last.getDate() + ' ' + MONTHS[last.getMonth()];
+    if (isThisWeek) weekRange += ' · THIS WEEK';
+
+    var sel = TIMETABLE.filter(function (d) { return d.id === self.state.day; })[0] || TIMETABLE[0];
+    var isLive = function (dayId, c) { return isThisWeek && dayId === TODAY && mins(c.start) <= NOW_MIN && NOW_MIN < mins(c.end); };
+
+    var lines = [];
+    var hours = SLOTS.map(function (s, i) {
+      if (i > 0) {
+        lines.push({ style: 'position: absolute; left: 0; right: 0; top: ' + (slotTop(i) - GAP / 2) + 'px; height: 1px; background: #3A4E9C' });
+      }
+      return { label: s[0], end: s[1], labelStyle: 'position: absolute; top: ' + (slotTop(i) + 4) + 'px; left: 0; display: flex; flex-direction: column; gap: 3px; font-size: 9px' };
+    });
+    var slotOf = function (t) { for (var i = 0; i < SLOTS.length; i++) { if (SLOTS[i][0] === t) return i; } return 0; };
+    var nowTop = 0;
+    SLOTS.forEach(function (s, i) {
+      if (mins(s[0]) <= NOW_MIN && NOW_MIN < mins(s[1])) nowTop = slotTop(i) + (NOW_MIN - mins(s[0])) / 90 * SLOT_H;
+    });
+
+    var weekTotal = 0, weekCount = 0;
+    var days = TIMETABLE.map(function (d, i) {
+      var on = d.id === sel.id;
+      var isToday = isThisWeek && d.id === TODAY;
+      weekCount += d.classes.length;
+      d.classes.forEach(function (c) { weekTotal += mins(c.end) - mins(c.start); });
+      var pickDay = function () { self.setState({ mode: 'day', day: d.id }); };
+      return {
+        short: d.short, date: dates[i].getDate(),
+        selected: on ? 'true' : 'false',
+        openLabel: 'Open ' + d.name,
+        countLabel: d.classes.length + ' CLS',
+        tileStyle: 'height: 76px; border-radius: 20px; border: none; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-family: inherit; padding: 0; ' + (on ? 'background: #F8F3EA; color: #0B1957;' : 'background: #13226A; color: #D1E8FF;'),
+        headStyle: 'height: 48px; border-radius: 14px; border: none; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-family: inherit; padding: 0; ' + (isToday ? 'background: #F8F3EA; color: #0B1957;' : 'background: transparent; color: #D1E8FF;'),
+        pickDay: pickDay,
+        lines: lines,
+        isNow: isToday,
+        colStyle: 'position: relative; border-radius: 14px; background: ' + (isToday ? 'rgba(158, 204, 250, 0.14)' : 'rgba(158, 204, 250, 0.06)') + ';',
+        blocks: d.classes.map(function (c) {
+          var live = isLive(d.id, c);
+          var top = slotTop(slotOf(c.start));
+          var height = SLOT_H;
+          return {
+            code: c.code, start: c.start, room: c.room,
+            aria: c.title + ', ' + c.type + ', ' + d.name + ' ' + c.start + ' to ' + c.end + ', room ' + c.room,
+            open: pickDay,
+            style: 'position: absolute; left: 0; right: 0; top: ' + top + 'px; height: ' + height + 'px; border: none; border-radius: 12px; background: ' + COLORS[c.type] + '; color: #0B1957; padding: 7px 6px; box-sizing: border-box; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; text-align: left; cursor: pointer; font-family: inherit; overflow: hidden; z-index: 1;' + (live ? ' box-shadow: 0 0 0 2px #0B1957, 0 0 0 4px #F8F3EA;' : '')
+          };
+        })
+      };
+    });
+
+    var items = [], dayTotal = 0;
+    sel.classes.forEach(function (c, i) {
+      dayTotal += mins(c.end) - mins(c.start);
+      if (i > 0) {
+        var gap = mins(c.start) - mins(sel.classes[i - 1].end);
+        if (gap >= 30) items.push({ isGap: true, isClass: false, label: 'FREE · ' + fmtDur(gap) });
+      }
+      var live = isLive(sel.id, c);
+      items.push({
+        isClass: true, isGap: false, live: live,
+        start: c.start, end: c.end, title: c.title, room: c.room,
+        typeLabel: c.type.toUpperCase() + ' · ' + c.code,
+        cardStyle: 'background: ' + COLORS[c.type] + '; color: #0B1957; border-radius: 20px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px;' + (live ? ' box-shadow: 0 0 0 3px #0B1957, 0 0 0 6px #9ECCFA;' : '')
+      });
+    });
+
+    var seg = 'height: 40px; padding: 0 16px; border: none; border-radius: 999px; cursor: pointer; font-family: \'JetBrains Mono\', monospace; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; ';
+    var onSeg = seg + 'background: #F8F3EA; color: #0B1957;';
+    var offSeg = seg + 'background: transparent; color: #D1E8FF;';
+
+    return {
+      isDay: mode === 'day', isWeek: mode === 'week',
+      dayPressed: mode === 'day' ? 'true' : 'false',
+      weekPressed: mode === 'week' ? 'true' : 'false',
+      dayBtnStyle: mode === 'day' ? onSeg : offSeg,
+      weekBtnStyle: mode === 'week' ? onSeg : offSeg,
+      showDay: function () { self.setState({ mode: 'day' }); },
+      showWeek: function () { self.setState({ mode: 'week' }); },
+      prevWeek: function () { self.setState({ week: self.state.week - 1 }); },
+      nextWeek: function () { self.setState({ week: self.state.week + 1 }); },
+      weekTitle: 'Week ' + week,
+      weekRange: weekRange + (mode === 'week' ? ' · ' + weekCount + ' CLS' : ''),
+      days: days, hours: hours, items: items,
+      gridLines: lines,
+      showNow: isThisWeek,
+      nowLineStyle: 'position: absolute; left: 0; right: 0; top: ' + Math.round(nowTop) + 'px; height: 2px; background: #F8F3EA; opacity: 0.85',
+      dayName: sel.name + '.',
+      daySummary: sel.classes.length + (sel.classes.length === 1 ? ' CLASS' : ' CLASSES') + ' · ' + fmtDur(dayTotal) + ' · ' + sel.classes[0].start + '–' + sel.classes[sel.classes.length - 1].end
+    };
+  }
+}
+</script>
+</body>
+</html>
