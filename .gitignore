@@ -10,4 +10,6 @@ deploy/.env
 .vs/
 .vscode/
 *.user
-data/
+# Local runtime data only. Anchored so it never matches server/UniSchedule.Api/Data/ (Windows git ignores case).
+/app-data/
+server/UniSchedule.Api/app-data/

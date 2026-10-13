@@ -1,0 +1,83 @@
+Course Code,Course Name,Major,Type,Year,Credits,Section,Instructor,Days,Time,Room
+CS103,Programming II,CS,Core,1,4,1,Prof. Jens Müller,Mon/Wed,08:00-09:30,A101
+CS103,Programming II,CS,Core,1,4,1,Prof. Jens Müller,Thu,11:30-13:00,Lab L2
+CS103,Programming II,CS,Core,1,4,2,Dr. Omar Al-Kindi,Mon/Wed,09:45-11:15,B105
+CS103,Programming II,CS,Core,1,4,2,Dr. Omar Al-Kindi,Thu,15:15-16:45,Lab L1
+CS103,Programming II,CS,Core,1,4,3,Dr. Huda Al-Lawati,Mon/Wed,15:15-16:45,A102
+CS103,Programming II,CS,Core,1,4,3,Dr. Huda Al-Lawati,Thu,11:30-13:00,Lab L2
+CS104,Web Fundamentals,CS,Core,1,3,1,Dr. Salim Al-Busaidi,Mon/Wed,11:30-13:00,B110
+CS104,Web Fundamentals,CS,Core,1,3,2,Dr. Anna Fischer,Sun/Tue,09:45-11:15,D201
+MATH102,Calculus II,CS;PE;LOG,Core,1,4,1,Dr. Sarah Klein,Mon/Wed,09:45-11:15,B110
+MATH102,Calculus II,CS;PE;LOG,Core,1,4,2,Ms. Maryam Al-Zadjali,Mon/Wed,11:30-13:00,D201
+MATH102,Calculus II,CS;PE;LOG,Core,1,4,3,Dr. Sarah Klein,Sun/Tue,09:45-11:15,A101
+MATH102,Calculus II,CS;PE;LOG,Core,1,4,4,Dr. Sarah Klein,Sun/Tue,11:30-13:00,B110
+PHY102,Physics II,PE;CS,Core,1,4,1,Dr. Noor Al-Hinai,Sun/Tue,09:45-11:15,A203
+PHY102,Physics II,PE;CS,Core,1,4,1,Dr. Noor Al-Hinai,Thu,15:15-16:45,Lab L1
+PHY102,Physics II,PE;CS,Core,1,4,2,Dr. Salim Al-Busaidi,Mon/Wed,08:00-09:30,B204
+PHY102,Physics II,PE;CS,Core,1,4,2,Dr. Salim Al-Busaidi,Thu,09:45-11:15,Lab L1
+PHY102,Physics II,PE;CS,Core,1,4,3,Dr. Laura Becker,Sun/Tue,11:30-13:00,C012
+PHY102,Physics II,PE;CS,Core,1,4,3,Dr. Laura Becker,Thu,15:15-16:45,Lab L3
+CS202,Algorithms,CS,Core,2,4,1,Dr. Salim Al-Busaidi,Sun/Tue,15:15-16:45,C108
+CS202,Algorithms,CS,Core,2,4,2,Prof. Jens Müller,Sun/Tue,11:30-13:00,B204
+CS202,Algorithms,CS,Core,2,4,3,Dr. Ahmed Al-Harthy,Sun/Tue,08:00-09:30,A101
+CS211,Object-Oriented Design,CS,Core,2,3,1,Dr. Sarah Klein,Mon/Wed,15:15-16:45,A203
+CS211,Object-Oriented Design,CS,Core,2,3,1,Dr. Sarah Klein,Thu,15:15-16:45,Lab L2
+CS211,Object-Oriented Design,CS,Core,2,3,2,Dr. Hamed Al-Saadi,Mon/Wed,09:45-11:15,B110
+CS211,Object-Oriented Design,CS,Core,2,3,2,Dr. Hamed Al-Saadi,Thu,13:30-15:00,Lab L1
+CS230,Probability and Statistics,CS;LOG,Core,2,3,1,Dr. Hamed Al-Saadi,Mon/Wed,09:45-11:15,C012
+CS230,Probability and Statistics,CS;LOG,Core,2,3,2,Dr. Ahmed Al-Harthy,Mon/Wed,11:30-13:00,C108
+CS302,Compilers,CS,Core,3,3,1,Dr. Said Al-Mahrouqi,Sun/Tue,09:45-11:15,B105
+CS311,Human-Computer Interaction,CS,Core,3,3,1,Dr. Markus Weber,Sun/Tue,08:00-09:30,A203
+CS311,Human-Computer Interaction,CS,Core,3,3,2,Dr. Hamed Al-Saadi,Mon/Wed,09:45-11:15,C108
+CS330,Distributed Systems,CS,Core,3,3,1,Dr. Huda Al-Lawati,Mon/Wed,09:45-11:15,A203
+CS402,Graduation Project II,CS,Core,4,6,1,Prof. Thomas Schmidt,Mon/Wed,11:30-13:00,A201
+CS420,IT Law and Ethics,CS,Core,4,2,1,Dr. Anna Fischer,Mon/Wed,15:15-16:45,A101
+PE102,Chemistry for Engineers,PE,Core,1,4,1,Ms. Aisha Al-Balushi,Mon/Wed,09:45-11:15,C108
+PE102,Chemistry for Engineers,PE,Core,1,4,1,Ms. Aisha Al-Balushi,Thu,11:30-13:00,Lab L1
+PE102,Chemistry for Engineers,PE,Core,1,4,2,Dr. Fatma Al-Rawahi,Mon/Wed,15:15-16:45,A203
+PE102,Chemistry for Engineers,PE,Core,1,4,2,Dr. Fatma Al-Rawahi,Thu,09:45-11:15,Lab L2
+PE202,Process Control,PE,Core,2,3,1,Dr. Yousuf Al-Maamari,Sun/Tue,15:15-16:45,B110
+PE202,Process Control,PE,Core,2,3,2,Dr. Huda Al-Lawati,Mon/Wed,11:30-13:00,A201
+PE211,Separation Processes,PE,Core,2,4,1,Prof. Jens Müller,Sun/Tue,09:45-11:15,A203
+PE211,Separation Processes,PE,Core,2,4,1,Prof. Jens Müller,Thu,13:30-15:00,Lab L1
+PE302,Process Safety,PE,Core,3,3,1,Dr. Ahmed Al-Harthy,Mon/Wed,08:00-09:30,D201
+PE402,Plant Design Project,PE,Core,4,6,1,Dr. Fatma Al-Rawahi,Sun/Tue,13:30-15:00,C108
+LOG103,Accounting Basics,LOG,Core,1,3,1,Ms. Aisha Al-Balushi,Mon/Wed,15:15-16:45,A203
+LOG103,Accounting Basics,LOG,Core,1,3,2,Dr. Said Al-Mahrouqi,Mon/Wed,08:00-09:30,C108
+LOG202,Transport Management,LOG,Core,2,3,1,Dr. Salim Al-Busaidi,Mon/Wed,11:30-13:00,A102
+LOG202,Transport Management,LOG,Core,2,3,2,Ms. Aisha Al-Balushi,Mon/Wed,15:15-16:45,C012
+LOG220,Procurement,LOG,Core,2,3,1,Dr. Sarah Klein,Sun/Tue,09:45-11:15,A102
+LOG302,Port and Maritime Logistics,LOG,Core,3,3,1,Dr. Omar Al-Kindi,Mon/Wed,13:30-15:00,B110
+LOG402,Logistics Capstone,LOG,Core,4,6,1,Dr. Fatma Al-Rawahi,Sun/Tue,09:45-11:15,A101
+UP103,Building Materials,UPAD,Core,1,3,1,Ms. Maryam Al-Zadjali,Mon/Wed,09:45-11:15,A104
+UP211,GIS for Planners,UPAD,Core,2,3,1,Mr. Khalid Al-Shukaili,Sun/Tue,09:45-11:15,B204
+UP211,GIS for Planners,UPAD,Core,2,3,1,Mr. Khalid Al-Shukaili,Thu,09:45-11:15,Lab L3
+UP311,Landscape Design,UPAD,Core,3,3,1,Dr. Markus Weber,Sun/Tue,11:30-13:00,A201
+LS101,Academic English,,LS,,3,1,Prof. Jens Müller,Sun/Tue,13:30-15:00,C012
+LS101,Academic English,,LS,,3,2,Dr. Fatma Al-Rawahi,Sun/Tue,15:15-16:45,C108
+LS101,Academic English,,LS,,3,3,Dr. Said Al-Mahrouqi,Sun/Tue,09:45-11:15,B204
+LS101,Academic English,,LS,,3,4,Dr. Hamed Al-Saadi,Sun/Tue,08:00-09:30,A201
+LS103,German Language II,,LS,,3,1,Mr. Khalid Al-Shukaili,Sun/Tue,09:45-11:15,A201
+LS103,German Language II,,LS,,3,2,Ms. Maryam Al-Zadjali,Mon/Wed,15:15-16:45,C012
+LS103,German Language II,,LS,,3,3,Mr. Khalid Al-Shukaili,Mon/Wed,08:00-09:30,D201
+LS111,Islamic Culture,,LS,,2,1,Ms. Aisha Al-Balushi,Mon/Wed,09:45-11:15,C012
+LS111,Islamic Culture,,LS,,2,2,Ms. Aisha Al-Balushi,Mon/Wed,08:00-09:30,A203
+LS121,Research Methods,,LS,,2,1,Dr. Laura Becker,Mon/Wed,09:45-11:15,C012
+LS121,Research Methods,,LS,,2,2,Dr. Huda Al-Lawati,Mon/Wed,13:30-15:00,C108
+LS150,Public Speaking,,LS,,2,1,Dr. Hamed Al-Saadi,Mon/Wed,09:45-11:15,A104
+CS351,Deep Learning,CS,Elective,,3,1,Dr. Fatma Al-Rawahi,Sun/Tue,08:00-09:30,A101
+CS361,Game Development,CS,Elective,,3,1,Dr. Omar Al-Kindi,Sun/Tue,15:15-16:45,A104
+CS380,Cybersecurity Lab,CS;LOG,Elective,,3,1,Dr. Huda Al-Lawati,Mon/Wed,09:45-11:15,C108
+CS380,Cybersecurity Lab,CS;LOG,Elective,,3,1,Dr. Huda Al-Lawati,Thu,13:30-15:00,Lab L2
+PE360,Water Treatment,PE;UPAD,Elective,,3,1,Ms. Aisha Al-Balushi,Mon/Wed,09:45-11:15,A203
+LOG360,Supply Chain Analytics,LOG;CS,Elective,,3,1,Ms. Maryam Al-Zadjali,Mon/Wed,08:00-09:30,A102
+UP360,Smart Cities,UPAD;CS,Elective,,3,1,Dr. Yousuf Al-Maamari,Mon/Wed,13:30-15:00,B204
+EL301,Innovation Management,,Elective,,3,1,Ms. Maryam Al-Zadjali,Sun/Tue,11:30-13:00,D201
+EL301,Innovation Management,,Elective,,3,2,Dr. Omar Al-Kindi,Mon/Wed,15:15-16:45,A201
+EL320,Arabic Calligraphy,,Elective,,2,1,Ms. Maryam Al-Zadjali,Mon/Wed,11:30-13:00,B204
+UP102,Design Studio II,UPAD,Core,1,6,1,Ms. Maryam Al-Zadjali,Sun/Tue,09:45-13:00,Studio S1
+UP102,Design Studio II,UPAD,Core,1,6,2,Dr. Huda Al-Lawati,Mon/Wed,13:30-16:45,Studio S2
+UP202,Design Studio IV,UPAD,Core,2,6,1,Dr. Yousuf Al-Maamari,Mon/Wed,08:00-11:15,Studio S1
+UP302,Design Studio VI,UPAD,Core,3,6,1,Dr. Sarah Klein,Sun/Tue,13:30-16:45,Studio S2
+UP402,Thesis Studio II,UPAD,Core,4,6,1,Prof. Jens Müller,Mon/Wed,09:45-13:00,Studio S2
+LS141,Sports and Wellbeing,,LS,,1,1,Dr. Salim Al-Busaidi,Sat,10:00-11:30,Sports Hall

@@ -46,17 +46,35 @@ public static class StudentEndpoints
             .AsSplitQuery();
 
     /// <summary>Courses this student may pick: core for their major (every year), all LS, electives their major allows.</summary>
-    static async Task<List<Course>> Options(AppDb db, int semesterId, int majorId, CancellationToken ct)
+    public static async Task<List<Course>> Options(AppDb db, int semesterId, int majorId, CancellationToken ct)
     {
         var all = await SemesterCourses(db, semesterId).ToListAsync(ct);
+        var extra = (await db.MajorElectives.Where(e => e.MajorId == majorId).Select(e => e.CourseCode).ToListAsync(ct))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         return all.Where(c => c.Type switch
         {
             CourseType.Core => c.Majors.Any(m => m.MajorId == majorId),
             CourseType.LS => true,
-            // No majors listed means any major may take it.
-            CourseType.Elective => c.Majors.Count == 0 || c.Majors.Any(m => m.MajorId == majorId),
+            // No majors listed means any major may take it; admins can allow more under Majors.
+            CourseType.Elective => c.Majors.Count == 0 || c.Majors.Any(m => m.MajorId == majorId) || extra.Contains(c.Code),
             _ => false,
         }).OrderBy(c => c.Code).ToList();
+    }
+
+    /// <summary>
+    /// Ticks the core courses of the student's major and year when they have none yet this semester.
+    /// A course with a single section gets that section picked too.
+    /// </summary>
+    public static async Task EnsureCoreTicked(AppDb db, Student s, Semester current, CancellationToken ct)
+    {
+        if (s.MajorId is null || s.Year is null) return;
+        if (await db.Picks.AnyAsync(p => p.StudentId == s.Id && p.Course.SemesterId == current.Id && p.Course.Type == CourseType.Core, ct)) return;
+        var cores = await db.Courses.Where(c => c.SemesterId == current.Id && c.Type == CourseType.Core && c.Year == s.Year && c.Majors.Any(m => m.MajorId == s.MajorId))
+            .Select(c => new { c.Id, Sections = c.Sections.Select(x => x.Id).ToList() }).ToListAsync(ct);
+        var taken = await db.Picks.Where(p => p.StudentId == s.Id && p.Course.SemesterId == current.Id).Select(p => p.CourseId).ToListAsync(ct);
+        foreach (var c in cores.Where(c => !taken.Contains(c.Id)))
+            db.Picks.Add(new Pick { StudentId = s.Id, CourseId = c.Id, SectionId = c.Sections.Count == 1 ? c.Sections[0] : null });
+        await db.SaveChangesAsync(ct);
     }
 
     public static void MapStudent(this RouteGroupBuilder api)
@@ -68,6 +86,14 @@ public static class StudentEndpoints
             var s = await db.Students.Include(x => x.Major).FirstAsync(x => x.Id == http.User.Id(), ct);
             var current = await CurrentSemester(db, ct);
             var (step, done) = Progress(s, current);
+            if (current is not null && s.SetupSemesterId is null && step == "core")
+            {
+                // The first semester was published while they waited: carry on from core courses.
+                s.SetupSemesterId = current.Id;
+                s.SetupStep = "core";
+                await db.SaveChangesAsync(ct);
+                await EnsureCoreTicked(db, s, current, ct);
+            }
             return Results.Ok(new
             {
                 s.UniversityId,
@@ -104,9 +130,9 @@ public static class StudentEndpoints
             if (body.Year is int year)
             {
                 if (year is < 1 or > 5) return Errors.BadRequest("Pick a year from 1 to 5.");
-                if (s.Year != year && current is not null && s.SetupSemesterId == current.Id && s.SetupStep is "major" or "year")
+                if (s.Year != year && current is not null && s.SetupSemesterId == current.Id && s.SetupStep is "major" or "year" or "core")
                 {
-                    // Different year before core courses were confirmed: re-tick the right ones.
+                    // Different year before setup is done: re-tick the right core courses.
                     var cores = await db.Picks.Where(p => p.StudentId == s.Id && p.Course.SemesterId == current.Id && p.Course.Type == CourseType.Core).ToListAsync(ct);
                     db.Picks.RemoveRange(cores);
                 }
@@ -129,6 +155,7 @@ public static class StudentEndpoints
                 if (Array.IndexOf(Steps, target) > Array.IndexOf(Steps, s.SetupStep ?? "major") && s.SetupStep != "done") s.SetupStep = target;
             }
             await db.SaveChangesAsync(ct);
+            if (current is not null && body.Year is not null) await EnsureCoreTicked(db, s, current, ct);
             return Results.NoContent();
         });
 
@@ -150,7 +177,12 @@ public static class StudentEndpoints
             if (current is null) return Errors.Conflict("No semester has been published yet.");
             if (s.MajorId is null) return Errors.Conflict("Pick your major first.");
             var courses = await Options(db, current.Id, s.MajorId.Value, ct);
-            return Results.Ok(new { semester = new { current.Id, current.Name }, year = s.Year, courses = courses.Select(Dto.Of) });
+            // Last semester's picks, shown as suggestions after a new semester is published.
+            var lastSemester = await db.Picks.Where(p => p.StudentId == s.Id && p.Course.SemesterId != current.Id)
+                .OrderByDescending(p => p.Course.SemesterId).Select(p => (int?)p.Course.SemesterId).FirstOrDefaultAsync(ct);
+            var previous = lastSemester is null ? [] : await db.Picks.Where(p => p.StudentId == s.Id && p.Course.SemesterId == lastSemester)
+                .Select(p => p.Course.Code).ToListAsync(ct);
+            return Results.Ok(new { semester = new { current.Id, current.Name }, year = s.Year, courses = courses.Select(Dto.Of), previous });
         });
 
         me.MapGet("/picks", async (HttpContext http, AppDb db, CancellationToken ct) =>
