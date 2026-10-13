@@ -1,6 +1,8 @@
-import { useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { api, errorText } from '../lib/api'
-import { Badge, Button, Card, Confirm, ErrorText, Field, Input, Notice, Select, cx } from '../components/ui'
+import type { Semester } from '../lib/types'
+import { Button, ErrorText, Notice, Select, TextField, cx } from '../components/ui'
 import { PageTitle, useAdmin } from './AdminLayout'
 
 interface Change {
@@ -27,17 +29,27 @@ interface Preview {
   canApply: boolean
 }
 
+const LABELS = ['Semester', 'File', 'Check', 'Publish']
+type Tab = 'added' | 'changed' | 'removed' | 'errors' | 'majors'
+
 export default function Upload() {
   const { semester, semesters, setSemesterId, reloadSemesters } = useAdmin()
-  const [creating, setCreating] = useState(false)
+  const [step, setStep] = useState(0)
+  // Step 1: an existing semester, or a new one.
+  const [pick, setPick] = useState<number | 'new' | null>(semester?.id ?? (semesters.length ? null : 'new'))
+  // Step 2: a file, or rows pasted from Excel.
   const [file, setFile] = useState<File | null>(null)
   const [text, setText] = useState('')
   const [paste, setPaste] = useState(false)
   const [preview, setPreview] = useState<Preview | null>(null)
+  const [checking, setChecking] = useState(false)
+  // Step 4: publish only, without a new file.
+  const [publishOnly, setPublishOnly] = useState(false)
+  const [done, setDone] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [done, setDone] = useState('')
-  const [publishing, setPublishing] = useState(false)
+
+  const target = semesters.find((s) => s.id === (pick === 'new' ? -1 : pick)) ?? null
 
   const form = () => {
     const f = new FormData()
@@ -46,298 +58,398 @@ export default function Upload() {
     return f
   }
 
-  const run = async (fn: () => Promise<void>) => {
-    setBusy(true)
+  const check = async (s: Semester, f: FormData) => {
+    setChecking(true)
     setError('')
+    setPreview(null)
     try {
-      await fn()
+      setPreview(await api.form<Preview>(`/admin/semesters/${s.id}/upload/preview`, f))
     } catch (e) {
       setError(errorText(e))
     } finally {
-      setBusy(false)
+      setChecking(false)
     }
   }
 
-  const reset = () => {
-    setPreview(null)
-    setDone('')
+  const go = (n: number) => {
+    setError('')
+    setStep(n)
   }
 
   return (
     <>
-      <PageTitle title="Upload a semester schedule" sub="One row per section meeting: course code, name, major, type (Core / LS / Elective), year, section, instructor, days, time, room." />
+      <PageTitle title="Upload a timetable" />
+      <ol aria-label="Progress" className="grid grid-cols-4 gap-2.5">
+        {LABELS.map((l, i) => (
+          <li key={l} aria-current={i === step ? 'step' : undefined} className="flex flex-col gap-2">
+            <span className="h-1.5 overflow-hidden rounded-[3px] bg-navy/[0.12]">
+              <span className="fill block h-full bg-navy" style={{ transform: `scaleX(${i <= step ? 1 : 0})` }} />
+            </span>
+            <span className={cx('text-[15px]', i === step ? 'font-extrabold' : 'font-semibold', i > step && 'text-muted')}>{l}</span>
+          </li>
+        ))}
+      </ol>
 
-      <div className="grid gap-5 lg:grid-cols-[22rem_1fr]">
-        <div className="space-y-5">
-          <Card className="space-y-3 p-4">
-            <div className="text-sm font-semibold">1. Semester</div>
-            {semesters.length > 0 && !creating ? (
-              <>
-                <Select className="w-full" value={semester?.id ?? ''} onChange={(e) => { setSemesterId(Number(e.target.value)); reset() }}>
-                  {semesters.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name} {s.isCurrent ? '(live)' : s.publishedAt ? '' : '(not published)'}
-                    </option>
-                  ))}
-                </Select>
-                <button className="text-sm font-medium text-indigo-600 dark:text-indigo-400" onClick={() => setCreating(true)}>
-                  + New semester
-                </button>
-              </>
-            ) : (
-              <NewSemester
-                onCancel={semesters.length > 0 ? () => setCreating(false) : undefined}
-                onCreated={async (id) => {
-                  await reloadSemesters()
-                  setSemesterId(id)
-                  setCreating(false)
-                  reset()
+      {step === 0 && (
+        <Pane>
+          <h2 className="text-[26px] font-extrabold">Which semester is this file for?</h2>
+          <div role="radiogroup" aria-label="Semester" className="flex flex-col gap-2">
+            {semesters.map((s) => (
+              <Choice key={s.id} on={pick === s.id} onClick={() => setPick(s.id)} name={s.name} meta={s.isCurrent ? 'Published' : s.publishedAt ? 'Not live' : 'Draft'} />
+            ))}
+            <Choice on={pick === 'new'} onClick={() => setPick('new')} name="New semester" meta="Create" />
+          </div>
+          {pick === 'new' ? (
+            <NewSemester
+              onCreated={async (id) => {
+                await reloadSemesters()
+                setSemesterId(id)
+                setPick(id)
+                go(1)
+              }}
+            />
+          ) : (
+            <div>
+              <Button
+                disabled={!target}
+                onClick={() => {
+                  if (!target) return
+                  setSemesterId(target.id)
+                  setPreview(null)
+                  setPublishOnly(false)
+                  go(1)
+                }}
+              >
+                Continue
+              </Button>
+            </div>
+          )}
+        </Pane>
+      )}
+
+      {step === 1 && target && (
+        <Pane>
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 className="text-[26px] font-extrabold">Add the file for {target.name}</h2>
+            <button
+              type="button"
+              className="label text-[11px] link-hover"
+              onClick={() => {
+                setPaste(!paste)
+                setPreview(null)
+              }}
+            >
+              {paste ? 'Upload a file instead' : 'Paste from Excel instead'}
+            </button>
+          </div>
+          {paste ? (
+            <div className="flex flex-col gap-2">
+              <label htmlFor="paste" className="label text-[11px] tracking-[0.12em]">
+                Rows from Excel, header first
+              </label>
+              <textarea
+                id="paste"
+                className="field h-44 rounded-[20px] bg-paper p-4 font-mono text-[13px] outline-none"
+                value={text}
+                onChange={(e) => {
+                  setText(e.target.value)
+                  setPreview(null)
                 }}
               />
-            )}
-          </Card>
-
-          {semester && !creating && (
-            <Card className="space-y-3 p-4">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold">2. Schedule file</div>
-                <button className="text-xs text-indigo-600 dark:text-indigo-400" onClick={() => { setPaste(!paste); reset() }}>
-                  {paste ? 'Upload a file instead' : 'Paste from Excel instead'}
-                </button>
+              <div>
+                <Button variant="secondary" size="sm" disabled={!text.trim() || checking} onClick={() => check(target, form())}>
+                  {checking ? 'Reading…' : 'Read the rows'}
+                </Button>
               </div>
-              {paste ? (
-                <textarea
-                  className="h-40 w-full rounded-xl bg-white p-3 font-mono text-xs ring-1 ring-zinc-200 outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-zinc-900 dark:ring-zinc-800"
-                  placeholder="Copy the rows from Excel, including the header row, and paste here"
-                  value={text}
-                  onChange={(e) => { setText(e.target.value); reset() }}
-                />
-              ) : (
-                <label className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-zinc-300 p-6 text-center text-sm hover:border-indigo-400 dark:border-zinc-700">
-                  <span className="font-medium">{file ? file.name : 'Choose .xlsx or .csv'}</span>
-                  <span className="text-xs text-zinc-500">{file ? `${Math.ceil(file.size / 1024)} KB · tap to change` : 'The first row must be the header'}</span>
-                  <input type="file" accept=".xlsx,.csv,.tsv,.txt" className="hidden" onChange={(e) => { setFile(e.target.files?.[0] ?? null); reset() }} />
-                </label>
-              )}
-              <Button
-                className="w-full"
-                variant="secondary"
-                busy={busy && !preview}
-                disabled={paste ? !text.trim() : !file}
-                onClick={() => run(async () => { setDone(''); setPreview(await api.form<Preview>(`/admin/semesters/${semester.id}/upload/preview`, form())) })}
-              >
-                Preview changes
-              </Button>
-            </Card>
-          )}
-
-          {semester && !creating && (
-            <Card className="space-y-2 p-4">
-              <div className="text-sm font-semibold">3. Publish</div>
-              {semester.isCurrent ? (
-                <p className="text-sm text-zinc-500">{semester.name} is live. Uploads update it right away and students see a “Changed” badge on edited classes.</p>
-              ) : (
-                <>
-                  <p className="text-sm text-zinc-500">
-                    {semester.name} isn't visible to students. Publishing it makes every student redo setup for {semester.name}, starting from their major.
-                  </p>
-                  <Button className="w-full" disabled={!semester.courses} onClick={() => setPublishing(true)}>
-                    Publish {semester.name}
-                  </Button>
-                </>
-              )}
-            </Card>
-          )}
-        </div>
-
-        <div className="min-w-0 space-y-4">
-          <ErrorText>{error}</ErrorText>
-          {done && <Notice tone="ok">{done}</Notice>}
-          {preview && semester && (
-            <PreviewView
-              p={preview}
-              live={semester.isCurrent}
-              busy={busy}
-              onApply={() =>
-                run(async () => {
-                  const r = await api.form<{ added: number; updated: number; removed: number }>(`/admin/semesters/${semester.id}/upload/apply`, form())
-                  setPreview(null)
-                  setDone(`Saved: ${r.added} added, ${r.updated} updated, ${r.removed} removed.${semester.isCurrent ? '' : ' Publish when you are ready.'}`)
-                  await reloadSemesters()
-                })
-              }
+            </div>
+          ) : (
+            <DropZone
+              file={file}
+              onFile={(f) => {
+                setFile(f)
+                const data = new FormData()
+                data.append('file', f)
+                check(target, data)
+              }}
             />
           )}
-          {!preview && !done && (
-            <Card className="p-5 text-sm text-zinc-500">
-              <p className="mb-2 font-medium text-zinc-700 dark:text-zinc-300">Example</p>
-              <pre className="overflow-x-auto text-xs leading-relaxed">{`Course Code,Course Name,Major,Type,Year,Credits,Section,Instructor,Days,Time,Room
-CS201,Data Structures,CS,Core,2,4,1,Dr. Laura Becker,Sun/Tue,08:00-09:30,B105
-CS201,Data Structures,CS,Core,2,4,1,Dr. Laura Becker,Thu,09:45-11:15,Lab L1
-LS101,Academic English,,LS,,3,2,Ms. Aisha Al-Balushi,Mon Wed,1:30 PM - 3:00 PM,A203
-CS360,Mobile App Development,CS;LOG,Elective,,3,1,Dr. Omar Al-Kindi,UTR,15:15-16:45,C012`}</pre>
-              <ul className="mt-3 list-disc space-y-1 pl-5">
-                <li>A section that meets at different times takes one row per time.</li>
-                <li>Several majors: separate with ; or /. Electives with no major are open to everyone.</li>
-                <li>Re-uploading only changes the rows that differ; students keep their picks.</li>
-              </ul>
-            </Card>
+          {(file || paste) && (checking || preview) && (
+            <div className="pane flex flex-col gap-3 rounded-[20px] bg-paper px-5 py-[18px] shadow-[inset_0_0_0_2px_rgb(11_25_87/0.12)]">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-[17px] font-extrabold [overflow-wrap:anywhere]">{paste ? 'Pasted rows' : file?.name}</span>
+                <span className="label shrink-0 text-[12px] tracking-normal" aria-live="polite">
+                  {checking ? 'Checking…' : preview && `${file && !paste ? `${Math.ceil(file.size / 1024)} KB, ` : ''}${preview.rows} rows`}
+                </span>
+              </div>
+              <span className="h-1.5 overflow-hidden rounded-[3px] bg-navy/[0.12]">
+                <span className={cx('fill block h-full bg-navy', checking && 'origin-left animate-[grow_1200ms_linear_forwards]')} style={checking ? undefined : { transform: 'scaleX(1)' }} />
+              </span>
+            </div>
           )}
-        </div>
-      </div>
+          <ErrorText>{error}</ErrorText>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Button variant="secondary" onClick={() => go(0)}>
+              Back
+            </Button>
+            <Button disabled={!preview || checking} onClick={() => go(2)}>
+              Check the file
+            </Button>
+            {!target.isCurrent && (target.courses ?? 0) > 0 && (
+              <button
+                type="button"
+                className="label ml-1 text-[11px] link-hover"
+                onClick={() => {
+                  setPublishOnly(true)
+                  go(3)
+                }}
+              >
+                Publish {target.name} as it is
+              </button>
+            )}
+          </div>
+        </Pane>
+      )}
 
-      {semester && (
-        <Confirm
-          open={publishing}
-          onClose={() => setPublishing(false)}
-          title={`Publish ${semester.name}?`}
-          body={<>Students will see {semester.name} at their next visit and redo their setup, starting from their major. Their last picks are shown as suggestions.</>}
-          confirmLabel="Publish"
-          onConfirm={async () => {
-            await api.post(`/admin/semesters/${semester.id}/publish`)
-            await reloadSemesters()
-            setDone(`${semester.name} is live.`)
-          }}
-        />
+      {step === 2 && target && preview && <CheckStep p={preview} onBack={() => go(1)} onNext={() => go(3)} />}
+
+      {step === 3 && target && (
+        <Pane>
+          {done ? (
+            <div className="pane flex flex-col gap-3.5">
+              <h2 className="display text-[72px] leading-[0.86] tracking-[-0.05em]">{done === 'draft' ? 'Saved.' : 'Published.'}</h2>
+              <p className="text-[17px] font-semibold">
+                {done === 'draft' ? `${target.name} is saved as a draft. Students can’t see it until you publish it.` : `${target.name} is live. Students see it next time they open the app.`}
+              </p>
+              <Link to="/admin" className="press flex h-[52px] items-center self-start rounded-full bg-navy px-6 text-[17px] font-extrabold text-cream">
+                Back to home
+              </Link>
+            </div>
+          ) : (
+            <>
+              <h2 className="text-[40px] leading-none font-extrabold tracking-[-0.03em]">{target.isCurrent ? `Ready to update ${target.name}.` : `Ready to publish ${target.name}.`}</h2>
+              <p className="text-[17px] leading-[1.45] font-semibold">
+                {target.isCurrent
+                  ? preview && preview.studentsAffected > 0
+                    ? `${preview.studentsAffected} ${preview.studentsAffected === 1 ? 'student gets' : 'students get'} the new times right away. Changed classes get a badge, and anyone who loses a section is asked to pick again the next time they open the app.`
+                    : 'Students get the new times right away. Nobody’s picks are affected.'
+                  : `Every student sets up ${target.name} again, starting from their major. Their last picks show as suggestions.`}
+              </p>
+              <ErrorText>{error}</ErrorText>
+              <div className="flex flex-wrap gap-2.5">
+                <Button variant="secondary" className="h-[52px]" onClick={() => go(publishOnly ? 1 : 2)}>
+                  Back
+                </Button>
+                {!target.isCurrent && !publishOnly && (
+                  <Button
+                    variant="secondary"
+                    className="h-[52px]"
+                    busy={busy}
+                    onClick={async () => {
+                      setBusy(true)
+                      setError('')
+                      try {
+                        await api.form(`/admin/semesters/${target.id}/upload/apply`, form())
+                        await reloadSemesters()
+                        setDone('draft')
+                      } catch (e) {
+                        setError(errorText(e))
+                      } finally {
+                        setBusy(false)
+                      }
+                    }}
+                  >
+                    Save as draft
+                  </Button>
+                )}
+                <Button
+                  className="h-[52px] px-7 text-[17px]"
+                  busy={busy}
+                  onClick={async () => {
+                    setBusy(true)
+                    setError('')
+                    try {
+                      if (!publishOnly) await api.form(`/admin/semesters/${target.id}/upload/apply`, form())
+                      if (!target.isCurrent) await api.post(`/admin/semesters/${target.id}/publish`)
+                      await reloadSemesters()
+                      setDone('live')
+                    } catch (e) {
+                      setError(errorText(e))
+                    } finally {
+                      setBusy(false)
+                    }
+                  }}
+                >
+                  {busy ? 'Publishing…' : 'Publish'}
+                </Button>
+              </div>
+            </>
+          )}
+        </Pane>
       )}
     </>
   )
 }
 
-function NewSemester({ onCreated, onCancel }: { onCreated: (id: number) => void; onCancel?: () => void }) {
+function Pane({ children }: { children: ReactNode }) {
+  return <section className="pane flex max-w-[640px] flex-col gap-4">{children}</section>
+}
+
+function Choice({ on, onClick, name, meta }: { on: boolean; onClick: () => void; name: string; meta: string }) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={on}
+      onClick={onClick}
+      className={cx('press flex h-[60px] items-center justify-between rounded-[18px] px-[18px] text-left', on ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_rgb(11_25_87/0.16)]')}
+    >
+      <span className="text-[17px] font-extrabold">{name}</span>
+      <span className="label text-[11px]">{meta}</span>
+    </button>
+  )
+}
+
+function DropZone({ file, onFile }: { file: File | null; onFile: (f: File) => void }) {
+  const input = useRef<HTMLInputElement>(null)
+  const [over, setOver] = useState(false)
+  return (
+    <div
+      onDragOver={(e) => {
+        e.preventDefault()
+        setOver(true)
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        e.preventDefault()
+        setOver(false)
+        const f = e.dataTransfer.files[0]
+        if (f) onFile(f)
+      }}
+      className={cx('flex flex-col items-center gap-3 rounded-[24px] border-[2.5px] border-dashed px-6 py-11 text-center transition-colors duration-150', over ? 'border-navy bg-ice/50' : 'border-navy/30')}
+    >
+      <span className="text-[20px] font-extrabold">{file ? 'Drop another file to replace it' : 'Drop an .xlsx or .csv here'}</span>
+      <span className="text-[14px] font-semibold text-muted">One row per section meeting: code, name, major, type, year, section, instructor, days, time, room.</span>
+      <Button onClick={() => input.current?.click()}>Choose file</Button>
+      <input
+        ref={input}
+        type="file"
+        accept=".xlsx,.csv,.tsv,.txt"
+        className="sr"
+        tabIndex={-1}
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) onFile(f)
+          e.target.value = ''
+        }}
+      />
+    </div>
+  )
+}
+
+function CheckStep({ p, onBack, onNext }: { p: Preview; onBack: () => void; onNext: () => void }) {
+  const [tab, setTab] = useState<Tab>(p.errors.length ? 'errors' : p.updated.length ? 'changed' : 'added')
+  const changeRows = (list: Change[]) => list.map((c) => ({ a: `${c.code}${c.section ? ` ${c.section}` : ''}`, b: c.kind === 'course' ? 'Course' : 'Section', c: c.detail }))
+  const DATA: Record<Tab, { n: number; label: string; rows: { a: string; b: string; c: string; bad?: boolean }[] }> = {
+    added: { n: p.added.length, label: 'Added', rows: changeRows(p.added) },
+    changed: { n: p.updated.length, label: 'Changed', rows: changeRows(p.updated) },
+    removed: { n: p.removed.length, label: 'Removed', rows: changeRows(p.removed) },
+    errors: {
+      n: p.errors.length,
+      label: 'Errors',
+      rows: [...p.errors.map((e) => ({ a: `Row ${e.line}`, b: 'Error', c: e.message, bad: true })), ...p.warnings.map((e) => ({ a: `Row ${e.line}`, b: 'Warning', c: e.message }))],
+    },
+    majors: { n: p.newMajors.length, label: 'New majors', rows: p.newMajors.map((m) => ({ a: 'New', b: m, c: 'Will be created. Set its name and electives in Majors.' })) },
+  }
+  const nothing = p.added.length + p.updated.length + p.removed.length === 0
+  const keys = Object.keys(DATA) as Tab[]
+  return (
+    <section className="pane flex flex-col gap-[18px]">
+      <div role="tablist" aria-label="Changes" className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-2">
+        {keys.map((k) => {
+          const on = k === tab
+          const bad = k === 'errors'
+          return (
+            <button
+              key={k}
+              type="button"
+              role="tab"
+              id={`tab-${k}`}
+              aria-selected={on}
+              aria-controls="tab-panel"
+              onClick={() => setTab(k)}
+              className={cx(
+                'press flex min-h-[84px] flex-col items-start justify-between rounded-[18px] px-3.5 py-3 text-left',
+                on ? (bad ? 'bg-alert-ink text-cream' : 'bg-navy text-cream') : bad ? 'bg-alert-bg text-alert-ink' : 'shadow-[inset_0_0_0_2px_rgb(11_25_87/0.14)]',
+              )}
+            >
+              <span className="text-[34px] leading-none font-extrabold tracking-[-0.03em] tabular-nums">{DATA[k].n}</span>
+              <span className="text-[14px] font-bold">{DATA[k].label}</span>
+            </button>
+          )
+        })}
+      </div>
+      <div id="tab-panel" role="tabpanel" aria-labelledby={`tab-${tab}`} className="flex max-h-[420px] flex-col overflow-y-auto border-t-[2.5px] border-navy">
+        {DATA[tab].rows.length === 0 && <p className="px-1 py-3 text-[15px] font-semibold text-muted">Nothing here.</p>}
+        {DATA[tab].rows.map((r, i) => (
+          <div key={i} className="grid grid-cols-[90px_minmax(0,1fr)_minmax(0,1.4fr)] items-baseline gap-4 border-b-[1.5px] border-navy/10 px-1 py-3">
+            <span className="label text-[12px] tracking-normal">{r.a}</span>
+            <span className="text-[15px] font-extrabold">{r.b}</span>
+            <span className={cx('text-[15px] font-semibold', r.bad && 'text-alert')}>{r.c}</span>
+          </div>
+        ))}
+      </div>
+      {nothing && p.errors.length === 0 && <Notice>Nothing changed: the semester already matches this file.</Notice>}
+      <div className="flex flex-wrap items-center gap-2.5">
+        <Button variant="secondary" onClick={onBack}>
+          Back
+        </Button>
+        <Button disabled={!p.canApply || nothing} onClick={onNext}>
+          {!p.canApply ? `Fix ${p.errors.length} bad ${p.errors.length === 1 ? 'row' : 'rows'} first` : nothing ? 'Nothing to save' : 'Confirm'}
+        </Button>
+        {!p.canApply && <span className="text-[14px] font-semibold text-muted">Fix them in the file and upload it again.</span>}
+      </div>
+    </section>
+  )
+}
+
+function NewSemester({ onCreated }: { onCreated: (id: number) => void }) {
   const now = new Date()
   const [term, setTerm] = useState(now.getMonth() >= 7 ? 'Spring' : 'Fall')
-  const [year, setYear] = useState(now.getMonth() >= 7 ? now.getFullYear() + 1 : now.getFullYear())
+  const [year, setYear] = useState(String(now.getMonth() >= 7 ? now.getFullYear() + 1 : now.getFullYear()))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2">
-        <Field label="Term">
-          <Select className="w-full" value={term} onChange={(e) => setTerm(e.target.value)}>
+    <div className="pane flex flex-col gap-3">
+      <div className="flex flex-wrap items-end gap-2.5">
+        <label className="flex flex-col gap-1.5">
+          <span className="label text-[11px] tracking-[0.12em]">Term</span>
+          <Select value={term} onChange={(e) => setTerm(e.target.value)} className="w-40">
             <option>Fall</option>
             <option>Spring</option>
             <option>Summer</option>
           </Select>
-        </Field>
-        <Field label="Year">
-          <Input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} />
-        </Field>
+        </label>
+        <TextField label="Year" inputMode="numeric" value={year} onChange={(e) => setYear(e.target.value.replace(/\D/g, '').slice(0, 4))} className="w-32" />
       </div>
       <ErrorText>{error}</ErrorText>
-      <div className="flex gap-2">
-        {onCancel && (
-          <Button variant="ghost" className="flex-1" onClick={onCancel}>
-            Cancel
-          </Button>
-        )}
+      <div>
         <Button
-          className="flex-1"
           busy={busy}
           onClick={async () => {
             setBusy(true)
             setError('')
             try {
-              const s = await api.post<{ id: number }>('/admin/semesters', { term, year })
+              const s = await api.post<{ id: number }>('/admin/semesters', { term, year: Number(year) })
               onCreated(s.id)
             } catch (e) {
               setError(errorText(e))
-            } finally {
               setBusy(false)
             }
           }}
         >
-          Create {term} {year}
+          {busy ? 'Creating…' : `Create ${term} ${year} and continue`}
         </Button>
       </div>
     </div>
-  )
-}
-
-function PreviewView({ p, live, busy, onApply }: { p: Preview; live: boolean; busy: boolean; onApply: () => void }) {
-  const nothing = p.added.length + p.updated.length + p.removed.length === 0
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-3">
-        {[
-          ['Rows', p.rows],
-          ['Courses', p.courses],
-          ['Sections', p.sections],
-        ].map(([l, v]) => (
-          <Card key={l} className="p-3">
-            <div className="text-xs text-zinc-500">{l}</div>
-            <div className="text-xl font-semibold tabular-nums">{v}</div>
-          </Card>
-        ))}
-      </div>
-
-      {p.errors.length > 0 && (
-        <IssueList title={`${p.errors.length} row${p.errors.length === 1 ? '' : 's'} to fix`} tone="red" items={p.errors} />
-      )}
-      {p.newMajors.length > 0 && <Notice>New majors will be added: {p.newMajors.join(', ')}. You can rename them under Majors.</Notice>}
-      {live && p.studentsAffected > 0 && (
-        <Notice tone="warn">
-          {p.studentsAffected} student{p.studentsAffected === 1 ? '' : 's'} picked a section that changes or is removed. Changed classes get a badge; students whose section is removed are asked to re-pick.
-        </Notice>
-      )}
-
-      <ChangeList title="Added" tone="green" items={p.added} />
-      <ChangeList title="Changed" tone="amber" items={p.updated} />
-      <ChangeList title="Removed" tone="red" items={p.removed} />
-      {nothing && p.errors.length === 0 && <Notice tone="ok">Nothing changed: the semester already matches this file.</Notice>}
-      {p.warnings.length > 0 && <IssueList title={`${p.warnings.length} warning${p.warnings.length === 1 ? '' : 's'}`} tone="amber" items={p.warnings} collapsed />}
-
-      <div className="sticky bottom-0 -mx-4 border-t border-zinc-200 bg-zinc-50/90 px-4 py-3 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
-        <Button className="w-full" busy={busy} disabled={!p.canApply || nothing} onClick={onApply}>
-          {p.canApply ? (nothing ? 'Nothing to save' : 'Confirm and save') : 'Fix the problems first'}
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-function ChangeList({ title, tone, items }: { title: string; tone: 'green' | 'amber' | 'red'; items: Change[] }) {
-  if (items.length === 0) return null
-  return (
-    <Card className="overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-zinc-100 px-4 py-2.5 dark:border-zinc-800">
-        <Badge tone={tone}>{title}</Badge>
-        <span className="text-sm text-zinc-500">{items.length}</span>
-      </div>
-      <ul className="max-h-80 divide-y divide-zinc-100 overflow-y-auto text-sm dark:divide-zinc-800">
-        {items.map((c, i) => (
-          <li key={i} className="px-4 py-2">
-            <span className="font-medium">
-              {c.code}
-              {c.section && `-${c.section}`}
-            </span>
-            <span className="ml-1.5 text-xs text-zinc-400">{c.kind}</span>
-            <div className="text-zinc-500">{c.detail}</div>
-          </li>
-        ))}
-      </ul>
-    </Card>
-  )
-}
-
-function IssueList({ title, tone, items, collapsed }: { title: string; tone: 'red' | 'amber'; items: Issue[]; collapsed?: boolean }) {
-  const [open, setOpen] = useState(!collapsed)
-  return (
-    <Card className={cx('overflow-hidden', tone === 'red' && 'ring-red-200! dark:ring-red-900!')}>
-      <button className="flex w-full items-center gap-2 px-4 py-2.5 text-left" onClick={() => setOpen(!open)}>
-        <Badge tone={tone}>{title}</Badge>
-        <span className="ml-auto text-xs text-zinc-400">{open ? 'Hide' : 'Show'}</span>
-      </button>
-      {open && (
-        <ul className="max-h-72 divide-y divide-zinc-100 overflow-y-auto border-t border-zinc-100 text-sm dark:divide-zinc-800 dark:border-zinc-800">
-          {items.map((x, i) => (
-            <li key={i} className="flex gap-3 px-4 py-2">
-              <span className="w-14 shrink-0 text-zinc-400 tabular-nums">Row {x.line}</span>
-              <span>{x.message}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </Card>
   )
 }

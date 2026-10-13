@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api, errorText } from '../lib/api'
-import { Badge, Card, ErrorText, Input, Loading, Notice, Select } from '../components/ui'
-import { PageTitle } from './AdminLayout'
+import { ErrorText, Loading, Tag, TextField } from '../components/ui'
+import { Filters, PageTitle, Th, seen } from './AdminLayout'
 
 interface Row {
   id: number
@@ -13,15 +13,30 @@ interface Row {
   step: string
   done: boolean
   needsRepick: boolean
+  courses: number
   lastSeenAt: string | null
 }
 
 export const stepLabel = (step: string, done: boolean) =>
   done ? 'Done' : step === 'waiting' ? 'Waiting for semester' : `At ${step === 'ls' ? 'Life Skills' : step}`
 
+type Filter = '' | 'pending' | 'done'
+
+export function SetupTag({ step, done }: { step: string; done: boolean }) {
+  if (done) return <Tag tone="plain">Done</Tag>
+  if (step === 'waiting') return <Tag>Waiting</Tag>
+  return (
+    <span title={stepLabel(step, done)}>
+      <Tag tone="alert">Stuck</Tag>
+    </span>
+  )
+}
+
 export default function Students() {
+  const navigate = useNavigate()
+  const [params, setParams] = useSearchParams()
   const [q, setQ] = useState('')
-  const [status, setStatus] = useState('')
+  const status = (params.get('status') ?? '') as Filter
   const [data, setData] = useState<{ total: number; students: Row[] } | null>(null)
   const [error, setError] = useState('')
   useEffect(() => {
@@ -33,41 +48,62 @@ export default function Students() {
 
   return (
     <>
-      <PageTitle title="Students" sub={data ? `${data.total} student${data.total === 1 ? '' : 's'}` : undefined} />
-      <div className="mb-4 flex flex-wrap gap-2">
-        <Input placeholder="Search ID or major" value={q} onChange={(e) => setQ(e.target.value)} className="max-w-xs" />
-        <Select value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">Everyone</option>
-          <option value="done">Finished setup</option>
-          <option value="pending">Not finished</option>
-        </Select>
+      <PageTitle title="Students" action={<span className="label text-[12px]">Only owners see this</span>} />
+      <div className="flex flex-wrap items-end gap-3">
+        <TextField label="Search by ID" placeholder="24-0161" inputMode="numeric" mono value={q} onChange={(e) => setQ(e.target.value)} className="flex-[1_1_280px]" />
+        <Filters<Filter>
+          value={status}
+          onChange={(v) => setParams(v ? { status: v } : {}, { replace: true })}
+          options={[
+            ['', 'All'],
+            ['pending', 'Stuck in setup'],
+            ['done', 'Done'],
+          ]}
+        />
       </div>
       <ErrorText>{error}</ErrorText>
       {!data ? (
         <Loading />
-      ) : data.students.length === 0 ? (
-        <Notice>No students found.</Notice>
       ) : (
-        <Card className="divide-y divide-zinc-100 overflow-hidden dark:divide-zinc-800">
-          {data.students.map((s) => (
-            <Link key={s.id} to={`/admin/students/${s.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono font-medium">{s.universityId}</span>
-                  {s.isOwner && <Badge tone="indigo">Owner</Badge>}
-                  {s.needsRepick && <Badge tone="amber">Needs re-pick</Badge>}
-                </div>
-                <div className="text-sm text-zinc-500">
-                  {s.major ?? 'No major'}
-                  {s.year && ` · Year ${s.year}`}
-                </div>
-              </div>
-              <Badge tone={s.done ? 'green' : 'gray'}>{stepLabel(s.step, s.done)}</Badge>
-            </Link>
-          ))}
-        </Card>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[720px] border-collapse text-[15px]">
+            <thead>
+              <tr className="border-b-[2.5px] border-navy">
+                <Th>ID</Th>
+                <Th>Major</Th>
+                <Th right>Year</Th>
+                <Th right>Courses</Th>
+                <Th>Setup</Th>
+                <Th>Last seen</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.students.map((s) => (
+                <tr key={s.id} onClick={() => navigate(`/admin/students/${s.id}`)} className="tint cursor-pointer border-b-[1.5px] border-navy/10">
+                  <td className="px-2 py-3">
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <Link to={`/admin/students/${s.id}`} onClick={(e) => e.stopPropagation()} className="font-mono text-[14px] font-bold link-hover">
+                        {s.universityId}
+                      </Link>
+                      {s.isOwner && <Tag tone="navy">Owner</Tag>}
+                      {s.needsRepick && <Tag tone="alert">Re-pick</Tag>}
+                    </span>
+                  </td>
+                  <td className="px-2 py-3 font-bold">{s.major ?? <span className="text-muted">No major</span>}</td>
+                  <td className="px-2 py-3 text-right font-bold tabular-nums">{s.year ?? '-'}</td>
+                  <td className="px-2 py-3 text-right font-bold tabular-nums">{s.courses || '-'}</td>
+                  <td className="px-2 py-3">
+                    <SetupTag step={s.step} done={s.done} />
+                  </td>
+                  <td className="px-2 py-3 font-semibold text-muted">{seen(s.lastSeenAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {data.students.length === 0 && <p className="mt-5 text-[16px] font-semibold">{q ? 'No student with that ID has signed in.' : 'No students here yet.'}</p>}
+          {data.total > data.students.length && <p className="mt-3 text-[14px] font-semibold text-muted">Showing the first {data.students.length} of {data.total}. Search to narrow down.</p>}
+        </div>
       )}
-      {data && data.total > data.students.length && <p className="mt-2 text-sm text-zinc-500">Showing the first {data.students.length}. Search to narrow down.</p>}
     </>
   )
 }

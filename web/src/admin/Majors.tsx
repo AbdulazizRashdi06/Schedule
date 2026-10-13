@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, errorText } from '../lib/api'
-import { Badge, Button, Card, Checkbox, Confirm, ErrorText, Input, Loading, Notice, Sheet } from '../components/ui'
+import { Button, Confirm, ErrorText, Icon, Loading, Notice, Tag, TextField, cx } from '../components/ui'
 import { PageTitle, useAdmin } from './AdminLayout'
 
 interface MajorRow {
@@ -22,193 +22,228 @@ interface Electives {
 export default function Majors() {
   const { semester } = useAdmin()
   const [list, setList] = useState<MajorRow[] | null>(null)
+  const [selected, setSelected] = useState<number | null>(null)
   const [error, setError] = useState('')
-  const [edit, setEdit] = useState<MajorRow | 'new' | null>(null)
-  const [electives, setElectives] = useState<MajorRow | null>(null)
-  const [removing, setRemoving] = useState<MajorRow | null>(null)
-  const load = () => api.get<MajorRow[]>('/admin/majors').then(setList, (e) => setError(errorText(e)))
+  const load = () =>
+    api.get<MajorRow[]>('/admin/majors').then((l) => {
+      setList(l)
+      setSelected((id) => (l.some((m) => m.id === id) ? id : (l[0]?.id ?? null)))
+    }, (e) => setError(errorText(e)))
   useEffect(() => {
     load()
   }, [])
 
+  const major = list?.find((m) => m.id === selected) ?? null
+
   return (
     <>
-      <PageTitle
-        title="Majors"
-        sub="Core courses come from the upload's Major and Type columns. Here you can name majors and allow extra electives."
-        action={<Button onClick={() => setEdit('new')}>+ Add major</Button>}
-      />
+      <PageTitle title="Majors" />
       <ErrorText>{error}</ErrorText>
       {!list ? (
         <Loading />
-      ) : list.length === 0 ? (
-        <Notice>No majors yet. They're created from the upload, or add one here.</Notice>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2">
-          {list.map((m) => (
-            <Card key={m.id} className="p-4">
-              <div className="flex items-start gap-3">
-                <span className="flex h-10 min-w-10 items-center justify-center rounded-xl bg-zinc-100 px-2 text-sm font-semibold dark:bg-zinc-800">{m.code}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium">{m.name}</div>
-                  <div className="text-sm text-zinc-500">
-                    {m.coreCourses} core courses live · {m.students} students{m.extraElectives > 0 && ` · ${m.extraElectives} extra electives`}
-                  </div>
-                </div>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button variant="secondary" className="h-9 text-sm" onClick={() => setElectives(m)}>
-                  Allowed electives
-                </Button>
-                <Button variant="ghost" className="h-9 text-sm" onClick={() => setEdit(m)}>
-                  Rename
-                </Button>
-                <Button variant="ghost" className="h-9 text-sm text-red-600 dark:text-red-400" onClick={() => setRemoving(m)}>
-                  Remove
-                </Button>
-              </div>
-            </Card>
-          ))}
+        <div className="flex flex-wrap items-start gap-8">
+          <section aria-label="All majors" className="flex flex-[1_1_300px] flex-col gap-1.5">
+            {list.length === 0 && <p className="text-[15px] font-semibold text-muted">No majors yet. They’re created from the upload, or add one below.</p>}
+            {list.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                aria-pressed={m.id === selected}
+                onClick={() => setSelected(m.id)}
+                className={cx('press flex min-h-[52px] items-center justify-between gap-3 rounded-[14px] px-3.5 py-2 text-left', m.id === selected ? 'bg-navy text-cream' : 'tint')}
+              >
+                <span className="text-[16px] font-extrabold">{m.name}</span>
+                <span className="label shrink-0 text-[11px] tracking-normal">{m.students === 0 && m.coreCourses === 0 ? 'New' : `${m.students} ${m.students === 1 ? 'student' : 'students'}`}</span>
+              </button>
+            ))}
+            <AddMajor
+              onAdded={async (id) => {
+                await load()
+                setSelected(id)
+              }}
+            />
+          </section>
+          {major && <MajorPanel key={major.id} major={major} semesterId={semester?.id} onChanged={load} />}
         </div>
       )}
-
-      <MajorForm
-        major={edit}
-        onClose={() => setEdit(null)}
-        onSaved={() => {
-          setEdit(null)
-          load()
-        }}
-      />
-      <ElectivesSheet major={electives} semesterId={semester?.id} onClose={() => { setElectives(null); load() }} />
-      <Confirm
-        open={!!removing}
-        onClose={() => setRemoving(null)}
-        title={`Remove ${removing?.name}?`}
-        body="Only majors no course or student uses can be removed."
-        confirmLabel="Remove"
-        danger
-        onConfirm={async () => {
-          await api.del(`/admin/majors/${removing!.id}`)
-          load()
-        }}
-      />
     </>
   )
 }
 
-function MajorForm({ major, onClose, onSaved }: { major: MajorRow | 'new' | null; onClose: () => void; onSaved: () => void }) {
+function AddMajor({ onAdded }: { onAdded: (id: number) => void }) {
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  useEffect(() => {
-    setCode(major && major !== 'new' ? major.code : '')
-    setName(major && major !== 'new' ? major.name : '')
-    setError('')
-  }, [major])
-  const isNew = major === 'new'
   return (
-    <Sheet open={!!major} onClose={onClose} title={isNew ? 'Add a major' : 'Rename major'}>
-      <form
-        className="space-y-3"
-        onSubmit={async (e) => {
-          e.preventDefault()
-          setBusy(true)
-          setError('')
-          try {
-            if (isNew) await api.post('/admin/majors', { code, name })
-            else await api.put(`/admin/majors/${(major as MajorRow).id}`, { code, name })
-            onSaved()
-          } catch (err) {
-            setError(errorText(err))
-          } finally {
-            setBusy(false)
-          }
-        }}
-      >
-        <Input placeholder="Code used in uploads, e.g. CS" value={code} onChange={(e) => setCode(e.target.value)} />
-        <Input placeholder="Name, e.g. Computer Science" value={name} onChange={(e) => setName(e.target.value)} />
-        {!isNew && <p className="text-xs text-zinc-500">If you change the code, use the new code in future uploads.</p>}
-        <ErrorText>{error}</ErrorText>
-        <Button className="w-full" busy={busy} disabled={!code.trim() || !name.trim()}>
-          Save
+    <form
+      className="flex flex-col gap-2 pt-2.5"
+      onSubmit={async (e) => {
+        e.preventDefault()
+        if (!code.trim() || !name.trim()) return setError('Enter a code (as used in uploads) and a name.')
+        setBusy(true)
+        setError('')
+        try {
+          const m = await api.post<{ id: number }>('/admin/majors', { code, name })
+          setCode('')
+          setName('')
+          onAdded(m.id)
+        } catch (err) {
+          setError(errorText(err))
+        } finally {
+          setBusy(false)
+        }
+      }}
+    >
+      <div className="flex gap-2">
+        <TextField label="New major code" hideLabel placeholder="Code" value={code} onChange={(e) => setCode(e.target.value)} className="w-24" mono />
+        <TextField label="New major name" hideLabel placeholder="New major" value={name} onChange={(e) => setName(e.target.value)} className="min-w-0 flex-1" />
+        <Button type="submit" busy={busy} className="px-[18px] text-[15px]">
+          Add
         </Button>
-      </form>
-    </Sheet>
+      </div>
+      <ErrorText>{error}</ErrorText>
+    </form>
   )
 }
 
-function ElectivesSheet({ major, semesterId, onClose }: { major: MajorRow | null; semesterId?: number; onClose: () => void }) {
+function MajorPanel({ major, semesterId, onChanged }: { major: MajorRow; semesterId?: number; onChanged: () => void }) {
   const [data, setData] = useState<Electives | null>(null)
   const [allowed, setAllowed] = useState<Set<string>>(new Set())
-  const [busy, setBusy] = useState(false)
+  const [renaming, setRenaming] = useState(false)
+  const [code, setCode] = useState(major.code)
+  const [name, setName] = useState(major.name)
+  const [removing, setRemoving] = useState(false)
+  const [status, setStatus] = useState('')
   const [error, setError] = useState('')
+
   useEffect(() => {
-    setData(null)
+    api.get<Electives>(`/admin/majors/${major.id}/electives${semesterId ? `?semesterId=${semesterId}` : ''}`).then(
+      (d) => {
+        setData(d)
+        setAllowed(new Set([...d.electives.filter((e) => e.source === 'allowed').map((e) => e.code), ...d.otherAllowed]))
+      },
+      (e) => setError(errorText(e)),
+    )
+  }, [major.id, semesterId])
+
+  // Ticks save straight away.
+  const toggle = async (c: string, on: boolean) => {
+    const next = new Set(allowed)
+    if (on) next.add(c)
+    else next.delete(c)
+    setAllowed(next)
+    setStatus('Saving…')
     setError('')
-    if (!major) return
-    api.get<Electives>(`/admin/majors/${major.id}/electives${semesterId ? `?semesterId=${semesterId}` : ''}`).then((d) => {
-      setData(d)
-      setAllowed(new Set([...d.electives.filter((e) => e.source === 'allowed').map((e) => e.code), ...d.otherAllowed]))
-    }, (e) => setError(errorText(e)))
-  }, [major, semesterId])
+    try {
+      await api.put(`/admin/majors/${major.id}/electives`, { codes: [...next] })
+      setStatus('Saved.')
+      onChanged()
+    } catch (e) {
+      setAllowed(allowed)
+      setStatus('')
+      setError(errorText(e))
+    }
+  }
+
+  const open = data ? data.electives.filter((e) => e.source !== 'no' || allowed.has(e.code)).length : 0
 
   return (
-    <Sheet open={!!major} onClose={onClose} title={`Electives for ${major?.name ?? ''}`}>
-      <ErrorText>{error}</ErrorText>
-      {!data ? (
-        !error && <Loading />
-      ) : data.electives.length === 0 ? (
-        <Notice>No electives in this semester's schedule.</Notice>
-      ) : (
-        <div className="space-y-3">
-          <p className="text-sm text-zinc-500">Tick the extra electives {data.major.code} students may take. Choices are kept by course code, so they carry over to later semesters.</p>
-          <div className="-mx-1 max-h-[50vh] space-y-1 overflow-y-auto">
-            {data.electives.map((e) => {
-              const fixed = e.source === 'upload' || e.source === 'open'
-              return (
-                <div key={e.code} className="flex items-center gap-3 rounded-xl px-1 py-2">
-                  <Checkbox
-                    checked={fixed || allowed.has(e.code)}
-                    label={e.code}
-                    onChange={(v) => {
-                      if (fixed) return
-                      const next = new Set(allowed)
-                      if (v) next.add(e.code)
-                      else next.delete(e.code)
-                      setAllowed(next)
-                    }}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <span className="font-medium">{e.code}</span> <span className="text-zinc-500">{e.name}</span>
-                  </div>
-                  {e.source === 'upload' && <Badge>from upload</Badge>}
-                  {e.source === 'open' && <Badge tone="green">open to all</Badge>}
-                </div>
-              )
-            })}
-          </div>
-          <ErrorText>{error}</ErrorText>
-          <Button
-            className="w-full"
-            busy={busy}
-            onClick={async () => {
-              setBusy(true)
-              try {
-                await api.put(`/admin/majors/${data.major.id}/electives`, { codes: [...allowed] })
-                onClose()
-              } catch (e) {
-                setError(errorText(e))
-              } finally {
-                setBusy(false)
-              }
-            }}
-          >
+    <section aria-label="Selected major" className="flex flex-[2_1_420px] flex-col gap-[18px] border-t-[2.5px] border-navy pt-[18px]">
+      {renaming ? (
+        <form
+          className="flex flex-wrap gap-2"
+          onSubmit={async (e) => {
+            e.preventDefault()
+            setError('')
+            try {
+              await api.put(`/admin/majors/${major.id}`, { code, name })
+              setRenaming(false)
+              onChanged()
+            } catch (err) {
+              setError(errorText(err))
+            }
+          }}
+        >
+          <TextField label="Code" hideLabel value={code} onChange={(e) => setCode(e.target.value)} mono className="w-24" boxClassName="h-[52px]" />
+          <TextField label="Major name" hideLabel autoFocus value={name} onChange={(e) => setName(e.target.value)} className="min-w-0 flex-1" boxClassName="h-[52px] [&_input]:text-[20px] [&_input]:font-extrabold" />
+          <Button type="submit" className="h-[52px] px-5 text-[15px]">
             Save
           </Button>
+          <Button type="button" variant="ghost" className="h-[52px] px-4 text-[15px]" onClick={() => setRenaming(false)}>
+            Cancel
+          </Button>
+        </form>
+      ) : (
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <h2 className="text-[40px] leading-none font-extrabold tracking-[-0.03em]">{major.name}</h2>
+          <div className="flex gap-1.5">
+            <Button variant="secondary" size="sm" onClick={() => setRenaming(true)}>
+              Rename
+            </Button>
+            <Button variant="danger" size="sm" onClick={() => setRemoving(true)}>
+              Remove
+            </Button>
+          </div>
         </div>
       )}
-    </Sheet>
+      <span className="text-[15px] font-semibold text-muted">
+        <span className="font-mono font-bold">{major.code}</span> in uploads · {major.students} {major.students === 1 ? 'student' : 'students'} · {major.coreCourses} core{' '}
+        {major.coreCourses === 1 ? 'course' : 'courses'} live
+      </span>
+      <ErrorText>{error}</ErrorText>
+      <fieldset className="flex flex-col gap-1">
+        <legend className="pb-2 text-[20px] font-extrabold">Allowed electives</legend>
+        {!data ? (
+          !error && <Loading rows={3} />
+        ) : data.electives.length === 0 ? (
+          <Notice>No electives in this semester’s schedule.</Notice>
+        ) : (
+          data.electives.map((e) => {
+            const fixed = e.source === 'upload' || e.source === 'open'
+            const on = fixed || allowed.has(e.code)
+            return (
+              <button
+                key={e.code}
+                type="button"
+                role="checkbox"
+                aria-checked={on}
+                aria-disabled={fixed}
+                onClick={() => !fixed && toggle(e.code, !on)}
+                className="press tint flex min-h-[52px] items-center gap-3 rounded-[12px] px-2 py-1.5 text-left"
+              >
+                <span className={cx('grid size-[26px] shrink-0 place-items-center rounded-[8px]', on ? (fixed ? 'bg-navy/40 text-cream' : 'bg-navy text-cream') : 'border-2 border-navy/35')}>
+                  {on && <Icon name="check" className="pop size-3.5" strokeWidth={3.6} />}
+                </span>
+                <span className="flex min-w-0 flex-1 flex-col gap-px">
+                  <span className="text-[16px] font-extrabold">{e.name}</span>
+                  <span className="font-mono text-[11px] font-bold text-muted">{e.code}</span>
+                </span>
+                {e.source === 'upload' && <Tag tone="plain">From upload</Tag>}
+                {e.source === 'open' && <Tag tone="plain">Open to all</Tag>}
+              </button>
+            )
+          })
+        )}
+      </fieldset>
+      {data && data.electives.length > 0 && (
+        <span className="text-[14px] font-semibold text-muted" aria-live="polite">
+          {open} of {data.electives.length} electives open to {major.name}. Changes save right away.{status && ` ${status}`}
+        </span>
+      )}
+      <Confirm
+        open={removing}
+        onClose={() => setRemoving(false)}
+        title={`Remove ${major.name}?`}
+        body="Only majors that no course or student uses can be removed."
+        confirmLabel="Remove"
+        danger
+        onConfirm={async () => {
+          await api.del(`/admin/majors/${major.id}`)
+          onChanged()
+        }}
+      />
+    </section>
   )
 }

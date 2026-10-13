@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, errorText } from '../lib/api'
-import { useSession } from '../lib/session'
-import { Badge, Button, Card, Confirm, ErrorText, Field, Input, Loading, Notice, Select, Sheet } from '../components/ui'
-import { PageTitle, useAdmin } from './AdminLayout'
+import { Button, Confirm, ErrorText, Loading, Modal, Tag, TextField, cx } from '../components/ui'
+import { PageTitle, seen, useAdmin } from './AdminLayout'
 
 interface Account {
   id: number
@@ -20,14 +19,21 @@ interface Data {
   studentOwners: { id: number; universityId: string; lastSeenAt: string | null }[]
 }
 
+const signedIn = (iso: string | null) => {
+  if (!iso) return 'Never signed in'
+  const s = seen(iso)
+  return s.startsWith('Today') ? 'Signed in today' : s === 'Yesterday' ? 'Signed in yesterday' : `Last signed in ${s}`
+}
+
 export default function Accounts() {
   const { isOwner } = useAdmin()
-  const { session } = useSession()
   const [data, setData] = useState<Data | null>(null)
   const [error, setError] = useState('')
   const [adding, setAdding] = useState(false)
-  const [temp, setTemp] = useState<{ username: string; temporaryPassword: string } | null>(null)
-  const [confirm, setConfirm] = useState<{ kind: 'reset' | 'remove'; account: Account } | null>(null)
+  /** Temporary passwords shown inline, by username. */
+  const [temps, setTemps] = useState<Record<string, string>>({})
+  const [resetting, setResetting] = useState<number | null>(null)
+  const [removing, setRemoving] = useState<Account | null>(null)
   const load = () => api.get<Data>('/admin/accounts').then(setData, (e) => setError(errorText(e)))
   useEffect(() => {
     load()
@@ -35,66 +41,81 @@ export default function Accounts() {
 
   return (
     <>
-      <PageTitle
-        title={isOwner ? 'Admins' : 'Accounts'}
-        sub={isOwner ? 'Dashboard accounts. Owners can add owners and RSA accounts.' : 'You can add and remove RSA accounts.'}
-        action={<Button onClick={() => setAdding(true)}>+ Add account</Button>}
-      />
+      <PageTitle title="Accounts" action={<Button onClick={() => setAdding(true)}>Add account</Button>} />
       <ErrorText>{error}</ErrorText>
-      {session?.kind === 'admin' && (
-        <p className="mb-4 text-sm">
-          <Link to="/admin/password" className="text-indigo-600 underline dark:text-indigo-400">Change my password</Link>
-        </p>
-      )}
       {!data ? (
         <Loading />
       ) : (
-        <div className="space-y-6">
-          <Card className="divide-y divide-zinc-100 dark:divide-zinc-800">
-            {data.accounts.length === 0 && <p className="p-4 text-sm text-zinc-500">No username accounts yet.</p>}
+        <>
+          <div className="flex flex-col border-t-[2.5px] border-navy">
+            {data.accounts.length === 0 && <p className="px-2 py-4 text-[15px] font-semibold text-muted">No username accounts yet.</p>}
             {data.accounts.map((a) => (
-              <div key={a.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{a.username}</span>
-                    <Badge tone={a.role === 'owner' ? 'indigo' : 'gray'}>{a.role === 'owner' ? 'Owner' : 'RSA'}</Badge>
-                    {a.isMe && <Badge tone="green">You</Badge>}
-                    {a.mustChangePassword && <Badge tone="amber">Temporary password</Badge>}
-                  </div>
-                  <div className="text-xs text-zinc-500">
-                    {a.createdBy && `Added by ${a.createdBy}`}
-                    {a.lastSeenAt ? ` · last sign-in ${new Date(a.lastSeenAt).toLocaleDateString()}` : ' · never signed in'}
-                  </div>
+              <div key={a.id} className="tint flex flex-col gap-2.5 border-b-[1.5px] border-navy/10 px-2 py-4">
+                <div className="grid grid-cols-[minmax(0,1.4fr)_110px_minmax(0,1fr)_auto] items-center gap-4 max-md:grid-cols-[minmax(0,1fr)_auto]">
+                  <span className="font-mono text-[16px] font-bold [overflow-wrap:anywhere]">{a.username}</span>
+                  <Tag tone={a.role === 'owner' ? 'navy' : 'ice'} className="justify-self-start px-2.5 py-[5px] text-[11px]">
+                    {a.role === 'owner' ? 'Owner' : 'RSA'}
+                  </Tag>
+                  <span className="text-[14px] font-semibold text-muted">
+                    {signedIn(a.lastSeenAt)}
+                    {a.mustChangePassword && ', temporary password'}
+                  </span>
+                  {a.isMe ? (
+                    <span className="label px-4 text-[11px]">You</span>
+                  ) : a.canManage ? (
+                    <span className="flex justify-end gap-1.5">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        busy={resetting === a.id}
+                        aria-label={`Reset password for ${a.username}`}
+                        onClick={async () => {
+                          setResetting(a.id)
+                          setError('')
+                          try {
+                            const r = await api.post<{ username: string; temporaryPassword: string }>(`/admin/accounts/${a.id}/reset-password`)
+                            setTemps({ ...temps, [a.username]: r.temporaryPassword })
+                            load()
+                          } catch (e) {
+                            setError(errorText(e))
+                          } finally {
+                            setResetting(null)
+                          }
+                        }}
+                      >
+                        Reset password
+                      </Button>
+                      <Button variant="danger" size="sm" aria-label={`Remove ${a.username}`} onClick={() => setRemoving(a)}>
+                        Remove
+                      </Button>
+                    </span>
+                  ) : (
+                    <span />
+                  )}
                 </div>
-                {a.canManage && (
-                  <div className="flex gap-1">
-                    <Button variant="ghost" className="h-9 text-sm" onClick={() => setConfirm({ kind: 'reset', account: a })}>
-                      Reset password
-                    </Button>
-                    <Button variant="ghost" className="h-9 text-sm text-red-600 dark:text-red-400" onClick={() => setConfirm({ kind: 'remove', account: a })}>
-                      Remove
-                    </Button>
-                  </div>
-                )}
+                {temps[a.username] && <TempPassword username={a.username} password={temps[a.username]} />}
               </div>
             ))}
-          </Card>
+          </div>
           {isOwner && (
-            <section>
-              <h2 className="mb-1 text-sm font-semibold text-zinc-500">Owners who sign in with their student ID</h2>
-              <p className="mb-2 text-sm text-zinc-500">Make a student an owner from their page under Students.</p>
-              <Card className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                {data.studentOwners.length === 0 && <p className="p-4 text-sm text-zinc-500">None yet.</p>}
+            <section className="flex flex-col gap-2">
+              <h2 className="text-[24px] font-extrabold">Owners who sign in with their student ID</h2>
+              <p className="text-[15px] font-semibold text-muted">Make a student an owner from their page under Students.</p>
+              <div className="flex flex-col border-t-[2.5px] border-navy">
+                {data.studentOwners.length === 0 && <p className="px-2 py-4 text-[15px] font-semibold text-muted">None yet.</p>}
                 {data.studentOwners.map((s) => (
-                  <Link key={s.id} to={`/admin/students/${s.id}`} className="flex items-center justify-between px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
-                    <span className="font-mono">{s.universityId}</span>
-                    <Badge tone="indigo">Owner</Badge>
+                  <Link key={s.id} to={`/admin/students/${s.id}`} className="tint grid grid-cols-[minmax(0,1.4fr)_110px_minmax(0,1fr)] items-center gap-4 border-b-[1.5px] border-navy/10 px-2 py-4">
+                    <span className="font-mono text-[16px] font-bold">{s.universityId}</span>
+                    <Tag tone="navy" className="justify-self-start px-2.5 py-[5px] text-[11px]">
+                      Owner
+                    </Tag>
+                    <span className="text-[14px] font-semibold text-muted">{signedIn(s.lastSeenAt)}</span>
                   </Link>
                 ))}
-              </Card>
+              </div>
             </section>
           )}
-        </div>
+        </>
       )}
 
       <AddAccount
@@ -103,58 +124,69 @@ export default function Accounts() {
         onClose={() => setAdding(false)}
         onCreated={(r) => {
           setAdding(false)
-          setTemp(r)
+          setTemps({ ...temps, [r.username]: r.temporaryPassword })
           load()
         }}
       />
-      <Sheet open={!!temp} onClose={() => setTemp(null)} title="Temporary password">
-        {temp && (
-          <div className="space-y-3">
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
-              Give these to <b>{temp.username}</b>. They sign in at <span className="font-mono">/admin/login</span> and must choose their own password. This is the only time it's shown.
-            </p>
-            <div className="rounded-xl bg-zinc-100 p-3 font-mono text-lg tracking-wide select-all dark:bg-zinc-800">{temp.temporaryPassword}</div>
-            <Button className="w-full" onClick={() => navigator.clipboard?.writeText(`${temp.username} / ${temp.temporaryPassword}`)}>
-              Copy username and password
-            </Button>
-          </div>
-        )}
-      </Sheet>
       <Confirm
-        open={!!confirm}
-        onClose={() => setConfirm(null)}
-        title={confirm?.kind === 'reset' ? `Reset ${confirm.account.username}'s password?` : `Remove ${confirm?.account.username}?`}
-        body={confirm?.kind === 'reset' ? 'They will get a new temporary password and must change it at sign-in.' : 'They will be signed out and can no longer use the dashboard.'}
-        confirmLabel={confirm?.kind === 'reset' ? 'Reset' : 'Remove'}
-        danger={confirm?.kind === 'remove'}
+        open={!!removing}
+        onClose={() => setRemoving(null)}
+        title={`Remove ${removing?.username}?`}
+        body="They’ll be signed out and can no longer use the dashboard."
+        confirmLabel="Remove"
+        danger
         onConfirm={async () => {
-          if (!confirm) return
-          if (confirm.kind === 'reset') setTemp(await api.post(`/admin/accounts/${confirm.account.id}/reset-password`))
-          else await api.del(`/admin/accounts/${confirm.account.id}`)
+          if (removing) await api.del(`/admin/accounts/${removing.id}`)
           load()
         }}
       />
-      {!isOwner && <div className="mt-6"><Notice>Only owners can add owner accounts.</Notice></div>}
     </>
+  )
+}
+
+function TempPassword({ username, password }: { username: string; password: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <div role="status" className="open flex flex-wrap items-center gap-3 rounded-2xl bg-ice px-3.5 py-3">
+      <span className="text-[14px] font-bold">Temporary password</span>
+      <span className="font-mono text-[18px] font-bold tracking-[0.04em] select-all">{password}</span>
+      <span className="text-[14px] font-semibold">Share it in person. They pick a new one at sign-in. It’s only shown once.</span>
+      <button
+        type="button"
+        className="label ml-auto text-[11px] link-hover"
+        onClick={() => {
+          navigator.clipboard?.writeText(`${username} / ${password}`).then(() => setCopied(true), () => {})
+        }}
+      >
+        {copied ? 'Copied' : 'Copy'}
+      </button>
+    </div>
   )
 }
 
 function AddAccount({ open, isOwner, onClose, onCreated }: { open: boolean; isOwner: boolean; onClose: () => void; onCreated: (r: { username: string; temporaryPassword: string }) => void }) {
   const [username, setUsername] = useState('')
-  const [role, setRole] = useState('rsa')
+  const [role, setRole] = useState<'rsa' | 'owner'>('rsa')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const valid = /^[a-z0-9][a-z0-9._-]{2,31}$/.test(username.trim())
+  const roles = [
+    { id: 'rsa' as const, label: 'RSA', hint: 'Uploads, courses, majors. No student data.' },
+    { id: 'owner' as const, label: 'Owner', hint: isOwner ? 'Everything, plus students and accounts' : 'Only owners can add owners' },
+  ]
   return (
-    <Sheet open={open} onClose={onClose} title="Add a dashboard account">
+    <Modal open={open} onClose={onClose} label="Add account">
       <form
-        className="space-y-3"
+        className="flex flex-col gap-[18px]"
         onSubmit={async (e) => {
           e.preventDefault()
+          if (!valid || busy) return
           setBusy(true)
           setError('')
           try {
             onCreated(await api.post('/admin/accounts', { username, role }))
             setUsername('')
+            setRole('rsa')
           } catch (err) {
             setError(errorText(err))
           } finally {
@@ -162,20 +194,56 @@ function AddAccount({ open, isOwner, onClose, onCreated }: { open: boolean; isOw
           }
         }}
       >
-        <Field label="Username" hint="Letters, digits, dots or dashes.">
-          <Input autoCapitalize="none" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="e.g. rsa-office" />
-        </Field>
-        <Field label="Role">
-          <Select className="w-full" value={role} onChange={(e) => setRole(e.target.value)} disabled={!isOwner}>
-            <option value="rsa">RSA: schedule, sections and majors; no student data</option>
-            {isOwner && <option value="owner">Owner: everything, including students</option>}
-          </Select>
-        </Field>
+        <h2 className="text-[32px] font-extrabold tracking-[-0.03em]">Add account</h2>
+        <TextField
+          label="Username"
+          autoFocus
+          autoCapitalize="none"
+          mono
+          placeholder="rsa.examinations"
+          value={username}
+          onChange={(e) => setUsername(e.target.value.toLowerCase())}
+          boxClassName="h-[52px]"
+        />
+        <div className="flex flex-col gap-1.5">
+          <span id="role-label" className="label text-[11px] tracking-[0.12em]">
+            Role
+          </span>
+          <div role="radiogroup" aria-labelledby="role-label" className="grid grid-cols-2 gap-2">
+            {roles.map((r) => {
+              const on = r.id === role
+              const off = r.id === 'owner' && !isOwner
+              return (
+                <button
+                  key={r.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  aria-disabled={off}
+                  onClick={() => !off && setRole(r.id)}
+                  className={cx(
+                    'press flex min-h-[76px] flex-col items-start gap-1 rounded-2xl px-3.5 py-3 text-left',
+                    on ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_rgb(11_25_87/0.16)]',
+                    off && 'opacity-55',
+                  )}
+                >
+                  <span className="text-[16px] font-extrabold">{r.label}</span>
+                  <span className="text-[13px] font-semibold">{r.hint}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
         <ErrorText>{error}</ErrorText>
-        <Button className="w-full" busy={busy} disabled={username.trim().length < 3}>
-          Create account
-        </Button>
+        <div className="flex justify-end gap-2.5">
+          <Button type="button" variant="secondary" className="px-[18px] text-[15px]" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" className="text-[15px]" disabled={!valid} busy={busy}>
+            {busy ? 'Creating…' : 'Create account'}
+          </Button>
+        </div>
       </form>
-    </Sheet>
+    </Modal>
   )
 }
