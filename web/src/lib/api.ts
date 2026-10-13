@@ -1,9 +1,11 @@
 /** Errors the server sends as { error: "…" } are meant to be shown as-is. */
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  data: unknown
+  constructor(status: number, message: string, data?: unknown) {
     super(message)
     this.status = status
+    this.data = data
   }
 }
 
@@ -32,7 +34,7 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
     const msg = (data as { error?: string } | undefined)?.error
     if (res.status === 401 && !msg) throw new ApiError(401, 'Please sign in again.')
     if (res.status === 403 && !msg) throw new ApiError(403, "You don't have access to that.")
-    throw new ApiError(res.status, msg ?? 'Something went wrong. Try again.')
+    throw new ApiError(res.status, msg ?? 'Something went wrong. Try again.', data)
   }
   return data as T
 }

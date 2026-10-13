@@ -98,6 +98,38 @@ namespace UniSchedule.Api.Data.Migrations
                     b.ToTable("Courses");
                 });
 
+            modelBuilder.Entity("UniSchedule.Api.Data.CourseDefault", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("CourseId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Family")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("MajorId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SemesterId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CourseId");
+
+                    b.HasIndex("MajorId");
+
+                    b.HasIndex("SemesterId", "Year");
+
+                    b.ToTable("CourseDefaults");
+                });
+
             modelBuilder.Entity("UniSchedule.Api.Data.CourseMajor", b =>
                 {
                     b.Property<int>("CourseId")
@@ -156,6 +188,9 @@ namespace UniSchedule.Api.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Family")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -164,6 +199,8 @@ namespace UniSchedule.Api.Data.Migrations
 
                     b.HasIndex("Code")
                         .IsUnique();
+
+                    b.HasIndex("Family");
 
                     b.ToTable("Majors");
                 });
@@ -402,6 +439,28 @@ namespace UniSchedule.Api.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Semester");
+                });
+
+            modelBuilder.Entity("UniSchedule.Api.Data.CourseDefault", b =>
+                {
+                    b.HasOne("UniSchedule.Api.Data.Course", "Course")
+                        .WithMany()
+                        .HasForeignKey("CourseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("UniSchedule.Api.Data.Major", null)
+                        .WithMany()
+                        .HasForeignKey("MajorId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("UniSchedule.Api.Data.Semester", null)
+                        .WithMany()
+                        .HasForeignKey("SemesterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Course");
                 });
 
             modelBuilder.Entity("UniSchedule.Api.Data.CourseMajor", b =>

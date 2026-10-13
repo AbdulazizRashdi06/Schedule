@@ -17,6 +17,7 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
     public DbSet<Meeting> Meetings => Set<Meeting>();
     public DbSet<Pick> Picks => Set<Pick>();
     public DbSet<UploadLog> UploadLogs => Set<UploadLog>();
+    public DbSet<CourseDefault> CourseDefaults => Set<CourseDefault>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder b)
     {
@@ -37,7 +38,18 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
         });
         m.Entity<AdminUser>().HasIndex(x => x.Username).IsUnique();
         m.Entity<LoginCode>().HasIndex(x => new { x.UniversityId, x.CreatedAt });
-        m.Entity<Major>().HasIndex(x => x.Code).IsUnique();
+        m.Entity<Major>(e =>
+        {
+            e.HasIndex(x => x.Code).IsUnique();
+            e.HasIndex(x => x.Family);
+        });
+        m.Entity<CourseDefault>(e =>
+        {
+            e.HasIndex(x => new { x.SemesterId, x.Year });
+            e.HasOne<Semester>().WithMany().HasForeignKey(x => x.SemesterId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Course).WithMany().HasForeignKey(x => x.CourseId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Major>().WithMany().HasForeignKey(x => x.MajorId).OnDelete(DeleteBehavior.Cascade);
+        });
         m.Entity<MajorElective>(e =>
         {
             e.HasKey(x => new { x.MajorId, x.CourseCode });

@@ -18,6 +18,7 @@ import Upload from './admin/Upload'
 import Courses from './admin/Courses'
 import CourseDetail from './admin/CourseDetail'
 import Majors from './admin/Majors'
+import Defaults from './admin/Defaults'
 import Students from './admin/Students'
 import StudentDetail from './admin/StudentDetail'
 import Accounts from './admin/Accounts'
@@ -60,6 +61,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="courses" element={<Courses />} />
             <Route path="courses/:id" element={<CourseDetail />} />
             <Route path="majors" element={<Majors />} />
+            <Route path="defaults" element={<Defaults />} />
             <Route path="students" element={<StaffOnly ownerOnly><Students /></StaffOnly>} />
             <Route path="students/:id" element={<StaffOnly ownerOnly><StudentDetail /></StaffOnly>} />
             <Route path="accounts" element={<Accounts />} />

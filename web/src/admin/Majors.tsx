@@ -7,6 +7,7 @@ interface MajorRow {
   id: number
   code: string
   name: string
+  family: string | null
   coreCourses: number
   extraElectives: number
   students: number
@@ -53,7 +54,10 @@ export default function Majors() {
                 onClick={() => setSelected(m.id)}
                 className={cx('press flex min-h-[52px] items-center justify-between gap-3 rounded-[14px] px-3.5 py-2 text-left', m.id === selected ? 'bg-navy text-cream' : 'tint')}
               >
-                <span className="text-[16px] font-extrabold">{m.name}</span>
+                <span className="flex min-w-0 flex-col">
+                  <span className="text-[16px] font-extrabold">{m.name}</span>
+                  {m.family && <span className="font-mono text-[11px] font-bold opacity-70">{m.family}</span>}
+                </span>
                 <span className="label shrink-0 text-[11px] tracking-normal">{m.students === 0 && m.coreCourses === 0 ? 'New' : `${m.students} ${m.students === 1 ? 'student' : 'students'}`}</span>
               </button>
             ))}
@@ -114,6 +118,7 @@ function MajorPanel({ major, semesterId, onChanged }: { major: MajorRow; semeste
   const [renaming, setRenaming] = useState(false)
   const [code, setCode] = useState(major.code)
   const [name, setName] = useState(major.name)
+  const [family, setFamily] = useState(major.family ?? '')
   const [removing, setRemoving] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
@@ -158,7 +163,7 @@ function MajorPanel({ major, semesterId, onChanged }: { major: MajorRow; semeste
             e.preventDefault()
             setError('')
             try {
-              await api.put(`/admin/majors/${major.id}`, { code, name })
+              await api.put(`/admin/majors/${major.id}`, { code, name, family })
               setRenaming(false)
               onChanged()
             } catch (err) {
@@ -168,6 +173,7 @@ function MajorPanel({ major, semesterId, onChanged }: { major: MajorRow; semeste
         >
           <TextField label="Code" hideLabel value={code} onChange={(e) => setCode(e.target.value)} mono className="w-24" boxClassName="h-[52px]" />
           <TextField label="Major name" hideLabel autoFocus value={name} onChange={(e) => setName(e.target.value)} className="min-w-0 flex-1" boxClassName="h-[52px] [&_input]:text-[20px] [&_input]:font-extrabold" />
+          <TextField label="Family" hideLabel placeholder="Family" value={family} onChange={(e) => setFamily(e.target.value)} mono className="w-28" boxClassName="h-[52px]" />
           <Button type="submit" className="h-[52px] px-5 text-[15px]">
             Save
           </Button>
@@ -180,7 +186,7 @@ function MajorPanel({ major, semesterId, onChanged }: { major: MajorRow; semeste
           <h2 className="text-[40px] leading-none font-extrabold tracking-[-0.03em]">{major.name}</h2>
           <div className="flex gap-1.5">
             <Button variant="secondary" size="sm" onClick={() => setRenaming(true)}>
-              Rename
+              Edit
             </Button>
             <Button variant="danger" size="sm" onClick={() => setRemoving(true)}>
               Remove
@@ -189,7 +195,14 @@ function MajorPanel({ major, semesterId, onChanged }: { major: MajorRow; semeste
         </div>
       )}
       <span className="text-[15px] font-semibold text-muted">
-        <span className="font-mono font-bold">{major.code}</span> in uploads · {major.students} {major.students === 1 ? 'student' : 'students'} · {major.coreCourses} core{' '}
+        <span className="font-mono font-bold">{major.code}</span> in uploads ·{' '}
+        {major.family ? (
+          <>
+            family <span className="font-mono font-bold">{major.family}</span> (shares its courses) ·
+          </>
+        ) : (
+          'no family ·'
+        )} {major.students} {major.students === 1 ? 'student' : 'students'} · {major.coreCourses} core{' '}
         {major.coreCourses === 1 ? 'course' : 'courses'} live
       </span>
       <ErrorText>{error}</ErrorText>

@@ -45,31 +45,59 @@ public static class StudentEndpoints
             .Include(c => c.Sections).ThenInclude(s => s.Meetings)
             .AsSplitQuery();
 
-    /// <summary>Courses this student may pick: core for their major (every year), all LS, electives their major allows.</summary>
+    /// <summary>The major and every other major in its family: they share their courses.</summary>
+    public static async Task<List<int>> FamilyMajorIds(AppDb db, int majorId, CancellationToken ct)
+    {
+        var family = await db.Majors.Where(m => m.Id == majorId).Select(m => m.Family).FirstOrDefaultAsync(ct);
+        return family is null ? [majorId] : await db.Majors.Where(m => m.Family == family).Select(m => m.Id).ToListAsync(ct);
+    }
+
+    /// <summary>Courses this student may pick: core for their major's family (every year), all LS, electives the family allows.</summary>
     public static async Task<List<Course>> Options(AppDb db, int semesterId, int majorId, CancellationToken ct)
     {
         var all = await SemesterCourses(db, semesterId).ToListAsync(ct);
-        var extra = (await db.MajorElectives.Where(e => e.MajorId == majorId).Select(e => e.CourseCode).ToListAsync(ct))
+        var majors = await FamilyMajorIds(db, majorId, ct);
+        var extra = (await db.MajorElectives.Where(e => majors.Contains(e.MajorId)).Select(e => e.CourseCode).ToListAsync(ct))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         return all.Where(c => c.Type switch
         {
-            CourseType.Core => c.Majors.Any(m => m.MajorId == majorId),
+            CourseType.Core => c.Majors.Any(m => majors.Contains(m.MajorId)),
             CourseType.LS => true,
             // No majors listed means any major may take it; admins can allow more under Majors.
-            CourseType.Elective => c.Majors.Count == 0 || c.Majors.Any(m => m.MajorId == majorId) || extra.Contains(c.Code),
+            CourseType.Elective => c.Majors.Count == 0 || c.Majors.Any(m => majors.Contains(m.MajorId)) || extra.Contains(c.Code),
             _ => false,
         }).OrderBy(c => c.Code).ToList();
     }
 
     /// <summary>
-    /// Ticks the core courses of the student's major and year when they have none yet this semester.
+    /// Courses ticked when setup starts: the major's own defaults for that year, else its family's,
+    /// else the upload's core courses listed for that major and year.
+    /// </summary>
+    public static async Task<List<int>> DefaultCourseIds(AppDb db, int semesterId, int majorId, int year, CancellationToken ct)
+    {
+        var defaults = db.CourseDefaults.Where(d => d.SemesterId == semesterId && d.Year == year);
+        var own = await defaults.Where(d => d.MajorId == majorId).Select(d => d.CourseId).ToListAsync(ct);
+        if (own.Count > 0) return own;
+        var family = await db.Majors.Where(m => m.Id == majorId).Select(m => m.Family).FirstOrDefaultAsync(ct);
+        if (family is not null)
+        {
+            var shared = await defaults.Where(d => d.Family == family).Select(d => d.CourseId).ToListAsync(ct);
+            if (shared.Count > 0) return shared;
+        }
+        return await db.Courses.Where(c => c.SemesterId == semesterId && c.Type == CourseType.Core && c.Year == year && c.Majors.Any(m => m.MajorId == majorId))
+            .Select(c => c.Id).ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// Ticks the default courses of the student's major and year when they have no core course yet this semester.
     /// A course with a single section gets that section picked too.
     /// </summary>
     public static async Task EnsureCoreTicked(AppDb db, Student s, Semester current, CancellationToken ct)
     {
         if (s.MajorId is null || s.Year is null) return;
         if (await db.Picks.AnyAsync(p => p.StudentId == s.Id && p.Course.SemesterId == current.Id && p.Course.Type == CourseType.Core, ct)) return;
-        var cores = await db.Courses.Where(c => c.SemesterId == current.Id && c.Type == CourseType.Core && c.Year == s.Year && c.Majors.Any(m => m.MajorId == s.MajorId))
+        var ids = await DefaultCourseIds(db, current.Id, s.MajorId.Value, s.Year.Value, ct);
+        var cores = await db.Courses.Where(c => ids.Contains(c.Id))
             .Select(c => new { c.Id, Sections = c.Sections.Select(x => x.Id).ToList() }).ToListAsync(ct);
         var taken = await db.Picks.Where(p => p.StudentId == s.Id && p.Course.SemesterId == current.Id).Select(p => p.CourseId).ToListAsync(ct);
         foreach (var c in cores.Where(c => !taken.Contains(c.Id)))

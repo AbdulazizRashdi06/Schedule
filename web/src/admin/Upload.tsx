@@ -2,7 +2,7 @@ import { useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { api, errorText } from '../lib/api'
 import type { Semester } from '../lib/types'
-import { Button, ErrorText, Notice, Select, TextField, cx } from '../components/ui'
+import { Button, Confirm, ErrorText, Notice, Select, TextField, cx } from '../components/ui'
 import { PageTitle, useAdmin } from './AdminLayout'
 
 interface Change {
@@ -45,6 +45,7 @@ export default function Upload() {
   const [checking, setChecking] = useState(false)
   // Step 4: publish only, without a new file.
   const [publishOnly, setPublishOnly] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [done, setDone] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -99,6 +100,28 @@ export default function Upload() {
             ))}
             <Choice on={pick === 'new'} onClick={() => setPick('new')} name="New semester" meta="Create" />
           </div>
+          {target && !target.isCurrent && (
+            <div>
+              <Button variant="danger" size="sm" onClick={() => setDeleting(true)}>
+                Delete {target.name}
+              </Button>
+            </div>
+          )}
+          {target && (
+            <Confirm
+              open={deleting}
+              title={`Delete ${target.name}?`}
+              body="This removes the semester with its courses, sections, students’ picks and defaults. It can’t be undone."
+              confirmLabel="Delete"
+              danger
+              onClose={() => setDeleting(false)}
+              onConfirm={async () => {
+                await api.del(`/admin/semesters/${target.id}`)
+                setPick(null)
+                await reloadSemesters()
+              }}
+            />
+          )}
           {pick === 'new' ? (
             <NewSemester
               onCreated={async (id) => {

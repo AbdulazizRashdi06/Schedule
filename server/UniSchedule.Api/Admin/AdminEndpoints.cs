@@ -15,7 +15,10 @@ public static class AdminEndpoints
     public record SemesterBody(string? Term, int? Year);
     public record MeetingBody(int Day, string? Start, string? End, string? Room);
     public record SectionBody(string? Instructor, List<MeetingBody>? Meetings);
-    public record MajorBody(string? Code, string? Name);
+    /// <summary><paramref name="Family"/>: null keeps it, "" takes the major out of its family.</summary>
+    public record MajorBody(string? Code, string? Name, string? Family = null);
+    /// <summary>One default: course code, major or family code, study year.</summary>
+    public record DefaultItem(string? Id, string? Major, int? Year);
     public record ElectivesBody(List<string>? Codes);
 
     public static void MapAdmin(this RouteGroupBuilder api)
@@ -73,6 +76,52 @@ public static class AdminEndpoints
             db.Semesters.Remove(semester);
             await db.SaveChangesAsync(ct);
             return Results.NoContent();
+        });
+
+        // ---- Default courses: which courses are ticked for a major or family and study year ----
+
+        admin.MapGet("/semesters/{id:int}/defaults", async (int id, AppDb db, CancellationToken ct) =>
+        {
+            if (!await db.Semesters.AnyAsync(s => s.Id == id, ct)) return Errors.NotFound("That semester doesn't exist.");
+            var majors = await db.Majors.ToDictionaryAsync(m => m.Id, m => m.Code, ct);
+            var rows = await db.CourseDefaults.Where(d => d.SemesterId == id)
+                .Select(d => new { d.Course.Code, d.MajorId, d.Family, d.Year }).ToListAsync(ct);
+            return Results.Ok(rows
+                .Select(d => new { id = d.Code, major = d.MajorId is int m ? majors[m] : d.Family!, year = d.Year })
+                .OrderBy(d => d.major).ThenBy(d => d.year).ThenBy(d => d.id));
+        });
+
+        // Replaces every default of the semester with the list. Nothing is saved while any row has a problem.
+        admin.MapPut("/semesters/{id:int}/defaults", async (int id, List<DefaultItem>? body, AppDb db, CancellationToken ct) =>
+        {
+            if (!await db.Semesters.AnyAsync(s => s.Id == id, ct)) return Errors.NotFound("That semester doesn't exist.");
+            if (body is null) return Errors.BadRequest("Send a list of { id, major, year }.");
+            if (body.Count > 5000) return Errors.BadRequest("Too many rows.");
+            var courses = (await db.Courses.Where(c => c.SemesterId == id).Select(c => new { c.Id, c.Code }).ToListAsync(ct))
+                .ToDictionary(c => CodeKey(c.Code), c => c.Id);
+            var majors = await db.Majors.ToListAsync(ct);
+            var families = majors.Where(m => m.Family is not null).Select(m => m.Family!).ToHashSet();
+            var problems = new List<string>();
+            var rows = new List<CourseDefault>();
+            for (var i = 0; i < body.Count; i++)
+            {
+                var item = body[i];
+                var target = (item.Major ?? "").Trim().ToUpperInvariant();
+                var row = $"Row {i + 1}";
+                if (!courses.TryGetValue(CodeKey(item.Id ?? ""), out var courseId)) { problems.Add($"{row}: no course \"{item.Id}\" in this semester."); continue; }
+                var major = majors.FirstOrDefault(m => m.Code == target);
+                if (major is null && !families.Contains(target)) { problems.Add($"{row}: \"{item.Major}\" is not a major or a family."); continue; }
+                if (item.Year is not (>= 0 and <= 5)) { problems.Add($"{row}: year should be 0 (Foundation) to 5."); continue; }
+                var family = major is null ? target : null;
+                if (rows.Any(r => r.CourseId == courseId && r.MajorId == major?.Id && r.Family == family && r.Year == item.Year)) continue;
+                rows.Add(new CourseDefault { SemesterId = id, CourseId = courseId, MajorId = major?.Id, Family = family, Year = item.Year.Value });
+            }
+            if (problems.Count > 0)
+                return Results.Json(new { error = $"{problems.Count} {(problems.Count == 1 ? "row has a problem" : "rows have problems")}. Nothing was saved.", problems }, statusCode: StatusCodes.Status400BadRequest);
+            await db.CourseDefaults.Where(d => d.SemesterId == id).ExecuteDeleteAsync(ct);
+            db.CourseDefaults.AddRange(rows);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { saved = rows.Count });
         });
 
         // ---- Upload: the same file is sent to preview, then again to apply ----
@@ -184,7 +233,7 @@ public static class AdminEndpoints
             var current = await db.Semesters.Where(s => s.IsCurrent).Select(s => (int?)s.Id).FirstOrDefaultAsync(ct);
             return Results.Ok(await db.Majors.OrderBy(m => m.Name).Select(m => new
             {
-                m.Id, m.Code, m.Name,
+                m.Id, m.Code, m.Name, m.Family,
                 coreCourses = db.CourseMajors.Count(cm => cm.MajorId == m.Id && cm.Course.SemesterId == current && cm.Course.Type == CourseType.Core),
                 extraElectives = m.Electives.Count,
                 students = db.Students.Count(s => s.MajorId == m.Id),
@@ -196,10 +245,13 @@ public static class AdminEndpoints
             var (code, name, problem) = CleanMajor(body);
             if (problem is not null) return Errors.BadRequest(problem);
             if (await db.Majors.AnyAsync(m => m.Code == code, ct)) return Errors.Conflict($"A major with code {code} already exists.");
-            var major = new Major { Code = code!, Name = name! };
+            if (await db.Majors.AnyAsync(m => m.Family == code, ct)) return Errors.Conflict($"{code} is already a family name.");
+            var (family, familyProblem) = await CleanFamily(db, body.Family, ct);
+            if (familyProblem is not null) return Errors.BadRequest(familyProblem);
+            var major = new Major { Code = code!, Name = name!, Family = family };
             db.Majors.Add(major);
             await db.SaveChangesAsync(ct);
-            return Results.Ok(new { major.Id, major.Code, major.Name });
+            return Results.Ok(new { major.Id, major.Code, major.Name, major.Family });
         });
 
         admin.MapPut("/majors/{id:int}", async (int id, MajorBody body, AppDb db, CancellationToken ct) =>
@@ -209,10 +261,17 @@ public static class AdminEndpoints
             var (code, name, problem) = CleanMajor(body);
             if (problem is not null) return Errors.BadRequest(problem);
             if (await db.Majors.AnyAsync(m => m.Code == code && m.Id != id, ct)) return Errors.Conflict($"A major with code {code} already exists.");
+            if (await db.Majors.AnyAsync(m => m.Family == code, ct)) return Errors.Conflict($"{code} is already a family name.");
+            if (body.Family is not null)
+            {
+                var (family, familyProblem) = await CleanFamily(db, body.Family, ct);
+                if (familyProblem is not null) return Errors.BadRequest(familyProblem);
+                major.Family = family;
+            }
             major.Code = code!;
             major.Name = name!;
             await db.SaveChangesAsync(ct);
-            return Results.Ok(new { major.Id, major.Code, major.Name });
+            return Results.Ok(new { major.Id, major.Code, major.Name, major.Family });
         });
 
         admin.MapDelete("/majors/{id:int}", async (int id, AppDb db, CancellationToken ct) =>
@@ -317,6 +376,19 @@ public static class AdminEndpoints
         if (string.IsNullOrEmpty(code) || code.Length > 16) return (null, null, "Enter a short code like CS (up to 16 characters).");
         if (string.IsNullOrEmpty(name) || name.Length > 100) return (null, null, "Enter the major's name.");
         return (code, name, null);
+    }
+
+    /// <summary>"cs 1 101", "CS1101" and "CS  1 101" all match "CS 1 101".</summary>
+    static string CodeKey(string code) => string.Concat(code.Where(c => !char.IsWhiteSpace(c))).ToUpperInvariant();
+
+    /// <summary>Blank takes the major out of its family. A family can't use a major's code, since defaults name either.</summary>
+    static async Task<(string? Family, string? Problem)> CleanFamily(AppDb db, string? raw, CancellationToken ct)
+    {
+        var family = raw?.Trim().ToUpperInvariant().Replace(" ", "");
+        if (string.IsNullOrEmpty(family)) return (null, null);
+        if (family.Length > 16) return (null, "Keep the family code short, like COMP (up to 16 characters).");
+        if (await db.Majors.AnyAsync(m => m.Code == family, ct)) return (null, $"{family} is already a major's code. Pick another family name.");
+        return (family, null);
     }
 
     public static (List<Meeting>? Meetings, string? Problem) ParseMeetings(List<MeetingBody>? input)

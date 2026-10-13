@@ -81,6 +81,8 @@ public class Major
     /// <summary>Short code used in uploads, e.g. "CS".</summary>
     public string Code { get; set; } = "";
     public string Name { get; set; } = "";
+    /// <summary>Family code, e.g. "COMP" for AI, CS and CYS. Majors in one family share their courses; null = on its own.</summary>
+    public string? Family { get; set; }
     /// <summary>Electives this major allows on top of those the upload lists for it (by course code, so they survive semesters).</summary>
     public List<MajorElective> Electives { get; set; } = [];
 }
@@ -154,6 +156,22 @@ public class Pick
     public bool SectionRemoved { get; set; }
     /// <summary>When the student last opened this class (clears the "Changed" badge).</summary>
     public DateTimeOffset? SeenAt { get; set; }
+}
+
+/// <summary>
+/// A course ticked for students of one major (or one family) and study year when setup starts.
+/// A major's own defaults for a year replace its family's; with neither, the course's Year and majors from the upload decide.
+/// </summary>
+public class CourseDefault
+{
+    public int Id { get; set; }
+    public int SemesterId { get; set; }
+    public int CourseId { get; set; }
+    public Course Course { get; set; } = null!;
+    public int? MajorId { get; set; }
+    /// <summary>Set instead of <see cref="MajorId"/> for a family default.</summary>
+    public string? Family { get; set; }
+    public int Year { get; set; }
 }
 
 /// <summary>One applied upload, for "Recent uploads" on the dashboard home.</summary>

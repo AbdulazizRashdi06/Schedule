@@ -13,3 +13,4 @@ deploy/.env
 # Local runtime data only. Anchored so it never matches server/UniSchedule.Api/Data/ (Windows git ignores case).
 /app-data/
 server/UniSchedule.Api/app-data/
+imports/
