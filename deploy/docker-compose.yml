@@ -1,0 +1,36 @@
+# Runs next to the Zarqa stack and joins its Docker network, so Zarqa's Caddy can reach it as uni-schedule:8080.
+# Usage on the server (from /opt/uni-schedule):
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+name: uni-schedule
+
+services:
+  uni-schedule:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: uni-schedule:latest
+    restart: unless-stopped
+    environment:
+      # "log" writes sign-in codes to `docker compose logs`; "resend" emails them.
+      Email__Provider: ${EMAIL_PROVIDER:-log}
+      Email__ResendApiKey: ${RESEND_API_KEY:-}
+      Email__From: ${EMAIL_FROM:-}
+      # true shows the code in the app (never for owners) while real email isn't set up.
+      Auth__TestMode: ${AUTH_TEST_MODE:-false}
+      # Comma-separated student IDs that are always owners, e.g. 22-0001,23-0042.
+      Owners__Ids: ${OWNER_IDS:-}
+    volumes:
+      - data:/app/data
+    networks:
+      zarqa:
+        aliases:
+          - uni-schedule
+
+networks:
+  zarqa:
+    external: true
+    # Check with `docker network ls` on the server.
+    name: ${ZARQA_NETWORK:-zarqa_default}
+
+volumes:
+  data:

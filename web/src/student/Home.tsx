@@ -290,11 +290,11 @@ function WeekView({ days, slots, today, onOpen }: { days: number[]; slots: Slot[
                     className={cx('absolute overflow-hidden rounded-lg p-1 text-left ring-1 transition hover:brightness-95', blockColor(s.cls.type), s.clash && 'ring-2 ring-red-400 dark:ring-red-500')}
                     style={{ top: top + 1, height: h - 2, left: `calc(${(l.lane / l.of) * 100}% + 2px)`, width: `calc(${100 / l.of}% - 4px)` }}
                   >
-                    <div className="flex items-center gap-0.5 text-[11px] leading-tight font-semibold">
-                      {s.clash && <span>⚠</span>}
-                      <span className="truncate">{s.cls.code}</span>
+                    <div className={cx('leading-tight font-semibold', l.of > 1 ? 'text-[10px] break-all' : 'truncate text-[11px]')}>
+                      {s.clash && '⚠ '}
+                      {s.cls.code}
                     </div>
-                    <div className="truncate text-[10px] leading-tight opacity-80">{s.meeting.room}</div>
+                    {l.of === 1 && <div className="truncate text-[10px] leading-tight opacity-80">{s.meeting.room}</div>}
                     {s.cls.changed && <div className="mt-0.5 inline-block rounded bg-amber-400 px-1 text-[9px] font-semibold text-amber-950">Changed</div>}
                   </button>
                 )
