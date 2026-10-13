@@ -246,8 +246,6 @@ function MajorStep({ me, onNext }: { me: Me; onNext: () => void }) {
   )
 }
 
-const YEAR_LABEL = ['Before Year 1', 'First year', 'Second year', 'Third year', 'Final year']
-
 function YearStep({ me, onNext }: { me: Me; onNext: () => void }) {
   // The guess from the ID is picked already; the student confirms with Continue. It never moves on by itself.
   const guess = Math.min(me.predictedYear, 4)
@@ -283,16 +281,13 @@ function YearStep({ me, onNext }: { me: Me; onNext: () => void }) {
               )}
             >
               <span className="flex w-full items-start justify-between">
-                <span className="label text-[11px] tracking-[0.12em]">{y === 0 ? YEAR_LABEL[0] : 'Year'}</span>
+                <span className="label text-[11px] tracking-[0.12em]">{y === 0 ? '' : 'Year'}</span>
                 {y === guess && <span className={cx('label rounded-full px-[7px] py-1 text-[10px]', on ? 'bg-sky text-navy' : 'bg-ice text-navy')}>From ID</span>}
               </span>
               {y === 0 ? (
                 <span className="display text-[44px] leading-[0.8] tracking-[-0.04em]">Foundation</span>
               ) : (
-                <>
-                  <span className="display text-[80px] leading-[0.8] tracking-[-0.06em]">{y}</span>
-                  <span className="text-[13px] font-semibold opacity-85">{YEAR_LABEL[y]}</span>
-                </>
+                <span className="display text-[80px] leading-[0.8] tracking-[-0.06em]">{y}</span>
               )}
             </button>
           )
