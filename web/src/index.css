@@ -4,6 +4,17 @@
 
 @theme {
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Student timetable screens (design handoff v2). */
+  --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-navy: #0b1957;
+  --color-navy-700: #1f2f74;
+  --color-navy-800: #13226a;
+  --color-navy-line: #2c3d85;
+  --color-navy-line-2: #3a4e9c;
+  --color-cream: #f8f3ea;
+  --color-sky: #9eccfa;
+  --color-ice: #d1e8ff;
 }
 
 html { -webkit-tap-highlight-color: transparent; }
@@ -15,3 +26,7 @@ button:disabled { cursor: default; }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 .animate-sheet { animation: sheet-in 0.2s ease-out; }
 .animate-fade { animation: fade-in 0.15s ease-out; }
+
+/* Mono labels: uppercase, tracked. */
+.label, .label button { font-family: var(--font-mono); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; }
+.display { font-family: var(--font-display); font-weight: 800; font-variation-settings: "opsz" 96; }

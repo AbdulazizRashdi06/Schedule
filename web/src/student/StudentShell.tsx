@@ -21,9 +21,6 @@ export function StudentShell({ title, children, menu = true, setupDone }: { titl
 
 function Menu({ setupDone }: { setupDone?: boolean }) {
   const [open, setOpen] = useState(false)
-  const { session, logout } = useSession()
-  const navigate = useNavigate()
-  const item = 'flex w-full items-center rounded-xl px-3 py-3 text-left text-[15px] font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800'
   return (
     <>
       <button onClick={() => setOpen(true)} className="rounded-lg p-2 text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800" aria-label="Menu">
@@ -31,28 +28,44 @@ function Menu({ setupDone }: { setupDone?: boolean }) {
           <path d="M3 6h14M3 10h14M3 14h14" strokeLinecap="round" />
         </svg>
       </button>
-      <Sheet open={open} onClose={() => setOpen(false)} title={session?.name}>
-        <nav className="-mx-2 space-y-1">
-          {setupDone && (
-            <>
-              <button className={item} onClick={() => navigate('/')}>My timetable</button>
-              <button className={item} onClick={() => navigate('/edit')}>Edit my courses</button>
-            </>
-          )}
-          {session?.role === 'owner' && (
-            <button className={item} onClick={() => navigate('/admin')}>Admin dashboard</button>
-          )}
-          <button
-            className={item + ' text-red-600 dark:text-red-400'}
-            onClick={async () => {
-              await logout()
-              navigate('/login', { replace: true })
-            }}
-          >
-            Log out
-          </button>
-        </nav>
-      </Sheet>
+      <MenuSheet open={open} onClose={() => setOpen(false)} setupDone={setupDone} />
     </>
+  )
+}
+
+/** Account menu: timetable, course edits, the dashboard for owners, theme and log out. */
+export function MenuSheet({ open, onClose, setupDone, theme }: { open: boolean; onClose: () => void; setupDone?: boolean; theme?: boolean }) {
+  const { session, logout } = useSession()
+  const navigate = useNavigate()
+  const item = 'flex w-full items-center rounded-xl px-3 py-3 text-left text-[15px] font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800'
+  return (
+    <Sheet open={open} onClose={onClose} title={session?.name}>
+      <nav className="-mx-2 space-y-1">
+        {setupDone && (
+          <>
+            <button className={item} onClick={() => navigate('/')}>Today</button>
+            <button className={item} onClick={() => navigate('/schedule')}>Full week</button>
+            <button className={item} onClick={() => navigate('/edit')}>Edit my courses</button>
+          </>
+        )}
+        {session?.role === 'owner' && (
+          <button className={item} onClick={() => navigate('/admin')}>Admin dashboard</button>
+        )}
+        {theme && (
+          <div className="flex items-center justify-between px-3 py-1.5 text-[15px] font-medium">
+            Theme <ThemeToggle />
+          </div>
+        )}
+        <button
+          className={item + ' text-red-600 dark:text-red-400'}
+          onClick={async () => {
+            await logout()
+            navigate('/login', { replace: true })
+          }}
+        >
+          Log out
+        </button>
+      </nav>
+    </Sheet>
   )
 }

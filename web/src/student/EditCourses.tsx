@@ -6,6 +6,7 @@ import { BackIcon, Button, ErrorText, Input, Loading, Notice, Sheet } from '../c
 import { CourseRow, type Picks } from '../components/CourseRow'
 import { sectionSummary } from '../lib/time'
 import { StudentShell } from './StudentShell'
+import { clearTimetableCache } from './timetable'
 
 const GROUPS: { type: CourseType; label: string }[] = [
   { type: 'Core', label: 'Core' },
@@ -91,6 +92,7 @@ export default function EditCourses() {
             setError('')
             try {
               await api.put('/me/picks', { picks: [...picks].map(([courseId, sectionId]) => ({ courseId, sectionId })) })
+              clearTimetableCache()
               navigate('/')
             } catch (e) {
               setError(errorText(e))

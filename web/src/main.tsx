@@ -5,7 +5,9 @@ import './index.css'
 import { SessionProvider, useSession } from './lib/session'
 import { Loading } from './components/ui'
 import Login from './student/Login'
-import Home from './student/Home'
+import Today from './student/Today'
+import Schedule from './student/Schedule'
+import Course from './student/Course'
 import Setup from './student/Setup'
 import EditCourses from './student/EditCourses'
 import AdminLogin from './admin/AdminLogin'
@@ -45,7 +47,9 @@ createRoot(document.getElementById('root')!).render(
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/" element={<StudentOnly><Home /></StudentOnly>} />
+          <Route path="/" element={<StudentOnly><Today /></StudentOnly>} />
+          <Route path="/schedule" element={<StudentOnly><Schedule /></StudentOnly>} />
+          <Route path="/course/:courseId" element={<StudentOnly><Course /></StudentOnly>} />
           <Route path="/setup" element={<StudentOnly><Setup /></StudentOnly>} />
           <Route path="/edit" element={<StudentOnly><EditCourses /></StudentOnly>} />
           <Route path="/admin/login" element={<AdminLogin />} />

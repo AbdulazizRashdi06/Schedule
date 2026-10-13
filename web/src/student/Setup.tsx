@@ -6,6 +6,7 @@ import { BackIcon, Button, Card, ErrorText, Loading, Notice, cx } from '../compo
 import { CourseRow, clashesFor, type Picks } from '../components/CourseRow'
 import { sectionSummary } from '../lib/time'
 import { StudentShell } from './StudentShell'
+import { clearTimetableCache } from './timetable'
 
 /** Steps on the progress bar. "editcore" is a sub-page of core. */
 const STEPS = ['major', 'year', 'core', 'ls', 'electives', 'done'] as const
@@ -405,6 +406,7 @@ function PickSteps({ me, view, go }: { me: Me; view: View; go: (v: View, persist
             setError('')
             try {
               await api.post('/me/finish')
+              clearTimetableCache()
               navigate('/', { replace: true })
             } catch (e) {
               setError(errorText(e))
