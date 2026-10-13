@@ -1,0 +1,13 @@
+bin/
+obj/
+node_modules/
+dist/
+*.db
+*.db-shm
+*.db-wal
+.env
+deploy/.env
+.vs/
+.vscode/
+*.user
+data/

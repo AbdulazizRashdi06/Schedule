@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="UniSchedule.Api/UniSchedule.Api.csproj" />
+  <Project Path="UniSchedule.Tests/UniSchedule.Tests.csproj" />
+</Solution>
