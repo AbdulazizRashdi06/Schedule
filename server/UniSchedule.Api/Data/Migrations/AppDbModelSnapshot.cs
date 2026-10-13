@@ -355,6 +355,44 @@ namespace UniSchedule.Api.Data.Migrations
                     b.ToTable("Students");
                 });
 
+            modelBuilder.Entity("UniSchedule.Api.Data.UploadLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Added")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("At")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("By")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Removed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SemesterId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Updated")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("At");
+
+                    b.HasIndex("SemesterId");
+
+                    b.ToTable("UploadLogs");
+                });
+
             modelBuilder.Entity("UniSchedule.Api.Data.Course", b =>
                 {
                     b.HasOne("UniSchedule.Api.Data.Semester", "Semester")
@@ -455,6 +493,15 @@ namespace UniSchedule.Api.Data.Migrations
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Major");
+                });
+
+            modelBuilder.Entity("UniSchedule.Api.Data.UploadLog", b =>
+                {
+                    b.HasOne("UniSchedule.Api.Data.Semester", null)
+                        .WithMany()
+                        .HasForeignKey("SemesterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("UniSchedule.Api.Data.Course", b =>

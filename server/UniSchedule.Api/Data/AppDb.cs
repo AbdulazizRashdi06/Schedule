@@ -16,6 +16,7 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
     public DbSet<Section> Sections => Set<Section>();
     public DbSet<Meeting> Meetings => Set<Meeting>();
     public DbSet<Pick> Picks => Set<Pick>();
+    public DbSet<UploadLog> UploadLogs => Set<UploadLog>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder b)
     {
@@ -66,6 +67,11 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
             e.HasOne(x => x.Student).WithMany(x => x.Picks).HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Course).WithMany().HasForeignKey(x => x.CourseId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Section).WithMany().HasForeignKey(x => x.SectionId).OnDelete(DeleteBehavior.SetNull);
+        });
+        m.Entity<UploadLog>(e =>
+        {
+            e.HasIndex(x => x.At);
+            e.HasOne<Semester>().WithMany().HasForeignKey(x => x.SemesterId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

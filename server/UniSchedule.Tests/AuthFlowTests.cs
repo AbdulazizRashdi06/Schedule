@@ -158,7 +158,7 @@ public class AuthFlowTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
         var tooShort = await c.PostAsJsonAsync("/api/auth/change-password", new { currentPassword = "temp-pass-1", newPassword = "short" });
         Assert.Equal(HttpStatusCode.BadRequest, tooShort.StatusCode);
-        var ok = await c.PostAsJsonAsync("/api/auth/change-password", new { currentPassword = "temp-pass-1", newPassword = "a-much-better-password" });
+        var ok = await c.PostAsJsonAsync("/api/auth/change-password", new { currentPassword = "temp-pass-1", newPassword = "a-much-better-password-2" });
         Assert.Equal(HttpStatusCode.NoContent, ok.StatusCode);
 
         Assert.Equal(HttpStatusCode.OK, (await c.GetAsync("/api/admin/stats")).StatusCode);

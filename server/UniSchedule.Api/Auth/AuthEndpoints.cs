@@ -24,6 +24,15 @@ public static class AuthEndpoints
         (config["Owners:Ids"] ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(StudentIds.Normalize).Contains(universityId);
 
+    /// <summary>The rules the change-password screen checks as you type: 12+ characters, a number, not the username.</summary>
+    public static string? PasswordProblem(string password, string username)
+    {
+        if (password.Length < 12) return "Use at least 12 characters.";
+        if (!password.Any(char.IsAsciiDigit)) return "Add at least one number.";
+        if (password.Contains(username, StringComparison.OrdinalIgnoreCase)) return "Don't put your username in your password.";
+        return null;
+    }
+
     public static void MapAuth(this RouteGroupBuilder api)
     {
         var auth = api.MapGroup("/auth");
@@ -149,7 +158,8 @@ public static class AuthEndpoints
             if (Hasher.VerifyHashedPassword(user, user.PasswordHash, body.CurrentPassword ?? "") == PasswordVerificationResult.Failed)
                 return Errors.BadRequest("Your current password is wrong.");
             var pw = body.NewPassword ?? "";
-            if (pw.Length < 10) return Errors.BadRequest("Use at least 10 characters.");
+            var problem = PasswordProblem(pw, user.Username);
+            if (problem is not null) return Errors.BadRequest(problem);
             if (pw == body.CurrentPassword) return Errors.BadRequest("Pick a different password from the temporary one.");
             user.PasswordHash = Hasher.HashPassword(user, pw);
             user.MustChangePassword = false;

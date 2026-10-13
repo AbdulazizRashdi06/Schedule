@@ -154,3 +154,18 @@ public class Pick
     /// <summary>When the student last opened this class (clears the "Changed" badge).</summary>
     public DateTimeOffset? SeenAt { get; set; }
 }
+
+/// <summary>One applied upload, for "Recent uploads" on the dashboard home.</summary>
+public class UploadLog
+{
+    public int Id { get; set; }
+    public int SemesterId { get; set; }
+    /// <summary>The uploaded file's name, or "Pasted rows".</summary>
+    public string FileName { get; set; } = "";
+    /// <summary>Username or university ID of whoever applied it.</summary>
+    public string By { get; set; } = "";
+    public DateTimeOffset At { get; set; }
+    public int Added { get; set; }
+    public int Updated { get; set; }
+    public int Removed { get; set; }
+}

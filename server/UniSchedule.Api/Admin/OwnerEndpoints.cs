@@ -33,7 +33,7 @@ public static partial class OwnerEndpoints
     }
 
     /// <summary>Who made a change, for the accounts list.</summary>
-    static async Task<string> ActorName(HttpContext http, AppDb db, CancellationToken ct)
+    internal static async Task<string> ActorName(HttpContext http, AppDb db, CancellationToken ct)
     {
         var id = http.User.Id();
         return http.User.IsStudent()
@@ -127,6 +127,7 @@ public static partial class OwnerEndpoints
                 major = s.Major == null ? null : s.Major.Code,
                 s.SetupSemesterId, s.SetupStep, s.SetupCompletedAt, s.CreatedAt, s.LastSeenAt,
                 needsRepick = s.Picks.Any(p => p.Course.SemesterId == cid && p.SectionId == null),
+                courses = s.Picks.Count(p => p.Course.SemesterId == cid),
             }).ToListAsync(ct);
             return Results.Ok(new
             {
@@ -135,7 +136,7 @@ public static partial class OwnerEndpoints
                 {
                     var stub = new Student { SetupSemesterId = s.SetupSemesterId, SetupStep = s.SetupStep, SetupCompletedAt = s.SetupCompletedAt, MajorId = s.MajorId, Year = s.Year };
                     var (step, done) = StudentEndpoints.Progress(stub, current);
-                    return new { s.Id, s.UniversityId, s.IsOwner, s.major, s.Year, step, done, s.needsRepick, s.CreatedAt, s.LastSeenAt };
+                    return new { s.Id, s.UniversityId, s.IsOwner, s.major, s.Year, step, done, s.needsRepick, s.courses, s.CreatedAt, s.LastSeenAt };
                 }),
             });
         });
@@ -152,7 +153,7 @@ public static partial class OwnerEndpoints
             var withSection = picks.Where(p => p.Section is not null).ToList();
             return Results.Ok(new
             {
-                s.Id, s.UniversityId, s.Email, s.IsOwner, s.Year, s.CreatedAt, s.LastSeenAt,
+                s.Id, s.UniversityId, s.Email, s.IsOwner, s.Year, s.CreatedAt, s.LastSeenAt, s.SetupCompletedAt,
                 major = s.Major is null ? null : new { s.Major.Id, s.Major.Code, s.Major.Name },
                 step, done,
                 semester = current is null ? null : Dto.Of(current),

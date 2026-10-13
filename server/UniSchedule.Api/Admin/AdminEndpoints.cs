@@ -85,7 +85,7 @@ public static class AdminEndpoints
             return Results.Ok(await ScheduleImport.PreviewAsync(db, id, parsed!, ct));
         });
 
-        admin.MapPost("/semesters/{id:int}/upload/apply", async (int id, HttpRequest req, AppDb db, TimeProvider clock, CancellationToken ct) =>
+        admin.MapPost("/semesters/{id:int}/upload/apply", async (int id, HttpRequest req, HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) =>
         {
             var semester = await db.Semesters.FindAsync([id], ct);
             if (semester is null) return Errors.NotFound("That semester doesn't exist.");
@@ -94,7 +94,20 @@ public static class AdminEndpoints
             if (parsed!.Errors.Count > 0) return Errors.BadRequest($"Fix the {parsed.Errors.Count} problem row{(parsed.Errors.Count == 1 ? "" : "s")} first.");
             if (parsed.Courses.Count == 0) return Errors.BadRequest("The file has no courses.");
             var preview = await ScheduleImport.PreviewAsync(db, id, parsed, ct);
-            await ScheduleImport.ApplyAsync(db, semester, parsed, clock.GetUtcNow(), ct);
+            var now = clock.GetUtcNow();
+            await ScheduleImport.ApplyAsync(db, semester, parsed, now, ct);
+            var fileName = Path.GetFileName(req.Form.Files.GetFile("file")?.FileName ?? "");
+            db.UploadLogs.Add(new UploadLog
+            {
+                SemesterId = id,
+                FileName = fileName == "" ? "Pasted rows" : fileName[..Math.Min(fileName.Length, 200)],
+                By = await OwnerEndpoints.ActorName(http, db, ct),
+                At = now,
+                Added = preview.Added.Count,
+                Updated = preview.Updated.Count,
+                Removed = preview.Removed.Count,
+            });
+            await db.SaveChangesAsync(ct);
             return Results.Ok(new { added = preview.Added.Count, updated = preview.Updated.Count, removed = preview.Removed.Count, preview.StudentsAffected });
         });
 
@@ -107,7 +120,8 @@ public static class AdminEndpoints
             {
                 var term = q.Trim().ToLower();
                 var compact = term.Replace(" ", "");
-                query = query.Where(c => c.Code.ToLower().Contains(compact) || c.Name.ToLower().Contains(term));
+                query = query.Where(c => c.Code.ToLower().Contains(compact) || c.Name.ToLower().Contains(term)
+                    || c.Sections.Any(s => s.Instructor.ToLower().Contains(term)));
             }
             var courses = await query.OrderBy(c => c.Code).Select(c => new
             {
@@ -115,6 +129,10 @@ public static class AdminEndpoints
                 majors = c.Majors.Select(m => m.Major.Code).ToList(),
                 sections = c.Sections.Count,
                 students = db.Picks.Count(p => p.CourseId == c.Id),
+                // For the Courses table's status column.
+                noRoom = c.Sections.Count(s => s.Meetings.Any(m => m.Room == "")),
+                removedPicks = db.Picks.Count(p => p.CourseId == c.Id && p.SectionRemoved && p.SectionId == null),
+                changed = c.Sections.Any(s => s.ChangedAt != null),
             }).ToListAsync(ct);
             return Results.Ok(courses);
         });
@@ -252,10 +270,21 @@ public static class AdminEndpoints
 
         // ---- Stats (counts only) ----
 
-        admin.MapGet("/stats", async (int? semesterId, AppDb db, CancellationToken ct) =>
+        admin.MapGet("/stats", async (int? semesterId, AppDb db, TimeProvider clock, CancellationToken ct) =>
         {
             var current = await db.Semesters.Where(s => s.IsCurrent).FirstOrDefaultAsync(ct);
             var sid = semesterId ?? current?.Id;
+            var currentId = current?.Id;
+            var weekAgo = clock.GetUtcNow().AddDays(-7);
+            // "Needs attention" on the dashboard home: removed sections students must re-pick, sections without a room, students stuck in setup.
+            var removed = sid is null ? [] : await db.Picks.Where(p => p.Course.SemesterId == sid && p.SectionRemoved && p.SectionId == null)
+                .GroupBy(p => new { p.CourseId, p.Course.Code })
+                .Select(g => new { courseId = g.Key.CourseId, code = g.Key.Code, students = g.Count() })
+                .OrderByDescending(x => x.students).ToListAsync(ct);
+            var noRoom = sid is null ? [] : await db.Sections.Where(s => s.Course.SemesterId == sid && s.Meetings.Any(m => m.Room == ""))
+                .OrderBy(s => s.Course.Code).ThenBy(s => s.Number)
+                .Select(s => new { courseId = s.CourseId, code = s.Course.Code, number = s.Number }).ToListAsync(ct);
+            var uploads = sid is null ? [] : await db.UploadLogs.Where(u => u.SemesterId == sid).OrderByDescending(u => u.At).Take(5).ToListAsync(ct);
             var topSections = sid is null ? [] : await db.Sections.Where(s => s.Course.SemesterId == sid)
                 .Select(s => new { s.Id, courseId = s.CourseId, s.Course.Code, s.Number, students = db.Picks.Count(p => p.SectionId == s.Id) })
                 .OrderByDescending(x => x.students).ThenBy(x => x.Code).Take(8).ToListAsync(ct);
@@ -268,6 +297,15 @@ public static class AdminEndpoints
                 sections = sid is null ? 0 : await db.Sections.CountAsync(s => s.Course.SemesterId == sid, ct),
                 needRepick = sid is null ? 0 : await db.Picks.Where(p => p.Course.SemesterId == sid && p.SectionRemoved && p.SectionId == null).Select(p => p.StudentId).Distinct().CountAsync(ct),
                 topSections = topSections.Where(x => x.students > 0),
+                sectionEditsThisWeek = sid is null ? 0 : await db.Sections.CountAsync(s => s.Course.SemesterId == sid && s.ChangedAt != null && s.ChangedAt > weekAgo, ct),
+                attention = new
+                {
+                    removed,
+                    noRoom,
+                    // Signed in but haven't finished setup for the live semester (nobody is stuck while nothing is published).
+                    stuckInSetup = current is null ? 0 : await db.Students.CountAsync(s => !(s.SetupSemesterId == currentId && s.SetupCompletedAt != null), ct),
+                },
+                recentUploads = uploads.Select(u => new { at = u.At, u.FileName, u.By, u.Added, u.Updated, u.Removed }),
             });
         });
     }
