@@ -97,6 +97,18 @@ public class FamilyDefaultsTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task Confirming_the_year_again_picks_up_defaults_saved_later()
+    {
+        var (owner, semester, _, ai, courses) = await Setup("FE", 2045);
+        var student = await Student(ai, 1);
+        Assert.Equal([courses["FE102"]], await Picked(student));
+
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/semesters/{semester}/defaults", new[] { new { id = "FE101", major = "FEAI", year = 1 } })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await student.PutAsJsonAsync("/api/me/profile", new { year = 1 })).StatusCode);
+        Assert.Equal([courses["FE101"]], await Picked(student));
+    }
+
+    [Fact]
     public async Task A_list_with_bad_rows_saves_nothing()
     {
         var (owner, semester, _, _, _) = await Setup("FC", 2043);

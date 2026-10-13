@@ -158,9 +158,9 @@ public static class StudentEndpoints
             if (body.Year is int year)
             {
                 if (year is < 0 or > 5) return Errors.BadRequest("Pick Foundation or a year from 1 to 5.");
-                if (s.Year != year && current is not null && s.SetupSemesterId == current.Id && s.SetupStep is "major" or "year" or "core")
+                if (current is not null && s.SetupSemesterId == current.Id && s.SetupStep is "major" or "year" or "core")
                 {
-                    // Different year before setup is done: re-tick the right core courses.
+                    // Confirming a year during setup re-ticks that year's defaults (they may have changed since).
                     var cores = await db.Picks.Where(p => p.StudentId == s.Id && p.Course.SemesterId == current.Id && p.Course.Type == CourseType.Core).ToListAsync(ct);
                     db.Picks.RemoveRange(cores);
                 }

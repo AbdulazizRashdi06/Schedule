@@ -54,4 +54,13 @@ export function sectionSummary(s: Section, compact = false): string {
     .join(' · ')
 }
 
+/** Classes in a usual week: dated classes are averaged over the weeks they run in. */
+export function classesPerWeek(s: Section) {
+  const dated = s.meetings.filter((m) => m.date)
+  if (dated.length === 0) return s.meetings.length
+  // Week number counted from a Sunday (1 Jan 1970 was a Thursday).
+  const weeks = new Set(dated.map((m) => Math.floor((Date.parse(m.date + 'T00:00:00Z') / 86_400_000 + 4) / 7)))
+  return Math.round(dated.length / weeks.size) + (s.meetings.length - dated.length)
+}
+
 export const rooms = (s: Section) => [...new Set(s.meetings.map((m) => m.room).filter(Boolean))].join(', ')

@@ -4,6 +4,7 @@ import { api, errorText, store } from '../lib/api'
 import { useSession } from '../lib/session'
 import type { Course, CourseType, Major, Me, Options, PickRow } from '../lib/types'
 import { yearName } from '../lib/year'
+import { classesPerWeek } from '../lib/time'
 import { ErrorText, Icon, Sk, cx } from '../components/ui'
 import { CourseRow, clashDetail, type Picks } from '../components/CourseRow'
 import { BackButton, clearTimetableCache } from './timetable'
@@ -450,7 +451,7 @@ function PickSteps({ me, view, go }: { me: Me; view: View; go: (v: View, persist
     // Core courses of their year, plus any they ticked from another year.
     const cores = ofType('Core').filter((c) => picks.has(c.id) || c.year === me.year)
     const n = pickedOf('Core').length
-    const classes = pickedOf('Core').reduce((sum, c) => sum + (c.sections.find((s) => s.id === picks.get(c.id))?.meetings.length ?? 0), 0)
+    const classes = pickedOf('Core').reduce((sum, c) => { const s = c.sections.find((x) => x.id === picks.get(c.id)); return sum + (s ? classesPerWeek(s) : 0) }, 0)
     const clashes = clashing('Core')
     const missing = missingSection('Core')
     const pairs = Math.ceil(clashes / 2)
