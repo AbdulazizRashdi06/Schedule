@@ -3,13 +3,13 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import './index.css'
 import { SessionProvider, useSession } from './lib/session'
-import { Loading } from './components/ui'
 import Login from './student/Login'
-import Today from './student/Today'
+import Today, { TodaySkeleton } from './student/Today'
 import Schedule from './student/Schedule'
 import Course from './student/Course'
 import Setup from './student/Setup'
 import EditCourses from './student/EditCourses'
+import NotFound from './student/NotFound'
 import AdminLogin from './admin/AdminLogin'
 import ChangePassword from './admin/ChangePassword'
 import AdminLayout from './admin/AdminLayout'
@@ -24,7 +24,7 @@ import Accounts from './admin/Accounts'
 
 function StudentOnly({ children }: { children: ReactNode }) {
   const { session } = useSession()
-  if (!session) return <Loading />
+  if (!session) return <TodaySkeleton />
   if (session.kind === 'admin') return <Navigate to="/admin" replace />
   if (session.kind !== 'student') return <Navigate to="/login" replace />
   return children
@@ -33,7 +33,7 @@ function StudentOnly({ children }: { children: ReactNode }) {
 function StaffOnly({ children, ownerOnly }: { children: ReactNode; ownerOnly?: boolean }) {
   const { session } = useSession()
   const location = useLocation()
-  if (!session) return <Loading />
+  if (!session) return <div className="min-h-dvh bg-cream" aria-busy="true" />
   if (session.kind === 'admin' && session.mustChangePassword) return <Navigate to="/admin/password" replace />
   const staff = session.kind === 'admin' || session.role === 'owner'
   if (!staff) return <Navigate to={session.kind === 'student' ? '/' : '/admin/login'} replace state={{ from: location.pathname }} />
@@ -64,7 +64,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="students/:id" element={<StaffOnly ownerOnly><StudentDetail /></StaffOnly>} />
             <Route path="accounts" element={<Accounts />} />
           </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
     </SessionProvider>

@@ -63,4 +63,11 @@ export const store = {
       /* ignore */
     }
   },
+  remove(key: string) {
+    try {
+      localStorage.removeItem(key)
+    } catch {
+      /* ignore */
+    }
+  },
 }

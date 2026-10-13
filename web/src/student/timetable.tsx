@@ -1,31 +1,73 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { api, errorText } from '../lib/api'
+import { ApiError, api, errorText, store } from '../lib/api'
 import type { Me, Timetable } from '../lib/types'
 import { buildSessions, type Session } from '../lib/slots'
-import { cx } from '../components/ui'
+import { Icon, cx } from '../components/ui'
+
+export { Icon }
+
+interface Data {
+  me: Me
+  tt: Timetable | null
+}
 
 // Shared by Today, Schedule and Course so moving between them doesn't reload or flash.
-let cache: { me: Me; tt: Timetable | null } | null = null
+let cache: Data | null = null
+
+/** The last timetable that loaded, shown (with a banner) when the server can't be reached. */
+const SAVED = 'timetable'
+const save = (d: Data) => store.set(SAVED, JSON.stringify({ ...d, savedAt: new Date().toISOString() }))
+function saved(): (Data & { savedAt: string }) | null {
+  try {
+    return JSON.parse(store.get(SAVED) ?? 'null')
+  } catch {
+    return null
+  }
+}
+
+async function load(): Promise<Data> {
+  const me = await api.get<Me>('/me')
+  const tt = me.setupDone ? await api.get<Timetable>('/me/timetable') : null
+  return { me, tt }
+}
 
 export function useTimetable() {
   const [data, setData] = useState(cache)
   const [error, setError] = useState('')
+  /** When set, we're offline and showing what was saved at this time. */
+  const [offline, setOffline] = useState<Date | null>(null)
 
-  useEffect(() => {
-    let live = true
-    api
-      .get<Me>('/me')
-      .then(async (me) => {
-        const tt = me.setupDone ? await api.get<Timetable>('/me/timetable') : null
-        cache = { me, tt }
-        if (live) setData(cache)
-      })
-      .catch((e) => live && setError(errorText(e)))
-    return () => {
-      live = false
+  const fetchNow = useCallback(async () => {
+    try {
+      const d = await load()
+      cache = d
+      save(d)
+      setData(d)
+      setOffline(null)
+      setError('')
+      return true
+    } catch (e) {
+      const old = e instanceof ApiError && e.status === 0 ? saved() : null
+      if (old) {
+        if (!cache) setData({ me: old.me, tt: old.tt })
+        setOffline(new Date(old.savedAt))
+      } else setError(errorText(e))
+      return false
     }
   }, [])
+
+  useEffect(() => {
+    void fetchNow()
+  }, [fetchNow])
+
+  // Back online: try again without waiting for a tap.
+  useEffect(() => {
+    if (!offline) return
+    const on = () => void fetchNow()
+    window.addEventListener('online', on)
+    return () => window.removeEventListener('online', on)
+  }, [offline, fetchNow])
 
   const sessions = useMemo<Session[]>(() => (data?.tt ? buildSessions(data.tt) : []), [data])
 
@@ -37,7 +79,7 @@ export function useTimetable() {
     setData(cache)
   }, [])
 
-  return { me: data?.me ?? null, tt: data?.tt ?? null, sessions, error, markSeen }
+  return { me: data?.me ?? null, tt: data?.tt ?? null, sessions, error, markSeen, offline, retry: fetchNow }
 }
 
 /** Forget the cached timetable (after the student edits their courses). */
@@ -67,31 +109,21 @@ export function useBack(fallback = '/') {
   return () => (location.key !== 'default' ? navigate(-1) : navigate(fallback))
 }
 
-/** Lucide-style stroke icons. */
-const PATHS = {
-  back: 'M15 18l-6-6 6-6',
-  prev: 'M15 18l-6-6 6-6',
-  next: 'M9 18l6-6-6-6',
-  arrow: 'M5 12h14M13 6l6 6-6 6',
-  menu: 'M4 7h16M4 12h16M4 17h10',
-  pin: 'M12 21s-7-6.2-7-11.5a7 7 0 0114 0C19 14.8 12 21 12 21zM12 12a2.5 2.5 0 100-5 2.5 2.5 0 000 5z',
-  bell: 'M6 8a6 6 0 0112 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 003.4 0',
-} as const
-
-export function Icon({ name, className }: { name: keyof typeof PATHS; className?: string }) {
+/** 48px round icon button. */
+export function RoundButton({ label, onClick, className, children }: { label: string; onClick: () => void; className?: string; children: ReactNode }) {
   return (
-    <svg viewBox="0 0 24 24" className={cx('size-5 shrink-0', className)} fill="none" stroke="currentColor" strokeWidth={2.3} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d={PATHS[name]} />
-    </svg>
+    <button type="button" aria-label={label} onClick={onClick} className={cx('press grid size-12 shrink-0 place-items-center rounded-full', className)}>
+      {children}
+    </button>
   )
 }
 
-/** 44px round icon button. */
-export function RoundButton({ label, onClick, className, children }: { label: string; onClick: () => void; className?: string; children: ReactNode }) {
+/** The back button on cream screens: a navy ring. */
+export function BackButton({ label = 'Back', onClick }: { label?: string; onClick: () => void }) {
   return (
-    <button type="button" aria-label={label} onClick={onClick} className={cx('grid size-11 shrink-0 place-items-center rounded-full transition active:scale-95', className)}>
-      {children}
-    </button>
+    <RoundButton label={label} onClick={onClick} className="border-[2.5px] border-navy text-navy">
+      <Icon name="back" />
+    </RoundButton>
   )
 }
 
@@ -102,7 +134,7 @@ export function NeedsSection({ tt, dark }: { tt: Timetable; dark?: boolean }) {
   return (
     <Link
       to="/edit"
-      className={cx('mb-5 flex items-center gap-3 rounded-[18px] px-4 py-3 text-[14px] font-semibold', dark ? 'bg-cream text-navy' : 'bg-navy text-cream')}
+      className={cx('press mb-5 flex items-center gap-3 rounded-[18px] px-4 py-3 text-[14px] font-semibold', dark ? 'bg-cream text-navy' : 'bg-navy text-cream')}
     >
       <span className="min-w-0 flex-1">
         {removed ? 'A section you picked was removed: ' : 'No section picked for '}
