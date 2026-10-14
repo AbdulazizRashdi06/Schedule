@@ -1,7 +1,7 @@
 import { Fragment } from 'react'
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { DAY_LONG, DAY_SHORT, minutes } from '../lib/time'
-import { SLOTS, TYPE_BG, TYPE_NAME, addDays, fmtDuration, fmtWeekRange, inWeek, nowMinutes, weekDays, weekStart, weekTitle, type ClassType, type Session } from '../lib/slots'
+import { SLOTS, TYPE_BADGE, TYPE_BG, TYPE_NAME, addDays, fmtDuration, fmtWeekRange, inWeek, nowMinutes, weekDays, weekStart, weekTitle, type ClassType, type Session } from '../lib/slots'
 import { ErrorText, Sk, cx } from '../components/ui'
 import { Icon, NeedsSection, RoundButton, useBack, useNow, useTimetable } from './timetable'
 
@@ -195,7 +195,7 @@ function WeekGrid({ days, sessions, start, today, nowMin, onDay }: { days: numbe
                       onClick={() => onDay(d)}
                       aria-label={blockLabel(s)}
                       className={cx(
-                        'press relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[12px] p-1.5 text-left text-navy shadow-[0_0_0_1.5px_rgb(11_25_87/0.12)]',
+                        'press relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[12px] p-1.5 text-left shadow-[0_0_0_1.5px_rgb(11_25_87/0.12)]',
                         TYPE_BG[s.type],
                         live && 'ring-2 ring-navy ring-offset-2 ring-offset-cream',
                         s.clash && 'outline-2 -outline-offset-2 outline-alert',
@@ -206,7 +206,7 @@ function WeekGrid({ days, sessions, start, today, nowMin, onDay }: { days: numbe
                         {s.span > 1 && `–${s.meeting.end}`}
                       </span>
                       {cell.length === 1 && <span className="mt-auto truncate text-[11px] font-semibold">{s.meeting.room}</span>}
-                      {s.cls.changed && <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-navy" />}
+                      {s.cls.changed && <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-current" />}
                     </button>
                   )
                 })}
@@ -272,14 +272,14 @@ function DayView({ days, day, sessions, start, today, nowMin, onDay, onOpen }: {
                 <button
                   type="button"
                   onClick={() => onOpen(s)}
-                  className={cx('press min-w-0 flex-1 rounded-[20px] p-4 text-left text-navy shadow-[0_0_0_1.5px_rgb(11_25_87/0.12)]', TYPE_BG[s.type], live && 'ring-2 ring-navy ring-offset-2 ring-offset-cream')}
+                  className={cx('press min-w-0 flex-1 rounded-[20px] p-4 text-left shadow-[0_0_0_1.5px_rgb(11_25_87/0.12)]', TYPE_BG[s.type], live && 'ring-2 ring-navy ring-offset-2 ring-offset-cream')}
                 >
                   <span className="flex flex-wrap items-center gap-1.5">
                     <span className="label text-[10px]">
                       {TYPE_NAME[s.type]} · {s.cls.code}
                     </span>
-                    {live && <span className="label rounded-full bg-navy px-2 py-0.5 text-[9px] text-cream">● Now</span>}
-                    {s.cls.changed && <span className="label rounded-full bg-navy px-2 py-0.5 text-[9px] text-cream">Changed</span>}
+                    {live && <span className={cx('label rounded-full px-2 py-0.5 text-[9px]', TYPE_BADGE[s.type])}>● Now</span>}
+                    {s.cls.changed && <span className={cx('label rounded-full px-2 py-0.5 text-[9px]', TYPE_BADGE[s.type])}>Changed</span>}
                     {s.clash && <span className="label rounded-full bg-alert-ink px-2 py-0.5 text-[9px] text-cream">Clash</span>}
                   </span>
                   <span className="display mt-1.5 block text-[20px] leading-[1.1] tracking-[-0.02em] break-words hyphens-auto">{s.cls.name}</span>
