@@ -35,20 +35,20 @@ export default function Schedule() {
   }
 
   return (
-    <div className="min-h-dvh bg-cream font-display text-navy">
+    <div className="min-h-dvh bg-navy font-display text-cream">
       <div className="mx-auto max-w-md px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         <header className="flex items-center justify-between gap-3">
-          <RoundButton label="Back to today" onClick={back} className="border-[2.5px] border-navy text-navy">
+          <RoundButton label="Back to today" onClick={back} className="border-[2.5px] border-sky text-sky">
             <Icon name="back" />
           </RoundButton>
-          <div role="group" aria-label="View" className="label flex gap-0.5 rounded-full border-2 border-navy/15 p-1 text-[11px]">
+          <div role="group" aria-label="View" className="label flex gap-0.5 rounded-full border-2 border-navy-line p-1 text-[11px]">
             {(['day', 'week'] as const).map((v) => (
               <button
                 key={v}
                 type="button"
                 aria-pressed={view === v}
                 onClick={() => go({ view: v, day })}
-                className={cx('press h-10 min-w-[72px] rounded-full px-4', view === v ? 'bg-navy text-cream' : 'text-muted tint')}
+                className={cx('press h-10 min-w-[72px] rounded-full px-4', view === v ? 'bg-sky text-navy' : 'text-ice tint-dark')}
               >
                 {v}
               </button>
@@ -57,21 +57,21 @@ export default function Schedule() {
         </header>
 
         <div className="mt-5 flex items-center justify-between gap-2">
-          <RoundButton label="Previous week" onClick={() => go({ w: offset - 1 })} className="size-11 tint shadow-[inset_0_0_0_2px_rgb(11_25_87/0.16)]">
+          <RoundButton label="Previous week" onClick={() => go({ w: offset - 1 })} className="size-11 bg-navy-800 tint-dark">
             <Icon name="prev" />
           </RoundButton>
           <div className="min-w-0 text-center">
-            <h1 className="display text-[30px] leading-[0.9] tracking-[-0.03em] text-navy">{weekTitle(offset)}</h1>
-            <p className="label mt-1.5 text-[10px] text-muted">
+            <h1 className="display text-[30px] leading-[0.9] tracking-[-0.03em] text-sky">{weekTitle(offset)}</h1>
+            <p className="label mt-1.5 text-[10px] text-ice">
               {fmtWeekRange(start, days.length)}
               {!thisWeek && (
-                <button type="button" className="ml-2 text-navy link-hover" onClick={() => go({ w: 0 })}>
+                <button type="button" className="ml-2 text-sky link-hover" onClick={() => go({ w: 0 })}>
                   · Today
                 </button>
               )}
             </p>
           </div>
-          <RoundButton label="Next week" onClick={() => go({ w: offset + 1 })} className="size-11 bg-navy text-cream">
+          <RoundButton label="Next week" onClick={() => go({ w: offset + 1 })} className="size-11 bg-sky text-navy">
             <Icon name="next" />
           </RoundButton>
         </div>
@@ -81,11 +81,11 @@ export default function Schedule() {
             <ErrorText>{error}</ErrorText>
           ) : !me || !tt ? (
             <div aria-busy="true" aria-label="Loading your week" className="grid grid-cols-[38px_repeat(5,minmax(0,1fr))] gap-[5px]">
-              {Array.from({ length: 36 }, (_, i) => (i % 6 === 0 ? <span key={i} /> : <Sk key={i} className="h-[86px] rounded-[14px]" />))}
+              {Array.from({ length: 36 }, (_, i) => (i % 6 === 0 ? <span key={i} /> : <Sk key={i} dark className="h-[86px] rounded-[14px]" />))}
             </div>
           ) : (
             <>
-              <NeedsSection tt={tt} />
+              <NeedsSection tt={tt} dark />
               {view === 'week' ? (
                 <WeekGrid
                   days={days}
@@ -148,7 +148,7 @@ function WeekGrid({ days, sessions, start, today, nowMin, onDay }: { days: numbe
               type="button"
               onClick={() => onDay(d)}
               aria-label={`${DAY_LONG[d]} ${date.getDate()}, open day view`}
-              className={cx('press mb-2 flex h-14 flex-col items-center justify-center rounded-[14px]', isToday ? 'bg-navy text-cream' : 'text-muted tint')}
+              className={cx('press mb-2 flex h-14 flex-col items-center justify-center rounded-[14px]', isToday ? 'bg-cream text-navy' : 'text-ice tint-dark')}
             >
               <span className="label text-[9px]">{DAY_SHORT[d]}</span>
               <span className="display text-[20px] leading-tight">{date.getDate()}</span>
@@ -159,8 +159,8 @@ function WeekGrid({ days, sessions, start, today, nowMin, onDay }: { days: numbe
 
       <div className="relative grid gap-x-[5px]" style={{ gridTemplateColumns: cols, gridTemplateRows: `repeat(${SLOTS.length}, ${ROW}px)`, rowGap: GAP }}>
         {SLOTS.map(([s, e], i) => (
-          <div key={i} className="label flex flex-col justify-between py-1 text-[9px] leading-none tracking-[0.04em] text-muted" style={{ gridColumn: 1, gridRow: i + 1 }}>
-            <span className="text-navy">{s}</span>
+          <div key={i} className="label flex flex-col justify-between py-1 text-[9px] leading-none tracking-[0.04em] text-ice/80" style={{ gridColumn: 1, gridRow: i + 1 }}>
+            <span className="text-cream">{s}</span>
             <span>{e}</span>
           </div>
         ))}
@@ -168,16 +168,16 @@ function WeekGrid({ days, sessions, start, today, nowMin, onDay }: { days: numbe
           <div
             key={d}
             className="rounded-[14px]"
-            style={{ gridColumn: c + 2, gridRow: `1 / ${SLOTS.length + 1}`, background: `rgba(11,25,87,${d === today ? 0.08 : 0.035})` }}
+            style={{ gridColumn: c + 2, gridRow: `1 / ${SLOTS.length + 1}`, background: `rgba(158,204,250,${d === today ? 0.14 : 0.06})` }}
           />
         ))}
         {/* A line at every break, across the whole week. */}
         {SLOTS.slice(1).map((_, i) => (
-          <div key={i} className="pointer-events-none absolute right-0 left-[43px] h-px bg-navy/10" style={{ top: (i + 1) * (ROW + GAP) - GAP / 2 }} />
+          <div key={i} className="pointer-events-none absolute right-0 left-[43px] h-px bg-navy-line-2" style={{ top: (i + 1) * (ROW + GAP) - GAP / 2 }} />
         ))}
         {lineY !== null && (
-          <div className="pointer-events-none absolute right-0 left-[38px] z-10 h-0.5 rounded-full bg-navy" style={{ top: lineY - 1 }} aria-hidden="true">
-            <span className="absolute -top-[3px] -left-1 size-2 rounded-full bg-navy" />
+          <div className="pointer-events-none absolute right-0 left-[38px] z-10 h-0.5 rounded-full bg-cream" style={{ top: lineY - 1 }} aria-hidden="true">
+            <span className="absolute -top-[3px] -left-1 size-2 rounded-full bg-cream" />
           </div>
         )}
         {days.map((d, c) =>
@@ -195,9 +195,9 @@ function WeekGrid({ days, sessions, start, today, nowMin, onDay }: { days: numbe
                       onClick={() => onDay(d)}
                       aria-label={blockLabel(s)}
                       className={cx(
-                        'press relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[12px] p-1.5 text-left text-navy shadow-[0_0_0_1.5px_rgb(11_25_87/0.12)]',
+                        'press relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[12px] p-1.5 text-left text-navy',
                         TYPE_BG[s.type],
-                        live && 'ring-2 ring-navy ring-offset-2 ring-offset-cream',
+                        live && 'ring-2 ring-cream ring-offset-2 ring-offset-navy',
                         s.clash && 'outline-2 -outline-offset-2 outline-alert',
                       )}
                     >
@@ -224,8 +224,8 @@ function DayView({ days, day, sessions, start, today, nowMin, onDay, onOpen }: {
   const total = list.reduce((sum, s) => sum + (s.end - s.start), 0)
   return (
     <div>
-      <h2 className="display text-[60px] leading-[0.86] tracking-[-0.06em] text-navy">{DAY_LONG[day]}</h2>
-      <p className="label mt-2 text-[10px] text-muted">
+      <h2 className="display text-[60px] leading-[0.86] tracking-[-0.06em] text-sky">{DAY_LONG[day]}</h2>
+      <p className="label mt-2 text-[10px] text-ice">
         {list.length === 0
           ? 'No classes'
           : `${list.length} ${list.length === 1 ? 'class' : 'classes'} · ${fmtDuration(total)} · ${list[0].meeting.start}–${list[list.length - 1].meeting.end}`}
@@ -242,37 +242,37 @@ function DayView({ days, day, sessions, start, today, nowMin, onDay, onOpen }: {
               role="tab"
               aria-selected={selected}
               onClick={() => onDay(d)}
-              className={cx('press flex h-[76px] flex-col items-center justify-center rounded-[20px]', selected ? 'bg-navy text-cream' : 'tint text-navy shadow-[inset_0_0_0_2px_rgb(11_25_87/0.16)]')}
+              className={cx('press flex h-[76px] flex-col items-center justify-center rounded-[20px]', selected ? 'bg-cream text-navy' : 'bg-navy-800 text-cream tint-dark')}
             >
               <span className="label text-[9px]">{d === today ? 'Today' : DAY_SHORT[d]}</span>
               <span className="display text-[22px] leading-tight">{addDays(start, d).getDate()}</span>
-              <span className={cx('label text-[9px]', selected ? 'text-cream/70' : 'text-muted')}>{n} cls</span>
+              <span className={cx('label text-[9px]', selected ? 'text-navy/60' : 'text-ice/80')}>{n} cls</span>
             </button>
           )
         })}
       </div>
 
       <div className="mt-6 space-y-3" role="tabpanel">
-        {list.length === 0 && <p className="rounded-[20px] border border-dashed border-navy/20 p-6 text-center text-[15px] font-semibold text-muted">No classes on {DAY_LONG[day]}.</p>}
+        {list.length === 0 && <p className="rounded-[20px] border border-dashed border-navy-line-2 p-6 text-center text-[15px] font-semibold text-ice">No classes on {DAY_LONG[day]}.</p>}
         {list.map((s, i) => {
           const gap = i > 0 ? s.start - list[i - 1].end : 0
           const live = day === today && s.start <= nowMin && nowMin < s.end
           return (
             <Fragment key={i}>
               {gap >= 30 && (
-                <div className="label ml-[68px] flex h-11 items-center justify-center rounded-[18px] border border-dashed border-navy/20 text-[10px] text-muted">
+                <div className="label ml-[68px] flex h-11 items-center justify-center rounded-[18px] border border-dashed border-navy-line-2 text-[10px] text-ice">
                   Free · {fmtDuration(gap)}
                 </div>
               )}
               <div className="flex gap-3">
                 <div className="label w-14 shrink-0 pt-4 text-right">
-                  <div className="text-[12px] text-navy">{s.meeting.start}</div>
-                  <div className="mt-1 text-[10px] text-muted">{s.meeting.end}</div>
+                  <div className="text-[12px] text-cream">{s.meeting.start}</div>
+                  <div className="mt-1 text-[10px] text-ice/80">{s.meeting.end}</div>
                 </div>
                 <button
                   type="button"
                   onClick={() => onOpen(s)}
-                  className={cx('press min-w-0 flex-1 rounded-[20px] p-4 text-left text-navy shadow-[0_0_0_1.5px_rgb(11_25_87/0.12)]', TYPE_BG[s.type], live && 'ring-2 ring-navy ring-offset-2 ring-offset-cream')}
+                  className={cx('press min-w-0 flex-1 rounded-[20px] p-4 text-left text-navy', TYPE_BG[s.type], live && 'ring-2 ring-cream ring-offset-2 ring-offset-navy')}
                 >
                   <span className="flex flex-wrap items-center gap-1.5">
                     <span className="label text-[10px]">
@@ -300,10 +300,10 @@ function DayView({ days, day, sessions, start, today, nowMin, onDay, onOpen }: {
 function Legend() {
   const items: ClassType[] = ['lecture', 'lab', 'tutorial']
   return (
-    <div className="mt-8 flex items-center justify-center gap-5 border-t border-navy/10 pt-5">
+    <div className="mt-8 flex items-center justify-center gap-5 border-t border-navy-line pt-5">
       {items.map((t) => (
-        <span key={t} className="label flex items-center gap-2 text-[10px] text-muted">
-          <span className={cx('size-3 rounded-[4px] shadow-[0_0_0_1.5px_rgb(11_25_87/0.2)]', TYPE_BG[t])} />
+        <span key={t} className="label flex items-center gap-2 text-[10px] text-ice">
+          <span className={cx('size-3 rounded-[4px]', TYPE_BG[t])} />
           {TYPE_NAME[t]}
         </span>
       ))}
