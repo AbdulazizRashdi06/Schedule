@@ -43,9 +43,16 @@ export interface Me {
   major: { id: number; code: string; name: string } | null
   year: number | null
   predictedYear: number
-  semester: { id: number; name: string } | null
+  semester: { id: number; name: string; weeks?: Weeks } | null
   step: Step
   setupDone: boolean
+}
+
+/** Teaching weeks: week 1's Sunday ("2026-09-20") and the last week's number. `set` = chosen by an admin. */
+export interface Weeks {
+  week1Start: string | null
+  lastWeek: number | null
+  set: boolean
 }
 
 export type Step = 'major' | 'year' | 'core' | 'ls' | 'electives' | 'done' | 'waiting'

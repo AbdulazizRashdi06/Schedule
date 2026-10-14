@@ -22,6 +22,33 @@ public static class Dto
     public static object Of(Semester s) => new { s.Id, s.Name, s.Term, s.Year, s.IsCurrent, publishedAt = s.PublishedAt };
 }
 
+/// <summary>Teaching weeks of a semester: set by an admin, or taken from its dated classes.</summary>
+public static class SemesterWeeks
+{
+    public record Weeks(string? Week1Start, int? LastWeek, bool Set);
+
+    public static DateOnly Sunday(DateOnly d) => d.AddDays(-(int)d.DayOfWeek);
+
+    public static async Task<Weeks> ForAsync(Microsoft.EntityFrameworkCore.DbContext db, Semester s, CancellationToken ct)
+    {
+        var dates = db.Set<Meeting>().Where(m => m.Date != null && db.Set<Section>().Any(x => x.Id == m.SectionId && x.Course.SemesterId == s.Id)).Select(m => m.Date!.Value);
+        DateOnly? first = s.Week1Start;
+        DateOnly? last = null;
+        if (first is null || s.LastWeek is null)
+        {
+            var any = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AnyAsync(dates, ct);
+            if (any)
+            {
+                first ??= Sunday(await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.MinAsync(dates, ct));
+                last = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.MaxAsync(dates, ct);
+            }
+        }
+        if (first is null) return new(null, s.LastWeek, s.Week1Start is not null || s.LastWeek is not null);
+        var lastWeek = s.LastWeek ?? (last is null ? null : (Sunday(last.Value).DayNumber - first.Value.DayNumber) / 7 + 1);
+        return new(first.Value.ToString("yyyy-MM-dd"), lastWeek, s.Week1Start is not null || s.LastWeek is not null);
+    }
+}
+
 public static class Clashes
 {
     /// <summary>Same weekday and times overlap; two dated classes must also share the date.</summary>

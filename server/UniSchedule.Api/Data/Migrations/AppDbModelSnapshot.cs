@@ -326,6 +326,9 @@ namespace UniSchedule.Api.Data.Migrations
                     b.Property<bool>("IsCurrent")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int?>("LastWeek")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -335,6 +338,9 @@ namespace UniSchedule.Api.Data.Migrations
 
                     b.Property<string>("Term")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly?>("Week1Start")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("Year")

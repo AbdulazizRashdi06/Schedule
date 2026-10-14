@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, errorText } from '../lib/api'
-import type { Course, Meeting, Section, Semester } from '../lib/types'
+import type { Course, Meeting, Section, Semester, Weeks } from '../lib/types'
 import { DAY_LONG, meetsText } from '../lib/time'
 import { SLOTS } from '../lib/slots'
 import { yearName } from '../lib/year'
@@ -13,6 +13,7 @@ interface Detail {
   semester: Semester
   enrollment: Record<string, number>
   noSection: number
+  weeks: Weeks
 }
 
 const meets = (s: Section) => meetsText(s, ', ')
@@ -109,6 +110,7 @@ export default function CourseDetail() {
             section={editing}
             students={students(editing)}
             live={d.semester.isCurrent}
+            weeks={d.weeks}
             onCancel={() => setEditing(null)}
             onSaved={async (changed) => {
               const n = students(editing)
@@ -146,13 +148,19 @@ const addDays = (s: string, n: number) => {
 const weekOf = (date: string) => addDays(date, -parse(date).getDay())
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const fmt = (d: Date) => `${d.getDate()} ${MONTHS[d.getMonth()]}`
+/** "Week 4" from the semester's teaching weeks, or "Week of" when they aren't known. */
+const weekName = (sunday: string, w: Weeks) => {
+  if (!w.week1Start) return 'Week of'
+  const n = Math.round((parse(sunday).getTime() - parse(w.week1Start).getTime()) / (7 * 86_400_000)) + 1
+  return n < 1 ? 'Before week 1' : w.lastWeek && n > w.lastWeek ? `After week ${w.lastWeek}` : `Week ${n}`
+}
 /** 24-hour "08:00". */
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/
 const order = (a: Meeting, b: Meeting) => (a.date ?? '').localeCompare(b.date ?? '') || a.day - b.day || a.start.localeCompare(b.start)
 const plain = (list: Meeting[]) => [...list].sort(order).map(({ day, start, end, room, date }) => ({ day, start, end, room, date }))
 
 /** Every class of a section: weekly ones first, then dated classes grouped by week, with past weeks folded away. */
-function SectionEditor({ code, section, students, live, onCancel, onSaved }: { code: string; section: Section; students: number; live: boolean; onCancel: () => void; onSaved: (changed: boolean) => void }) {
+function SectionEditor({ code, section, students, live, weeks: teaching, onCancel, onSaved }: { code: string; section: Section; students: number; live: boolean; weeks: Weeks; onCancel: () => void; onSaved: (changed: boolean) => void }) {
   const [instructor, setInstructor] = useState(section.instructor)
   const [rows, setRows] = useState<Row[]>(() => section.meetings.map(withKey).sort(order))
   const [showPast, setShowPast] = useState(false)
@@ -241,7 +249,8 @@ function SectionEditor({ code, section, students, live, onCancel, onSaved }: { c
           <section key={w} className="flex flex-col gap-2">
             <h3 className="label flex justify-between text-[11px] tracking-[0.12em]">
               <span>
-                Week of {fmt(parse(w))}
+                {teaching.week1Start ? `${weekName(w, teaching)} · ` : 'Week of '}
+                {fmt(parse(w))}
                 {w === thisWeek && ' · this week'}
               </span>
               <span className="text-muted">{list.map((r) => DAY_SHORT_NAMES[r.day]).join(' ')}</span>

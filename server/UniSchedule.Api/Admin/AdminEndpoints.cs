@@ -13,6 +13,8 @@ public static class AdminEndpoints
     public const long MaxUploadBytes = 5 * 1024 * 1024;
 
     public record SemesterBody(string? Term, int? Year);
+    /// <summary>Both null = work them out from the dated classes again.</summary>
+    public record WeeksBody(string? Week1Start, int? LastWeek);
     /// <summary><paramref name="Date"/> ("2026-09-21") keeps a dated class on its date; its weekday wins over Day.</summary>
     public record MeetingBody(int Day, string? Start, string? End, string? Room, string? Date = null);
     public record SectionBody(string? Instructor, List<MeetingBody>? Meetings);
@@ -32,7 +34,7 @@ public static class AdminEndpoints
             await db.Semesters.OrderByDescending(s => s.Year).ThenByDescending(s => s.Term == "Fall" ? 3 : s.Term == "Summer" ? 2 : 1)
                 .Select(s => new
                 {
-                    s.Id, s.Name, s.Term, s.Year, s.IsCurrent, s.PublishedAt,
+                    s.Id, s.Name, s.Term, s.Year, s.IsCurrent, s.PublishedAt, s.Week1Start, s.LastWeek,
                     courses = s.Courses.Count,
                     sections = s.Courses.SelectMany(c => c.Sections).Count(),
                 }).ToListAsync(ct));
@@ -67,6 +69,31 @@ public static class AdminEndpoints
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             return Results.Ok(Dto.Of(semester));
+        });
+
+        // Teaching weeks: week 1's start (snapped to its Sunday) and the last week's number. Later weeks follow on.
+        admin.MapGet("/semesters/{id:int}/weeks", async (int id, AppDb db, CancellationToken ct) =>
+        {
+            var semester = await db.Semesters.FindAsync([id], ct);
+            return semester is null ? Errors.NotFound("That semester doesn't exist.") : Results.Ok(await SemesterWeeks.ForAsync(db, semester, ct));
+        });
+
+        admin.MapPut("/semesters/{id:int}/weeks", async (int id, WeeksBody body, AppDb db, CancellationToken ct) =>
+        {
+            var semester = await db.Semesters.FindAsync([id], ct);
+            if (semester is null) return Errors.NotFound("That semester doesn't exist.");
+            DateOnly? start = null;
+            if (!string.IsNullOrWhiteSpace(body.Week1Start))
+            {
+                start = ScheduleImport.ParseDate(body.Week1Start);
+                if (start is null) return Errors.BadRequest("Enter week 1's start date like 2026-09-20.");
+                start = SemesterWeeks.Sunday(start.Value);
+            }
+            if (body.LastWeek is not null and not (>= 1 and <= 40)) return Errors.BadRequest("The last week should be between 1 and 40.");
+            semester.Week1Start = start;
+            semester.LastWeek = body.LastWeek;
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(await SemesterWeeks.ForAsync(db, semester, ct));
         });
 
         admin.MapDelete("/semesters/{id:int}", async (int id, AppDb db, CancellationToken ct) =>
@@ -207,6 +234,7 @@ public static class AdminEndpoints
             {
                 course = dto,
                 semester = Dto.Of(course.Semester),
+                weeks = await SemesterWeeks.ForAsync(db, course.Semester, ct),
                 enrollment = dto.Sections.ToDictionary(s => s.Id.ToString(CultureInfo.InvariantCulture), s => counts.GetValueOrDefault(s.Id)),
                 noSection,
             });

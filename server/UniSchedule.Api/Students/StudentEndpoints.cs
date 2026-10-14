@@ -130,7 +130,7 @@ public static class StudentEndpoints
                 major = s.Major is null ? null : new { s.Major.Id, s.Major.Code, s.Major.Name },
                 s.Year,
                 predictedYear = StudentIds.PredictYear(s.UniversityId, AcademicStartYear(current, clock.GetUtcNow())),
-                semester = current is null ? null : new { current.Id, current.Name },
+                semester = current is null ? null : new { current.Id, current.Name, weeks = await SemesterWeeks.ForAsync(db, current, ct) },
                 step,
                 setupDone = done,
             });

@@ -68,6 +68,10 @@ public class Semester
     public bool IsCurrent { get; set; }
     public DateTimeOffset? PublishedAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+    /// <summary>The Sunday teaching week 1 starts on. Null = the first week with dated classes.</summary>
+    public DateOnly? Week1Start { get; set; }
+    /// <summary>The last teaching week's number, e.g. 14. Null = the last week with dated classes.</summary>
+    public int? LastWeek { get; set; }
     public List<Course> Courses { get; set; } = [];
 
     /// <summary>The academic year starts in the fall: Spring 2027 belongs to 2026/27.</summary>

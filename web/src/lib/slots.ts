@@ -1,4 +1,4 @@
-import type { Meeting, Timetable, TimetableClass } from './types'
+import type { Meeting, Timetable, TimetableClass, Weeks } from './types'
 import { minutes } from './time'
 
 /** Class slots: every class is 1h30 with 15-minute breaks. The week grid is laid out by slot, not by hour. */
@@ -122,7 +122,20 @@ export function fmtWeekRange(start: Date, days: number) {
   return start.getMonth() === end.getMonth() ? `${start.getDate()} – ${fmtDate(end)}` : `${fmtDate(start)} – ${fmtDate(end)}`
 }
 
-export function weekTitle(offset: number) {
+/** Teaching week number of the week starting `sunday`: 1 for week 1's Sunday, counting on from there. */
+export function teachingWeek(sunday: Date, week1Start: string) {
+  const [y, m, d] = week1Start.split('-').map(Number)
+  return Math.round((sunday.getTime() - new Date(y, m - 1, d).getTime()) / (7 * 86_400_000)) + 1
+}
+
+/** "Week 4" from the semester's teaching weeks; "This week" / "In 3 weeks" when they aren't known. */
+export function weekTitle(offset: number, sunday?: Date, weeks?: Weeks | null) {
+  if (sunday && weeks?.week1Start) {
+    const n = teachingWeek(sunday, weeks.week1Start)
+    if (n < 1) return 'Before week 1'
+    if (weeks.lastWeek && n > weeks.lastWeek) return `After week ${weeks.lastWeek}`
+    return `Week ${n}`
+  }
   if (offset === 0) return 'This week'
   if (offset === 1) return 'Next week'
   if (offset === -1) return 'Last week'

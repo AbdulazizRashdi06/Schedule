@@ -61,9 +61,10 @@ export default function Schedule() {
             <Icon name="prev" />
           </RoundButton>
           <div className="min-w-0 text-center">
-            <h1 className="display text-[30px] leading-[0.9] tracking-[-0.03em] text-sky">{weekTitle(offset)}</h1>
+            <h1 className="display text-[30px] leading-[0.9] tracking-[-0.03em] text-sky">{weekTitle(offset, start, me?.semester?.weeks)}</h1>
             <p className="label mt-1.5 text-[10px] text-ice">
               {fmtWeekRange(start, days.length)}
+              {thisWeek && me?.semester?.weeks?.week1Start && ' · this week'}
               {!thisWeek && (
                 <button type="button" className="ml-2 text-sky link-hover" onClick={() => go({ w: 0 })}>
                   · Today
