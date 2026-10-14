@@ -453,7 +453,17 @@ function PickSteps({ me, view, go }: { me: Me; view: View; go: (v: View, persist
     const pairs = Math.ceil(clashes / 2)
     return (
       <>
-        <Heading size={46} title="Your core courses." sub={`Already ticked for ${me.major?.code} · Year ${me.year}. Pick a section for each.`} />
+        <Heading size={46} title="Your core courses." sub={
+            <>
+              Already ticked for {me.major?.code} · Year {me.year}. Pick a section for each.
+              <span className="mt-3 flex flex-wrap items-center gap-1.5">
+                <span className="label text-[11px] tracking-[0.1em] text-muted">Coming next</span>
+                <span className="label rounded-full bg-ice px-2.5 py-1 text-[10px]">Life Skills</span>
+                <span className="label rounded-full bg-ice px-2.5 py-1 text-[10px]">Electives</span>
+              </span>
+            </>
+          }
+        />
         {cores.length === 0 ? <p className="px-6 pt-5 text-[16px] font-semibold text-muted">No core courses are listed for Year {me.year} this semester.</p> : list(cores)}
         <button type="button" onClick={() => save('editcore', 'core')} className="label mx-6 mb-4 h-11 self-start text-[12px] link-hover">
           + Add a core course from another year
@@ -465,7 +475,7 @@ function PickSteps({ me, view, go }: { me: Me; view: View; go: (v: View, persist
             <Primary disabled>Pick a section for {missing.join(', ')}</Primary>
           ) : (
             <Primary busy={busy} onClick={() => save('ls', 'ls')}>
-              {busy ? 'Saving…' : 'Continue'}
+              {busy ? 'Saving…' : 'Next: Life Skills'}
             </Primary>
           )}
         </BottomBar>
@@ -524,13 +534,13 @@ function PickSteps({ me, view, go }: { me: Me; view: View; go: (v: View, persist
         : n
           ? `${n} ${n === 1 ? 'elective' : 'electives'} picked`
           : 'No electives, you can add later'
-    const label = view === 'ls' ? (n ? 'Continue' : 'Skip for now') : n ? 'Finish setup' : 'Skip and finish'
+    const label = view === 'ls' ? (n ? 'Next: Electives' : 'Skip to electives') : n ? 'Finish setup' : 'Skip and finish'
     return (
       <>
         <Heading
           size={46}
           title={view === 'ls' ? 'Any LS courses?' : 'Pick your electives.'}
-          sub={view === 'ls' ? 'Tick the ones you’re taking this semester. Skip if none.' : `Only electives open to ${me.major?.name} are listed.`}
+          sub={view === 'ls' ? 'Tick the ones you’re taking this semester. Skip if none. Electives come next.' : `Only electives open to ${me.major?.name} are listed.`}
         />
         {courses.length === 0 ? <p className="px-6 pt-5 text-[16px] font-semibold text-muted">None are offered this semester.</p> : list(courses)}
         <BottomBar error={error} summary={summary}>
