@@ -35,8 +35,8 @@ export function sessionType(room: string): ClassType {
 }
 
 export const TYPE_NAME: Record<ClassType, string> = { lecture: 'Lecture', lab: 'Lab', tutorial: 'Tutorial' }
-/** Block colours: lecture cream, lab ice, tutorial sky. Text on every block is navy. */
-export const TYPE_BG: Record<ClassType, string> = { lecture: 'bg-cream', lab: 'bg-ice', tutorial: 'bg-sky' }
+/** Block colours: lecture white, lab ice, tutorial sky. Text on every block is navy. */
+export const TYPE_BG: Record<ClassType, string> = { lecture: 'bg-paper', lab: 'bg-ice', tutorial: 'bg-sky' }
 
 /** The slot a meeting belongs to: the one it overlaps most, or the nearest one for times outside the day. */
 export function slotOf(start: number, end: number) {

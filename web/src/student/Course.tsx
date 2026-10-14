@@ -38,7 +38,7 @@ export default function Course() {
   if (!error && me && tt && !cls) return <NotFound course />
 
   return (
-    <div className="min-h-dvh bg-sky text-navy">
+    <div className="min-h-dvh bg-cream text-navy">
       <div className="mx-auto flex min-h-dvh max-w-[480px] flex-col pt-[max(1.75rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
         <header className="flex items-center justify-between gap-3 px-6">
           <RoundButton label="Back" onClick={back} className="bg-navy text-sky">
