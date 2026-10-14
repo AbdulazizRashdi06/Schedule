@@ -53,4 +53,4 @@ docker compose -f deploy/docker-compose.yml --env-file deploy/.env logs --tail 5
 exit 1
 REMOTE
 
-echo "==> Deployed $REV. https://schedule.173-249-40-122.sslip.io"
+echo "==> Deployed $REV. https://schedule.tryzarqa.com"
