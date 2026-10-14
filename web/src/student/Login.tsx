@@ -11,10 +11,14 @@ interface CodeSent {
   testCode: string | null
 }
 
-/** "240161" → "24-0161": the dash is added as you type. */
-const formatId = (raw: string) => {
-  const v = raw.replace(/\D/g, '').slice(0, 6)
-  return v.length > 2 ? `${v.slice(0, 2)}-${v.slice(2)}` : v
+/**
+ * "24" → "24-", "240161" → "24-0161": the dash appears as soon as the first two digits are in,
+ * so nobody has to type it. Deleting right after the dash removes the dash and the digit before it.
+ */
+const formatId = (raw: string, prev: string) => {
+  let v = raw.replace(/\D/g, '').slice(0, 6)
+  if (raw.length < prev.length && prev.endsWith('-') && v.length === 2) v = v.slice(0, 1)
+  return v.length >= 2 ? `${v.slice(0, 2)}-${v.slice(2)}` : v
 }
 const validId = (id: string) => /^\d{2}-\d{4}$/.test(id)
 
@@ -151,7 +155,7 @@ function IdStep({ id, setId, onSent }: { id: string; setId: (v: string) => void;
               placeholder="24-0161"
               value={id}
               onChange={(e) => {
-                setId(formatId(e.target.value))
+                setId(formatId(e.target.value, id))
                 setError('')
               }}
               aria-invalid={!!error || undefined}
@@ -189,7 +193,7 @@ function IdStep({ id, setId, onSent }: { id: string; setId: (v: string) => void;
                 {error}
               </span>
             ) : (
-              <span className="text-[14px] font-semibold text-muted">It’s on your student card. We’ll email you a code, no password.</span>
+              <span className="text-[14px] font-semibold text-muted">We’ll email you a code.</span>
             )}
           </div>
         </div>

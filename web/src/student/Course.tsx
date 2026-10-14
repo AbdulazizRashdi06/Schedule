@@ -73,7 +73,6 @@ export default function Course() {
               <p className="text-[15px] font-semibold">
                 {[
                   types || cls.type,
-                  `${mine.length}× a week`,
                   cls.credits != null && `${cls.credits} ${cls.credits === 1 ? 'credit' : 'credits'}`,
                 ]
                   .filter(Boolean)

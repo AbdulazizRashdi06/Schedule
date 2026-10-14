@@ -4,7 +4,6 @@ import { api, errorText, store } from '../lib/api'
 import { useSession } from '../lib/session'
 import type { Course, CourseType, Major, Me, Options, PickRow } from '../lib/types'
 import { yearName } from '../lib/year'
-import { classesPerWeek } from '../lib/time'
 import { ErrorText, Icon, Sk, cx } from '../components/ui'
 import { CourseRow, clashDetail, type Picks } from '../components/CourseRow'
 import { BackButton, clearTimetableCache } from './timetable'
@@ -451,23 +450,32 @@ function PickSteps({ me, view, go }: { me: Me; view: View; go: (v: View, persist
     // Core courses of their year, plus any they ticked from another year.
     const cores = ofType('Core').filter((c) => picks.has(c.id) || c.year === me.year)
     const n = pickedOf('Core').length
-    const classes = pickedOf('Core').reduce((sum, c) => { const s = c.sections.find((x) => x.id === picks.get(c.id)); return sum + (s ? classesPerWeek(s) : 0) }, 0)
     const clashes = clashing('Core')
     const missing = missingSection('Core')
     const pairs = Math.ceil(clashes / 2)
     return (
       <>
-        <Heading size={46} title="Your core courses." sub={`Already ticked for ${me.major?.code} · ${yearName(me.year ?? 0)}. Pick a section for each.`} />
+        <Heading size={46} title="Your core courses." sub={
+            <>
+              Already ticked for {me.major?.code} · {yearName(me.year ?? 0)}. Pick a section for each.
+              <span className="mt-3 flex flex-wrap items-center gap-1.5">
+                <span className="label text-[11px] tracking-[0.1em] text-muted">Coming next</span>
+                <span className="label rounded-full bg-ice px-2.5 py-1 text-[10px]">Life Skills</span>
+                <span className="label rounded-full bg-ice px-2.5 py-1 text-[10px]">Electives</span>
+              </span>
+            </>
+          }
+        />
         {cores.length === 0 ? <p className="px-6 pt-5 text-[16px] font-semibold text-muted">No core courses are listed for {yearName(me.year ?? 0)} this semester.</p> : list(cores)}
         <button type="button" onClick={() => save('editcore', 'core')} className="label mx-6 mb-4 h-11 self-start text-[12px] link-hover">
           + Add a core course from another year
         </button>
-        <BottomBar error={error} summary={`${n} ${n === 1 ? 'course' : 'courses'} · ${classes} ${classes === 1 ? 'class' : 'classes'} a week${pairs ? ` · ${pairs} ${pairs === 1 ? 'clash' : 'clashes'}` : ''}`}>
+        <BottomBar error={error} summary={`${n} ${n === 1 ? 'course' : 'courses'} picked${pairs ? ` · ${pairs} ${pairs === 1 ? 'clash' : 'clashes'}` : ''}`}>
           {missing.length > 0 ? (
             <Primary disabled>Pick a section for {missing.join(', ')}</Primary>
           ) : (
             <Primary busy={busy} onClick={() => save('ls', 'ls')}>
-              {busy ? 'Saving…' : 'Continue'}
+              {busy ? 'Saving…' : 'Next: Life Skills'}
             </Primary>
           )}
         </BottomBar>
@@ -525,13 +533,13 @@ function PickSteps({ me, view, go }: { me: Me; view: View; go: (v: View, persist
         : n
           ? `${n} ${n === 1 ? 'elective' : 'electives'} picked`
           : 'No electives, you can add later'
-    const label = view === 'ls' ? (n ? 'Continue' : 'Skip for now') : n ? 'Finish setup' : 'Skip and finish'
+    const label = view === 'ls' ? (n ? 'Next: Electives' : 'Skip to electives') : n ? 'Finish setup' : 'Skip and finish'
     return (
       <>
         <Heading
           size={46}
           title={view === 'ls' ? 'Any LS courses?' : 'Pick your electives.'}
-          sub={view === 'ls' ? 'Tick the ones you’re taking this semester. Skip if none.' : `Only electives open to ${me.major?.name} are listed.`}
+          sub={view === 'ls' ? 'Tick the ones you’re taking this semester. Skip if none. Electives come next.' : `Only electives open to ${me.major?.name} are listed.`}
         />
         {courses.length === 0 ? <p className="px-6 pt-5 text-[16px] font-semibold text-muted">None are offered this semester.</p> : list(courses)}
         <BottomBar error={error} summary={summary}>

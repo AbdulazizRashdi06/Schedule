@@ -15,6 +15,9 @@ Paste this into a Claude Code session on the laptop, in the repo https://github.
    GitHub → Settings → Secrets and variables → Actions → New repository secret:
    - `DEPLOY_SSH_KEY`: the whole contents of `~/.ssh/zarqa_vps` (BEGIN/END lines included).
    - Optional `DEPLOY_KNOWN_HOSTS`: the server's line from `~/.ssh/known_hosts` (`ssh-keygen -F 173.249.40.122`), to pin the host key.
+   From the laptop, Claude can do this without the key ever showing in chat (needs the `gh` CLI, signed in):
+   `gh secret set DEPLOY_SSH_KEY --repo AbdulazizRashdi06/Schedule < ~/.ssh/zarqa_vps`
+   and `ssh-keygen -F 173.249.40.122 -f ~/.ssh/known_hosts | grep -v '^#' | gh secret set DEPLOY_KNOWN_HOSTS --repo AbdulazizRashdi06/Schedule`.
    If the laptop key is lost: make a new ed25519 key, add its public half to `/home/deploy/.ssh/authorized_keys` through the hosting provider's web console, and use the new private key as the secret.
 
 2. **Add `.github/workflows/deploy.yml`** on `design-v3` (or main). Decide with the owner: deploy on every push to `main`, or manual only (drop the `push:` trigger and keep `workflow_dispatch`).
