@@ -447,7 +447,6 @@ function PickSteps({ me, view, go }: { me: Me; view: View; go: (v: View, persist
     // Core courses of their year, plus any they ticked from another year.
     const cores = ofType('Core').filter((c) => picks.has(c.id) || c.year === me.year)
     const n = pickedOf('Core').length
-    const classes = pickedOf('Core').reduce((sum, c) => sum + (c.sections.find((s) => s.id === picks.get(c.id))?.meetings.length ?? 0), 0)
     const clashes = clashing('Core')
     const missing = missingSection('Core')
     const pairs = Math.ceil(clashes / 2)
@@ -468,7 +467,7 @@ function PickSteps({ me, view, go }: { me: Me; view: View; go: (v: View, persist
         <button type="button" onClick={() => save('editcore', 'core')} className="label mx-6 mb-4 h-11 self-start text-[12px] link-hover">
           + Add a core course from another year
         </button>
-        <BottomBar error={error} summary={`${n} ${n === 1 ? 'course' : 'courses'} · ${classes} ${classes === 1 ? 'class' : 'classes'} a week`}>
+        <BottomBar error={error} summary={`${n} ${n === 1 ? 'course' : 'courses'} picked`}>
           {clashes > 0 ? (
             <Primary disabled>Fix {pairs} {pairs === 1 ? 'clash' : 'clashes'} to continue</Primary>
           ) : missing.length > 0 ? (
