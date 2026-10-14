@@ -128,32 +128,89 @@ export default function CourseDetail() {
   )
 }
 
-type Row = Meeting
+type Row = Meeting & { key: number }
 
-/** The slot a meeting starts in, or "custom" for times that aren't a class slot. */
-const slotOf = (m: Row) => {
-  const i = SLOTS.findIndex(([s, e]) => s === m.start && e === m.end)
-  return i < 0 ? 'custom' : String(i)
+let nextKey = 1
+const withKey = (m: Meeting): Row => ({ ...m, key: nextKey++ })
+const DAY_SHORT_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const parse = (s: string) => {
+  const [y, m, d] = s.split('-').map(Number)
+  return new Date(y, m - 1, d)
 }
+const addDays = (s: string, n: number) => {
+  const d = parse(s)
+  return iso(new Date(d.getFullYear(), d.getMonth(), d.getDate() + n))
+}
+/** The Sunday that starts a date's week, as "2026-09-20". */
+const weekOf = (date: string) => addDays(date, -parse(date).getDay())
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const fmt = (d: Date) => `${d.getDate()} ${MONTHS[d.getMonth()]}`
+/** 24-hour "08:00". */
+const TIME = /^([01]\d|2[0-3]):[0-5]\d$/
+const order = (a: Meeting, b: Meeting) => (a.date ?? '').localeCompare(b.date ?? '') || a.day - b.day || a.start.localeCompare(b.start)
+const plain = (list: Meeting[]) => [...list].sort(order).map(({ day, start, end, room, date }) => ({ day, start, end, room, date }))
 
+/** Every class of a section: weekly ones first, then dated classes grouped by week, with past weeks folded away. */
 function SectionEditor({ code, section, students, live, onCancel, onSaved }: { code: string; section: Section; students: number; live: boolean; onCancel: () => void; onSaved: (changed: boolean) => void }) {
   const [instructor, setInstructor] = useState(section.instructor)
-  const [rows, setRows] = useState<Row[]>(section.meetings.map((m) => ({ ...m })))
+  const [rows, setRows] = useState<Row[]>(() => section.meetings.map(withKey).sort(order))
+  const [showPast, setShowPast] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const update = (i: number, patch: Partial<Row>) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
+  const update = (key: number, patch: Partial<Meeting>) =>
+    setRows(rows.map((r) => (r.key === key ? { ...r, ...patch, ...(patch.date ? { day: parse(patch.date).getDay() } : {}) } : r)))
+  const remove = (key: number) => setRows(rows.filter((r) => r.key !== key))
+
+  const thisWeek = weekOf(iso(new Date()))
+  const weekly = rows.filter((r) => !r.date)
+  const dated = rows.filter((r) => r.date)
+  const weeks = [...new Set(dated.map((r) => weekOf(r.date!)))].sort()
+  const past = weeks.filter((w) => w < thisWeek)
+  const shown = showPast ? weeks : weeks.filter((w) => w >= thisWeek)
+
+  /** A new dated class a week after the last one, at the same time and room (today, first slot, when there are none). */
+  const addDated = () => {
+    const last = [...dated].sort(order)[dated.length - 1] as Row | undefined
+    const date = last ? addDays(last.date!, 7) : iso(new Date())
+    setRows([...rows, withKey({ day: parse(date).getDay(), start: last?.start ?? SLOTS[0][0], end: last?.end ?? SLOTS[0][1], room: last?.room ?? '', date })].sort(order))
+  }
+  const addWeekly = () => setRows([...rows, withKey({ day: 0, start: SLOTS[0][0], end: SLOTS[0][1], room: weekly[weekly.length - 1]?.room ?? '', date: null })].sort(order))
+
+  const row = (r: Row) => (
+    <div key={r.key} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.2fr)_auto] items-center gap-1.5">
+      {r.date ? (
+        <TextField label="Date" hideLabel type="date" value={r.date} onChange={(e) => e.target.value && update(r.key, { date: e.target.value })} className="col-span-3" boxClassName="h-11 px-2.5" />
+      ) : (
+        <Select aria-label="Day" value={r.day} onChange={(e) => update(r.key, { day: Number(e.target.value) })} className="col-span-3 h-11">
+          {DAY_LONG.map((name, k) => (
+            <option key={k} value={k}>
+              Every {name}
+            </option>
+          ))}
+        </Select>
+      )}
+      <button type="button" onClick={() => remove(r.key)} aria-label="Remove this class" className="press grid size-9 place-items-center rounded-full text-[20px] font-bold text-alert">
+        ×
+      </button>
+      <TextField label="Start" hideLabel mono inputMode="numeric" placeholder="08:00" value={r.start} invalid={!TIME.test(r.start)} onChange={(e) => update(r.key, { start: e.target.value })} boxClassName="h-11 px-2.5" />
+      <TextField label="End" hideLabel mono inputMode="numeric" placeholder="09:30" value={r.end} invalid={!TIME.test(r.end) || r.end <= r.start} onChange={(e) => update(r.key, { end: e.target.value })} boxClassName="h-11 px-2.5" />
+      <TextField label="Room" hideLabel placeholder="Room" value={r.room} invalid={!r.room.trim()} onChange={(e) => update(r.key, { room: e.target.value })} className="col-span-2" boxClassName="h-11 px-2.5" />
+    </div>
+  )
 
   return (
     <form
       className="flex min-h-full flex-col gap-[18px]"
       onSubmit={async (e) => {
         e.preventDefault()
+        if (rows.length === 0) return setError('Keep at least one class.')
         setBusy(true)
         setError('')
         try {
-          const before = JSON.stringify([section.instructor, section.meetings])
-          await api.put(`/admin/sections/${section.id}`, { instructor, meetings: rows })
-          onSaved(before !== JSON.stringify([instructor.trim(), rows]))
+          const meetings = plain(rows)
+          await api.put(`/admin/sections/${section.id}`, { instructor, meetings })
+          onSaved(JSON.stringify([section.instructor, plain(section.meetings)]) !== JSON.stringify([instructor.trim(), meetings]))
         } catch (err) {
           setError(errorText(err))
           setBusy(false)
@@ -164,62 +221,52 @@ function SectionEditor({ code, section, students, live, onCancel, onSaved }: { c
         <h2 className="text-[34px] font-extrabold tracking-[-0.03em]">Section {section.number}</h2>
         <span className="label text-[12px] tracking-normal">{code}</span>
       </div>
-      {rows.map((r, i) => (
-        <fieldset key={i} className="flex flex-col gap-1.5">
-          <legend className="label flex w-full items-center justify-between pb-1.5 text-[11px] tracking-[0.12em]">
-            Class {i + 1}
-            {rows.length > 1 && (
-              <button type="button" onClick={() => setRows(rows.filter((_, j) => j !== i))} className="label text-[11px] text-alert link-hover" aria-label={`Remove class ${i + 1}`}>
-                Remove
-              </button>
-            )}
-          </legend>
-          <div className="grid grid-cols-2 gap-2">
-            <Select aria-label={`Class ${i + 1} day`} value={r.day} onChange={(e) => update(i, { day: Number(e.target.value) })}>
-              {DAY_LONG.map((name, k) => (
-                <option key={k} value={k}>
-                  {name}
-                </option>
-              ))}
-            </Select>
-            <Select
-              aria-label={`Class ${i + 1} start`}
-              value={slotOf(r)}
-              onChange={(e) => {
-                const slot = SLOTS[Number(e.target.value)]
-                if (slot) update(i, { start: slot[0], end: slot[1] })
-              }}
-            >
-              {SLOTS.map(([s], k) => (
-                <option key={k} value={k}>
-                  {s}
-                </option>
-              ))}
-              {slotOf(r) === 'custom' && (
-                <option value="custom" disabled>
-                  {r.start}–{r.end}
-                </option>
-              )}
-            </Select>
-          </div>
-          <TextField label={`Class ${i + 1} room`} hideLabel placeholder="Room" value={r.room} invalid={!r.room.trim()} onChange={(e) => update(i, { room: e.target.value })} />
-        </fieldset>
-      ))}
-      <button
-        type="button"
-        className="label self-start text-[11px] link-hover"
-        onClick={() => setRows([...rows, { ...(rows[rows.length - 1] ?? { day: 0, start: SLOTS[0][0], end: SLOTS[0][1], room: '' }) }])}
-      >
-        + Add a class
-      </button>
       <TextField label="Instructor" value={instructor} onChange={(e) => setInstructor(e.target.value)} />
+
+      {weekly.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h3 className="label text-[11px] tracking-[0.12em]">Every week</h3>
+          {weekly.map(row)}
+        </section>
+      )}
+
+      {past.length > 0 && (
+        <button type="button" className="label self-start text-[11px] link-hover" onClick={() => setShowPast(!showPast)}>
+          {showPast ? 'Hide past classes' : `Show past classes (${past.length} ${past.length === 1 ? 'week' : 'weeks'})`}
+        </button>
+      )}
+      {shown.map((w) => {
+        const list = dated.filter((r) => weekOf(r.date!) === w)
+        return (
+          <section key={w} className="flex flex-col gap-2">
+            <h3 className="label flex justify-between text-[11px] tracking-[0.12em]">
+              <span>
+                Week of {fmt(parse(w))}
+                {w === thisWeek && ' · this week'}
+              </span>
+              <span className="text-muted">{list.map((r) => DAY_SHORT_NAMES[r.day]).join(' ')}</span>
+            </h3>
+            {list.map(row)}
+          </section>
+        )
+      })}
+      {dated.length > 0 && shown.length === 0 && <p className="text-[14px] font-semibold text-muted">No classes left this semester.</p>}
+
+      <div className="flex flex-wrap gap-x-4 gap-y-1">
+        <button type="button" className="label text-[11px] link-hover" onClick={addDated}>
+          + Add a class on a date
+        </button>
+        <button type="button" className="label text-[11px] link-hover" onClick={addWeekly}>
+          + Add a weekly class
+        </button>
+      </div>
       <span className="text-[14px] font-semibold text-muted">
         {live
           ? `${students} ${students === 1 ? 'student' : 'students'} in this section will see the change in the app.`
           : 'This semester isn’t published, so nobody is notified.'}
       </span>
       <ErrorText>{error}</ErrorText>
-      <div className="mt-auto flex gap-2.5">
+      <div className="sticky bottom-0 mt-auto flex gap-2.5 bg-cream pt-2">
         <Button type="button" variant="secondary" className="h-[52px]" onClick={onCancel}>
           Cancel
         </Button>
