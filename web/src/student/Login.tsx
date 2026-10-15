@@ -73,7 +73,7 @@ function Screen({ children }: { children: React.ReactNode }) {
 
 const delay = (ms: number): CSSProperties => ({ animationDelay: `${ms}ms` })
 
-/** The coloured blocks above "Ahlan.": a timetable falling into place. */
+/** The coloured blocks above "Classy.": a timetable falling into place. */
 function Decor() {
   const cols: { pt: number; blocks: [string, number][] }[] = [
     { pt: 60, blocks: [['bg-navy', 1], ['bg-ice', 6]] },
@@ -140,7 +140,7 @@ function IdStep({ id, setId, onSent }: { id: string; setId: (v: string) => void;
       <Decor />
       <form onSubmit={send} noValidate className="flex flex-1 flex-col">
         <h1 className="display rise px-6 pt-7 text-[84px] leading-[0.82] tracking-[-0.06em]" style={delay(180)}>
-          Ahlan.
+          Classy.
         </h1>
         <div className="rise flex flex-col gap-2.5 px-6 pt-[26px]" style={delay(300)}>
           <label htmlFor="uid" className="label text-[12px] tracking-[0.14em] text-muted">

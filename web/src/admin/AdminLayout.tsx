@@ -46,7 +46,7 @@ export default function AdminLayout() {
   return (
     <div className="flex min-h-dvh flex-wrap bg-cream text-navy">
       <aside className="flex max-w-full flex-[1_0_220px] flex-col gap-1 border-navy/10 px-4 py-7 max-[799px]:border-b-[1.5px] min-[800px]:border-r-[1.5px]">
-        <span className="label px-3 pb-4 text-[12px] tracking-[0.14em]">Uni Schedule · Staff</span>
+        <span className="label px-3 pb-4 text-[12px] tracking-[0.14em]">Classy · Staff</span>
         {semesters.length > 0 && (
           <label className="flex flex-col gap-1 px-3 pb-4">
             <span className="label text-[10px] tracking-[0.14em] text-muted">Semester</span>

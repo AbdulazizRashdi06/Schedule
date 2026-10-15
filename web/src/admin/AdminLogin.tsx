@@ -35,7 +35,7 @@ export default function AdminLogin() {
   if (!entering && session?.kind === 'admin') return <Navigate to={session.mustChangePassword ? '/admin/password' : '/admin'} replace />
 
   return (
-    <SplitPage kicker="Uni Schedule" title="Staff." foot="Lost access? Ask an owner to reset your password.">
+    <SplitPage kicker="Classy" title="Staff." foot="Lost access? Ask an owner to reset your password.">
       <form
         noValidate
         className={cx('flex w-full max-w-[420px] flex-col gap-5', shakeClass)}
