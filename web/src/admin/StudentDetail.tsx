@@ -29,7 +29,7 @@ interface Detail {
 type Action = 'major' | 'picks' | 'remove' | 'owner' | null
 
 /** On a cream page lecture blocks are navy so they stay visible; labs are ice, tutorials sky. */
-const CELL: Record<ClassType, string> = { lecture: 'bg-navy text-cream', lab: 'bg-ice text-navy', tutorial: 'bg-sky text-navy' }
+const CELL: Record<ClassType, string> = { lecture: 'bg-navy text-cream', lab: 'bg-ice text-navy', tutorial: 'bg-sky text-navy', mine: 'bg-paper text-navy' }
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 /** "today at 09:52", "yesterday", "on 8 Oct". */

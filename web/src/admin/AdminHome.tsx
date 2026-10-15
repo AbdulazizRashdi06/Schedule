@@ -17,6 +17,7 @@ interface Stats {
     removed: { courseId: number; code: string; students: number }[]
     noRoom: { courseId: number; code: string; number: string }[]
     stuckInSetup: number
+    reportedNotes?: { courseId: number; code: string; notes: number }[]
   }
   recentUploads: { at: string; fileName: string; by: string; added: number; updated: number; removed: number }[]
 }
@@ -49,8 +50,14 @@ export default function AdminHome() {
     { value: stats.courses, label: `courses, ${plural(stats.sections, 'section')}` },
     { value: stats.sectionEditsThisWeek, label: 'section edits this week' },
   ]
-  const { removed, noRoom, stuckInSetup } = stats.attention
+  const { removed, noRoom, stuckInSetup, reportedNotes = [] } = stats.attention
   const attention: { to?: string; title: string; sub: string; action: string }[] = [
+    ...reportedNotes.map((r) => ({
+      to: `/admin/courses/${r.courseId}`,
+      title: `${plural(r.notes, 'public note')} reported on ${r.code}`,
+      sub: 'Students flagged them. Hide or delete if needed',
+      action: 'Review',
+    })),
     ...removed.map((r) => ({
       to: `/admin/courses/${r.courseId}`,
       title: `A ${r.code} section was removed`,

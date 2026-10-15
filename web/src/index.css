@@ -27,6 +27,13 @@
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
+/* Colour themes (Menu → Colours). Navy is the default above; each preset swaps the main colour family and the accent. */
+html[data-accent="forest"] { --color-navy: #103b2c; --color-navy-700: #22513f; --color-navy-800: #174634; --color-navy-line: #2f6150; --color-navy-line-2: #3d7461; --color-sky: #9fdcb8; --color-ice: #d4f1e0; --color-muted: #3b5a4d; }
+html[data-accent="plum"] { --color-navy: #3a1350; --color-navy-700: #52296a; --color-navy-800: #461d5d; --color-navy-line: #5e3577; --color-navy-line-2: #6f468a; --color-sky: #d3a8f0; --color-ice: #ecdcf8; --color-muted: #5a4568; }
+html[data-accent="maroon"] { --color-navy: #5a1020; --color-navy-700: #742637; --color-navy-800: #67192b; --color-navy-line: #803346; --color-navy-line-2: #924558; --color-sky: #f4a7b2; --color-ice: #fadde2; --color-muted: #6a4148; }
+html[data-accent="teal"] { --color-navy: #0b4650; --color-navy-700: #1f5e68; --color-navy-800: #13525c; --color-navy-line: #2c6c76; --color-navy-line-2: #3c7f89; --color-sky: #8fd8df; --color-ice: #d0f0f3; --color-muted: #36585e; }
+html[data-accent="charcoal"] { --color-navy: #1f2328; --color-navy-700: #353a41; --color-navy-800: #2a2f35; --color-navy-line: #444a52; --color-navy-line-2: #565d66; --color-sky: #b8c4d4; --color-ice: #e1e7ef; --color-muted: #4a5058; }
+
 html { -webkit-tap-highlight-color: transparent; }
 body { @apply bg-cream font-display text-navy antialiased; }
 button { cursor: pointer; }

@@ -2,6 +2,8 @@ import { StrictMode, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import './index.css'
+import { applyAccent, applyBackground, loadAccent, loadBackground } from './lib/theme'
+import Colours from './student/Colours'
 import { SessionProvider, useSession } from './lib/session'
 import Login from './student/Login'
 import Today, { TodaySkeleton } from './student/Today'
@@ -43,6 +45,10 @@ function StaffOnly({ children, ownerOnly }: { children: ReactNode; ownerOnly?: b
   return children
 }
 
+// The saved colour theme, before the first paint.
+applyAccent(loadAccent())
+applyBackground(loadBackground())
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <SessionProvider>
@@ -54,6 +60,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/course/:courseId" element={<StudentOnly><Course /></StudentOnly>} />
           <Route path="/setup" element={<StudentOnly><Setup /></StudentOnly>} />
           <Route path="/edit" element={<StudentOnly><EditCourses /></StudentOnly>} />
+          <Route path="/colours" element={<StudentOnly><Colours /></StudentOnly>} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/password" element={<ChangePassword />} />
           <Route path="/admin" element={<StaffOnly><AdminLayout /></StaffOnly>}>

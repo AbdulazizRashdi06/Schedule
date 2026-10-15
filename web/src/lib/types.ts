@@ -84,6 +84,20 @@ export interface TimetableClass {
   credits: number | null
   section: Section
   changed: boolean
+  /** Notes I can see: on the whole class, and per session date. */
+  notes?: { classWide: number; dates: Record<string, number> }
+}
+
+/** A student's own slot: every week on `day`, or once on `date`. */
+export interface CustomSlot {
+  id: number
+  title: string
+  day: number
+  start: string
+  end: string
+  date: string | null
+  place: string
+  note: string | null
 }
 
 export interface Timetable {
@@ -91,6 +105,7 @@ export interface Timetable {
   classes: TimetableClass[]
   needsSection: { courseId: number; code: string; name: string; removed: boolean }[]
   clashes: [number, number][]
+  slots?: CustomSlot[]
 }
 
 export interface Semester {

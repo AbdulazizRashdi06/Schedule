@@ -5,6 +5,7 @@ import { useSession } from '../lib/session'
 import type { Course, CourseType, Major, Me, Options, PickRow } from '../lib/types'
 import { yearName } from '../lib/year'
 import { ErrorText, Icon, Sk, cx } from '../components/ui'
+import LogoutConfirm from '../components/LogoutConfirm'
 import { CourseRow, clashDetail, type Picks } from '../components/CourseRow'
 import { BackButton, clearTimetableCache } from './timetable'
 
@@ -321,6 +322,7 @@ function Waiting({ me, onChange }: { me: Me; onChange: () => void }) {
   const { logout } = useSession()
   const navigate = useNavigate()
   const [notify, setNotify] = useState(() => store.get('notify-publish') === '1')
+  const [confirmOut, setConfirmOut] = useState(false)
   const out = async () => {
     await logout()
     navigate('/login', { replace: true })
@@ -333,9 +335,10 @@ function Waiting({ me, onChange }: { me: Me; onChange: () => void }) {
           {me.major && ` · ${me.major.code}`}
           {me.year != null && ` · ${yearName(me.year)}`}
         </span>
-        <button type="button" onClick={out} className="label flex h-11 items-center text-[12px] link-hover">
+        <button type="button" onClick={() => setConfirmOut(true)} className="label flex h-11 items-center text-[12px] link-hover">
           Log out
         </button>
+        <LogoutConfirm open={confirmOut} onClose={() => setConfirmOut(false)} onLogout={out} />
       </header>
       <div aria-hidden="true" className="rise mx-6 mt-10 grid grid-cols-5 gap-1.5">
         {Array.from({ length: 20 }, (_, i) => (

@@ -13,6 +13,7 @@ public static class AdminEndpoints
     public const long MaxUploadBytes = 5 * 1024 * 1024;
 
     public record SemesterBody(string? Term, int? Year);
+    public record HiddenBody(bool Hidden);
     /// <summary>Both null = work them out from the dated classes again.</summary>
     public record WeeksBody(string? Week1Start, int? LastWeek);
     /// <summary><paramref name="Date"/> ("2026-09-21") keeps a dated class on its date; its weekday wins over Day.</summary>
@@ -104,6 +105,32 @@ public static class AdminEndpoints
             db.Semesters.Remove(semester);
             await db.SaveChangesAsync(ct);
             return Results.NoContent();
+        });
+
+        // ---- Public notes on a course: staff can hide or delete them (private notes stay private) ----
+
+        admin.MapGet("/courses/{id:int}/notes", async (int id, AppDb db, CancellationToken ct) =>
+            Results.Ok(await db.ClassNotes.Where(n => n.CourseId == id && n.IsPublic)
+                .OrderByDescending(n => n.ReportCount).ThenByDescending(n => n.CreatedAt)
+                .Select(n => new
+                {
+                    n.Id, author = n.Student.UniversityId, n.Text, date = n.Date, section = n.Section == null ? null : n.Section.Number,
+                    reports = n.ReportCount, hidden = n.HiddenAt != null, n.CreatedAt,
+                }).ToListAsync(ct)));
+
+        admin.MapPut("/notes/{id:int}/hidden", async (int id, HiddenBody body, AppDb db, TimeProvider clock, CancellationToken ct) =>
+        {
+            var note = await db.ClassNotes.FirstOrDefaultAsync(n => n.Id == id && n.IsPublic, ct);
+            if (note is null) return Errors.NotFound("That note doesn't exist.");
+            note.HiddenAt = body.Hidden ? clock.GetUtcNow() : null;
+            await db.SaveChangesAsync(ct);
+            return Results.NoContent();
+        });
+
+        admin.MapDelete("/notes/{id:int}", async (int id, AppDb db, CancellationToken ct) =>
+        {
+            var removed = await db.ClassNotes.Where(n => n.Id == id && n.IsPublic).ExecuteDeleteAsync(ct);
+            return removed == 0 ? Errors.NotFound("That note doesn't exist.") : Results.NoContent();
         });
 
         // ---- Default courses: which courses are ticked for a major or family and study year ----
@@ -396,6 +423,10 @@ public static class AdminEndpoints
                     noRoom,
                     // Signed in but haven't finished setup for the live semester (nobody is stuck while nothing is published).
                     stuckInSetup = current is null ? 0 : await db.Students.CountAsync(s => !(s.SetupSemesterId == currentId && s.SetupCompletedAt != null), ct),
+                    // Public notes classmates reported that staff haven't hidden yet.
+                    reportedNotes = sid is null ? [] : await db.ClassNotes.Where(n => n.IsPublic && n.ReportCount > 0 && n.HiddenAt == null && n.Course.SemesterId == sid)
+                        .GroupBy(n => new { n.CourseId, n.Course.Code })
+                        .Select(g => new { courseId = g.Key.CourseId, code = g.Key.Code, notes = g.Count() }).ToListAsync(ct),
                 },
                 recentUploads = uploads.Select(u => new { at = u.At, u.FileName, u.By, u.Added, u.Updated, u.Removed }),
             });

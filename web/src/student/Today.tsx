@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { DAY_LONG, DAY_SHORT } from '../lib/time'
-import { TYPE_NAME, addDays, clock, fmtDate, fmtDuration, nowMinutes, onDate, weekStart, type Session } from '../lib/slots'
+import { TYPE_NAME, addDays, clock, fmtDate, fmtDuration, nowMinutes, onDate, sessionHref, weekStart, type Session } from '../lib/slots'
 import { Button, ErrorText, Sk, cx } from '../components/ui'
 import { MenuSheet } from './StudentShell'
 import { Icon, NeedsSection, useNow, useTimetable } from './timetable'
@@ -119,7 +119,7 @@ function LiveCard({ s, nowMin }: { s: Session; nowMin: number }) {
   const done = Math.min(total, Math.max(0, nowMin - s.start))
   const left = total - done
   return (
-    <Link to={`/course/${s.cls.courseId}`} className="press mx-3 flex flex-col gap-3.5 rounded-[32px] bg-navy p-[22px] pb-6 text-cream">
+    <Link to={sessionHref(s)} className="press mx-3 flex flex-col gap-3.5 rounded-[32px] bg-navy p-[22px] pb-6 text-cream">
       <span className="flex flex-wrap items-center gap-2">
         <span className="label text-[12px] tracking-[0.14em] text-ice">● Now · {s.cls.code}</span>
         <Tags s={s} dark />
@@ -167,7 +167,7 @@ function NextCard({ s, nowMin }: { s: Session; nowMin: number }) {
           ? 'Time for lunch first.'
           : `Plenty of time. It starts at ${s.meeting.start}.`
   return (
-    <Link to={`/course/${s.cls.courseId}`} className="press mx-3 flex flex-col gap-3.5 rounded-[32px] bg-navy p-[22px] text-cream">
+    <Link to={sessionHref(s)} className="press mx-3 flex flex-col gap-3.5 rounded-[32px] bg-navy p-[22px] text-cream">
       <span className="flex flex-wrap items-center gap-2">
         <span className="label text-[12px] tracking-[0.14em] text-ice">Next in</span>
         <Tags s={s} dark />
@@ -253,7 +253,7 @@ function List({ title, sessions, week, children }: { title: string; sessions: Se
       <ul>
         {sessions.map((s, i) => (
           <li key={i}>
-            <Link to={`/course/${s.cls.courseId}`} className="grid grid-cols-[84px_minmax(0,1fr)_24px] items-center gap-3 border-t-[2.5px] border-navy py-3.5">
+            <Link to={sessionHref(s)} className="grid grid-cols-[84px_minmax(0,1fr)_24px] items-center gap-3 border-t-[2.5px] border-navy py-3.5">
               <span className="display text-[34px] leading-none tracking-[-0.05em] tabular-nums">{s.meeting.start}</span>
               <span className="flex min-w-0 flex-col gap-0.5">
                 <span className="flex flex-wrap items-center gap-1.5">

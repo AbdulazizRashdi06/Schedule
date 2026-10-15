@@ -36,6 +36,13 @@ if ! docker network inspect "\$NET" >/dev/null 2>&1; then
   exit 1
 fi
 
+echo "==> Backing up the database"
+mkdir -p $APP/backups
+docker run --rm -v uni-schedule_data:/d -v $APP/backups:/b alpine tar czf /b/db-\$(date +%Y%m%d-%H%M%S).tgz -C /d .
+# Keep the newest 14.
+ls -1t $APP/backups/db-*.tgz | tail -n +15 | xargs -r rm -f
+echo "Backups: \$(ls -1 $APP/backups/db-*.tgz | wc -l), newest \$(ls -1t $APP/backups/db-*.tgz | head -1)"
+
 echo "==> Building and starting"
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build --remove-orphans
 docker image prune -f >/dev/null

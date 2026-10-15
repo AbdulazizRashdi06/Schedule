@@ -18,6 +18,9 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
     public DbSet<Pick> Picks => Set<Pick>();
     public DbSet<UploadLog> UploadLogs => Set<UploadLog>();
     public DbSet<CourseDefault> CourseDefaults => Set<CourseDefault>();
+    public DbSet<CustomSlot> CustomSlots => Set<CustomSlot>();
+    public DbSet<ClassNote> ClassNotes => Set<ClassNote>();
+    public DbSet<NoteReport> NoteReports => Set<NoteReport>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder b)
     {
@@ -79,6 +82,26 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
             e.HasOne(x => x.Student).WithMany(x => x.Picks).HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Course).WithMany().HasForeignKey(x => x.CourseId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Section).WithMany().HasForeignKey(x => x.SectionId).OnDelete(DeleteBehavior.SetNull);
+        });
+        m.Entity<CustomSlot>(e =>
+        {
+            e.HasIndex(x => new { x.StudentId, x.SemesterId });
+            e.HasOne<Student>().WithMany().HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Semester>().WithMany().HasForeignKey(x => x.SemesterId).OnDelete(DeleteBehavior.Cascade);
+        });
+        m.Entity<ClassNote>(e =>
+        {
+            e.HasIndex(x => x.CourseId);
+            e.HasIndex(x => new { x.StudentId, x.CreatedAt });
+            e.HasOne(x => x.Student).WithMany().HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Course).WithMany().HasForeignKey(x => x.CourseId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Section).WithMany().HasForeignKey(x => x.SectionId).OnDelete(DeleteBehavior.Cascade);
+        });
+        m.Entity<NoteReport>(e =>
+        {
+            e.HasKey(x => new { x.NoteId, x.StudentId });
+            e.HasOne<ClassNote>().WithMany().HasForeignKey(x => x.NoteId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Student>().WithMany().HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Cascade);
         });
         m.Entity<UploadLog>(e =>
         {

@@ -97,6 +97,7 @@ var api = app.MapGroup("/api");
 api.MapGet("/health", () => Results.Ok(new { ok = true }));
 api.MapAuth();
 api.MapStudent();
+api.MapPersonal();
 api.MapAdmin();
 api.MapOwner();
 api.Map("/{**rest}", () => Errors.NotFound());

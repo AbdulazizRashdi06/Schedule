@@ -281,15 +281,25 @@ public static class StudentEndpoints
         {
             var id = http.User.Id();
             var current = await CurrentSemester(db, ct);
-            if (current is null) return Results.Ok(new { semester = (object?)null, classes = Array.Empty<object>(), needsSection = Array.Empty<object>(), clashes = Array.Empty<int[]>() });
+            if (current is null) return Results.Ok(new { semester = (object?)null, classes = Array.Empty<object>(), needsSection = Array.Empty<object>(), clashes = Array.Empty<int[]>(), slots = Array.Empty<object>() });
             var picks = await db.Picks.Where(p => p.StudentId == id && p.Course.SemesterId == current.Id)
                 .Include(p => p.Course)
                 .Include(p => p.Section).ThenInclude(s => s!.Meetings)
                 .AsSplitQuery().ToListAsync(ct);
             var withSection = picks.Where(p => p.Section is not null).OrderBy(p => p.Course.Code).ToList();
+            var slots = await db.CustomSlots.Where(s => s.StudentId == id && s.SemesterId == current.Id).ToListAsync(ct);
+            // Note counts per course, so blocks can show a dot: whole-course notes, and per session date.
+            var notes = await PersonalEndpoints.VisibleNotes(db, id, picks.Select(p => p.CourseId).ToList(), ct);
+            object NoteCounts(int courseId) => new
+            {
+                classWide = notes.Count(n => n.CourseId == courseId && n.Date is null),
+                dates = notes.Where(n => n.CourseId == courseId && n.Date is not null)
+                    .GroupBy(n => n.Date!.Value.ToString("yyyy-MM-dd")).ToDictionary(g => g.Key, g => g.Count()),
+            };
             return Results.Ok(new
             {
                 semester = new { current.Id, current.Name },
+                slots = slots.OrderBy(s => s.Date).ThenBy(s => s.Day).ThenBy(s => s.Start).Select(PersonalEndpoints.Of),
                 classes = withSection.Select(p => new
                 {
                     courseId = p.CourseId,
@@ -299,6 +309,7 @@ public static class StudentEndpoints
                     p.Course.Credits,
                     section = Dto.Of(p.Section!),
                     changed = p.Section!.ChangedAt is not null && (p.SeenAt is null || p.SeenAt < p.Section.ChangedAt),
+                    notes = NoteCounts(p.CourseId),
                 }),
                 needsSection = picks.Where(p => p.Section is null).Select(p => new { courseId = p.CourseId, p.Course.Code, p.Course.Name, removed = p.SectionRemoved }),
                 clashes = Clashes.Find(withSection.Select(p => p.Section!).ToList()),

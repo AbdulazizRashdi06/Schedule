@@ -4,6 +4,7 @@ import { api, store } from '../lib/api'
 import { useSession } from '../lib/session'
 import type { Semester } from '../lib/types'
 import { cx } from '../components/ui'
+import LogoutConfirm from '../components/LogoutConfirm'
 
 export interface AdminCtx {
   semesters: Semester[]
@@ -20,6 +21,7 @@ export default function AdminLayout() {
   const { session, logout } = useSession()
   const navigate = useNavigate()
   const isOwner = session?.role === 'owner'
+  const [confirmOut, setConfirmOut] = useState(false)
   const [semesters, setSemesters] = useState<Semester[]>([])
   const [semesterId, setId] = useState<number | null>(() => Number(store.get('admin-semester')) || null)
 
@@ -109,14 +111,19 @@ export default function AdminLayout() {
           <button
             type="button"
             className="self-start pt-2 text-[14px] font-bold link-hover"
-            onClick={async () => {
+            onClick={() => setConfirmOut(true)}
+          >
+            Log out
+          </button>
+          <LogoutConfirm
+            open={confirmOut}
+            onClose={() => setConfirmOut(false)}
+            onLogout={async () => {
               const wasAdmin = session?.kind === 'admin'
               await logout()
               navigate(wasAdmin ? '/admin/login' : '/login', { replace: true })
             }}
-          >
-            Log out
-          </button>
+          />
         </div>
       </aside>
       <main className="flex min-w-0 flex-[999_1_560px] flex-col gap-7 px-5 py-8 sm:px-10 sm:py-9">

@@ -3,12 +3,13 @@ import { Navigate, useParams } from 'react-router-dom'
 import { DAY_SHORT } from '../lib/time'
 import { TYPE_NAME, inWeek, initials, nowMinutes, onDate, type Session } from '../lib/slots'
 import { ErrorText, Sk, cx } from '../components/ui'
+import ClassNotes from './ClassNotes'
 import NotFound from './NotFound'
 import { Icon, RoundButton, useBack, useNow, useTimetable } from './timetable'
 
 export default function Course() {
   const { courseId } = useParams()
-  const { me, tt, sessions, error, markSeen } = useTimetable()
+  const { me, tt, sessions, error, markSeen, retry } = useTimetable()
   const now = useNow()
   const back = useBack('/')
   const [soon, setSoon] = useState(false)
@@ -128,6 +129,8 @@ export default function Course() {
                   <span className="label text-[11px] tracking-normal text-ice">Lecturer</span>
                 </span>
               </div>
+
+              <ClassNotes courseId={cls.courseId} section={cls.section} me={me?.universityId ?? ''} onChanged={() => void retry()} />
 
               {/* Reminders aren't built yet: the button is in place and says so when tapped. */}
               <div className="mt-auto flex flex-col gap-2">

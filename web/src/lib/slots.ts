@@ -1,4 +1,4 @@
-import type { Meeting, Timetable, TimetableClass, Weeks } from './types'
+import type { CustomSlot, Meeting, Timetable, TimetableClass, Weeks } from './types'
 import { minutes } from './time'
 
 /** Class slots: every class is 1h30 with 15-minute breaks. The week grid is laid out by slot, not by hour. */
@@ -11,7 +11,8 @@ export const SLOTS = [
   ['16:45', '18:15'],
 ] as const
 
-export type ClassType = 'lecture' | 'lab' | 'tutorial'
+/** `mine` is a student's own slot. */
+export type ClassType = 'lecture' | 'lab' | 'tutorial' | 'mine'
 
 export interface Session {
   cls: TimetableClass
@@ -25,6 +26,10 @@ export interface Session {
   start: number
   end: number
   clash: boolean
+  /** Set for the student's own slots; `cls` then holds its title so the views can show it like a class. */
+  mine?: CustomSlot
+  /** Notes on this session: the class's whole-class notes plus any for this date. */
+  notes: number
 }
 
 /** The upload has no session type, so it comes from the room: "Lab L2" is a lab, "Tut 3" a tutorial, anything else a lecture. */
@@ -34,9 +39,9 @@ export function sessionType(room: string): ClassType {
   return 'lecture'
 }
 
-export const TYPE_NAME: Record<ClassType, string> = { lecture: 'Lecture', lab: 'Lab', tutorial: 'Tutorial' }
+export const TYPE_NAME: Record<ClassType, string> = { lecture: 'Lecture', lab: 'Lab', tutorial: 'Tutorial', mine: 'My slot' }
 /** Block colours: lecture cream, lab ice, tutorial sky. Text on every block is navy. */
-export const TYPE_BG: Record<ClassType, string> = { lecture: 'bg-cream', lab: 'bg-ice', tutorial: 'bg-sky' }
+export const TYPE_BG: Record<ClassType, string> = { lecture: 'bg-cream', lab: 'bg-ice', tutorial: 'bg-sky', mine: 'bg-paper outline-2 outline-dashed -outline-offset-2 outline-navy/50' }
 
 /** The slot a meeting belongs to: the one it overlaps most, or the nearest one for times outside the day. */
 export function slotOf(start: number, end: number) {
@@ -64,6 +69,15 @@ export function slotSpan(start: number, end: number) {
   return { slot: first, span: last - first + 1 }
 }
 
+/** A custom slot dressed as a class, so every view can show it: negative ids keep it apart from real courses. */
+function slotClass(s: CustomSlot): TimetableClass {
+  const meeting: Meeting = { day: s.day, start: s.start, end: s.end, room: s.place, date: s.date }
+  return {
+    courseId: -s.id, code: s.title, name: s.title, type: 'Core', credits: null, changed: false,
+    section: { id: -s.id, number: '', instructor: '', meetings: [meeting], changedAt: null, changeSummary: null },
+  }
+}
+
 export function buildSessions(tt: Timetable): Session[] {
   const out: Session[] = []
   for (const cls of tt.classes)
@@ -71,8 +85,17 @@ export function buildSessions(tt: Timetable): Session[] {
       const start = minutes(meeting.start)
       const end = minutes(meeting.end)
       const { slot, span } = slotSpan(start, end)
-      out.push({ cls, meeting, type: sessionType(meeting.room), slot, span, start, end, clash: false })
+      const notes = (cls.notes?.classWide ?? 0) + (meeting.date ? (cls.notes?.dates[meeting.date] ?? 0) : 0)
+      out.push({ cls, meeting, type: sessionType(meeting.room), slot, span, start, end, clash: false, notes })
     }
+  for (const mine of tt.slots ?? []) {
+    const cls = slotClass(mine)
+    const meeting = cls.section.meetings[0]
+    const start = minutes(meeting.start)
+    const end = minutes(meeting.end)
+    const { slot, span } = slotSpan(start, end)
+    out.push({ cls, meeting, type: 'mine', slot, span, start, end, clash: false, mine, notes: mine.note ? 1 : 0 })
+  }
   for (const a of out)
     a.clash = out.some(
       (b) =>
@@ -85,6 +108,9 @@ export function buildSessions(tt: Timetable): Session[] {
     )
   return out.sort((a, b) => a.meeting.day - b.meeting.day || a.start - b.start)
 }
+
+/** Where tapping a session goes: its course page, or the day view for the student's own slot. */
+export const sessionHref = (s: Session) => (s.mine ? `/schedule?view=day&day=${s.meeting.day}` : `/course/${s.cls.courseId}`)
 
 /** Sunday to Thursday, plus Friday or Saturday only when a class meets then. */
 export const weekDays = (sessions: Session[]) => [0, 1, 2, 3, 4, 5, 6].filter((d) => d <= 4 || sessions.some((s) => s.meeting.day === d))

@@ -7,6 +7,7 @@ import { SLOTS } from '../lib/slots'
 import { yearName } from '../lib/year'
 import { Button, Drawer, ErrorText, Loading, Notice, Select, Tag, TextField, Toast, useToast } from '../components/ui'
 import { PageTitle, Th, shortDate } from './AdminLayout'
+import PublicNotes from './PublicNotes'
 
 interface Detail {
   course: Course
@@ -101,6 +102,8 @@ export default function CourseDetail() {
           </tbody>
         </table>
       </div>
+
+      <PublicNotes courseId={c.id} />
 
       <Drawer open={!!editing} onClose={() => setEditing(null)} label="Edit section">
         {editing && (

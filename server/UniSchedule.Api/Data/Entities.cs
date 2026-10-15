@@ -180,6 +180,55 @@ public class CourseDefault
     public int Year { get; set; }
 }
 
+/// <summary>A student's own slot (study time, gym, a meeting): every week on <see cref="Day"/>, or once on <see cref="Date"/>.</summary>
+public class CustomSlot
+{
+    public int Id { get; set; }
+    public int StudentId { get; set; }
+    public int SemesterId { get; set; }
+    public string Title { get; set; } = "";
+    /// <summary>0 = Sunday … 6 = Saturday (the date's weekday for a dated slot).</summary>
+    public int Day { get; set; }
+    public TimeOnly Start { get; set; }
+    public TimeOnly End { get; set; }
+    public DateOnly? Date { get; set; }
+    public string Place { get; set; } = "";
+    /// <summary>Private note; only the student sees it.</summary>
+    public string? Note { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>
+/// A note on a class: the whole course (<see cref="Date"/> null) or one session date of the author's section.
+/// Private notes are the author's only; public ones are seen by classmates with the author's university ID.
+/// </summary>
+public class ClassNote
+{
+    public int Id { get; set; }
+    public int StudentId { get; set; }
+    public Student Student { get; set; } = null!;
+    public int CourseId { get; set; }
+    public Course Course { get; set; } = null!;
+    /// <summary>The section a session note belongs to (null for a whole-course note).</summary>
+    public int? SectionId { get; set; }
+    public Section? Section { get; set; }
+    public DateOnly? Date { get; set; }
+    public string Text { get; set; } = "";
+    public bool IsPublic { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public int ReportCount { get; set; }
+    /// <summary>Set when staff hide a public note; students no longer see it.</summary>
+    public DateTimeOffset? HiddenAt { get; set; }
+}
+
+/// <summary>One student's report of a public note (each student reports a note once).</summary>
+public class NoteReport
+{
+    public int NoteId { get; set; }
+    public int StudentId { get; set; }
+}
+
 /// <summary>One applied upload, for "Recent uploads" on the dashboard home.</summary>
 public class UploadLog
 {

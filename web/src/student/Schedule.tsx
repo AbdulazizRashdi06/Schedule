@@ -1,15 +1,19 @@
-import { Fragment } from 'react'
+import { Fragment, useState } from 'react'
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { DAY_LONG, DAY_SHORT, minutes } from '../lib/time'
-import { SLOTS, TYPE_BG, TYPE_NAME, addDays, fmtDuration, fmtWeekRange, inWeek, nowMinutes, weekDays, weekStart, weekTitle, type ClassType, type Session } from '../lib/slots'
+import { SLOTS, TYPE_BG, TYPE_NAME, addDays, isoDate as iso, fmtDuration, fmtWeekRange, inWeek, nowMinutes, weekDays, weekStart, weekTitle, type ClassType, type Session } from '../lib/slots'
 import { ErrorText, Sk, cx } from '../components/ui'
+import type { CustomSlot } from '../lib/types'
+import SlotSheet, { type SlotPreset } from './SlotSheet'
 import { Icon, NeedsSection, RoundButton, useBack, useNow, useTimetable } from './timetable'
 
 const ROW = 86
 const GAP = 8
 
 export default function Schedule() {
-  const { me, tt, sessions: all, error } = useTimetable()
+  const { me, tt, sessions: all, error, retry } = useTimetable()
+  const [editing, setEditing] = useState<CustomSlot | null>(null)
+  const [adding, setAdding] = useState<SlotPreset | null>(null)
   const now = useNow()
   const back = useBack('/')
   const navigate = useNavigate()
@@ -95,6 +99,8 @@ export default function Schedule() {
                   today={thisWeek ? today : -1}
                   nowMin={nowMinutes(now)}
                   onDay={(d) => go({ view: 'day', day: d })}
+                  onEdit={setEditing}
+                  onAdd={(d, slot) => setAdding({ day: d, date: iso(addDays(start, d)), start: SLOTS[slot][0], end: SLOTS[slot][1] })}
                 />
               ) : (
                 <DayView
@@ -105,10 +111,20 @@ export default function Schedule() {
                   today={thisWeek ? today : -1}
                   nowMin={nowMinutes(now)}
                   onDay={(d) => go({ day: d })}
-                  onOpen={(s) => navigate(`/course/${s.cls.courseId}`)}
+                  onOpen={(s) => (s.mine ? setEditing(s.mine) : navigate(`/course/${s.cls.courseId}`))}
+                  onAdd={() => setAdding({ day, date: iso(addDays(start, day)), start: SLOTS[0][0], end: SLOTS[0][1] })}
                 />
               )}
-              <Legend />
+              <Legend mine={sessions.some((s) => s.mine)} />
+              <SlotSheet
+                slot={editing}
+                preset={adding}
+                onClose={() => {
+                  setEditing(null)
+                  setAdding(null)
+                }}
+                onSaved={() => void retry()}
+              />
             </>
           )}
         </div>
@@ -133,7 +149,7 @@ function nowY(nowMin: number) {
   return null
 }
 
-function WeekGrid({ days, sessions, start, today, nowMin, onDay }: { days: number[]; sessions: Session[]; start: Date; today: number; nowMin: number; onDay: (d: number) => void }) {
+function WeekGrid({ days, sessions, start, today, nowMin, onDay, onEdit, onAdd }: { days: number[]; sessions: Session[]; start: Date; today: number; nowMin: number; onDay: (d: number) => void; onEdit: (s: CustomSlot) => void; onAdd: (day: number, slot: number) => void }) {
   const cols = `38px repeat(${days.length}, minmax(0, 1fr))`
   const lineY = today >= 0 && days.includes(today) ? nowY(nowMin) : null
   return (
@@ -169,7 +185,7 @@ function WeekGrid({ days, sessions, start, today, nowMin, onDay }: { days: numbe
           <div
             key={d}
             className="rounded-[14px]"
-            style={{ gridColumn: c + 2, gridRow: `1 / ${SLOTS.length + 1}`, background: `rgba(158,204,250,${d === today ? 0.14 : 0.06})` }}
+            style={{ gridColumn: c + 2, gridRow: `1 / ${SLOTS.length + 1}`, background: `color-mix(in srgb, var(--color-sky) ${d === today ? 14 : 6}%, transparent)` }}
           />
         ))}
         {/* A line at every break, across the whole week. */}
@@ -180,6 +196,25 @@ function WeekGrid({ days, sessions, start, today, nowMin, onDay }: { days: numbe
           <div className="pointer-events-none absolute right-0 left-[38px] z-10 h-0.5 rounded-full bg-cream" style={{ top: lineY - 1 }} aria-hidden="true">
             <span className="absolute -top-[3px] -left-1 size-2 rounded-full bg-cream" />
           </div>
+        )}
+        {/* Empty spots: tap to add your own slot there. */}
+        {days.map((d, c) =>
+          SLOTS.map(([from], slot) =>
+            sessions.some((s) => s.meeting.day === d && s.slot <= slot && slot < s.slot + s.span) ? null : (
+              <button
+                key={`add-${d}-${slot}`}
+                type="button"
+                aria-label={`Add a slot on ${DAY_LONG[d]} at ${from}`}
+                onClick={() => onAdd(d, slot)}
+                className="group relative z-10 grid place-items-center rounded-[12px] hover:bg-sky/10"
+                style={{ gridColumn: c + 2, gridRow: slot + 1 }}
+              >
+                <span aria-hidden="true" className="label text-[16px] text-sky opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                  +
+                </span>
+              </button>
+            ),
+          ),
         )}
         {days.map((d, c) =>
           SLOTS.map((_, slot) => {
@@ -193,7 +228,7 @@ function WeekGrid({ days, sessions, start, today, nowMin, onDay }: { days: numbe
                     <button
                       key={i}
                       type="button"
-                      onClick={() => onDay(d)}
+                      onClick={() => (s.mine ? onEdit(s.mine) : onDay(d))}
                       aria-label={blockLabel(s)}
                       className={cx(
                         'press relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[12px] p-1.5 text-left text-navy',
@@ -208,6 +243,7 @@ function WeekGrid({ days, sessions, start, today, nowMin, onDay }: { days: numbe
                       </span>
                       {cell.length === 1 && <span className="mt-auto truncate text-[11px] font-semibold">{s.meeting.room}</span>}
                       {s.cls.changed && <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-navy" />}
+                      {s.notes > 0 && <span aria-hidden="true" className="absolute right-1.5 bottom-1.5 size-1.5 rounded-[2px] bg-navy/60" />}
                     </button>
                   )
                 })}
@@ -220,7 +256,7 @@ function WeekGrid({ days, sessions, start, today, nowMin, onDay }: { days: numbe
   )
 }
 
-function DayView({ days, day, sessions, start, today, nowMin, onDay, onOpen }: { days: number[]; day: number; sessions: Session[]; start: Date; today: number; nowMin: number; onDay: (d: number) => void; onOpen: (s: Session) => void }) {
+function DayView({ days, day, sessions, start, today, nowMin, onDay, onOpen, onAdd }: { days: number[]; day: number; sessions: Session[]; start: Date; today: number; nowMin: number; onDay: (d: number) => void; onOpen: (s: Session) => void; onAdd: () => void }) {
   const list = sessions.filter((s) => s.meeting.day === day)
   const total = list.reduce((sum, s) => sum + (s.end - s.start), 0)
   return (
@@ -282,24 +318,32 @@ function DayView({ days, day, sessions, start, today, nowMin, onDay, onOpen }: {
                     {live && <span className="label rounded-full bg-navy px-2 py-0.5 text-[9px] text-cream">● Now</span>}
                     {s.cls.changed && <span className="label rounded-full bg-navy px-2 py-0.5 text-[9px] text-cream">Changed</span>}
                     {s.clash && <span className="label rounded-full bg-alert-ink px-2 py-0.5 text-[9px] text-cream">Clash</span>}
+                    {s.notes > 0 && (
+                      <span className="label rounded-full bg-navy/10 px-2 py-0.5 text-[9px]">
+                        {s.mine ? 'Note' : `${s.notes} ${s.notes === 1 ? 'note' : 'notes'}`}
+                      </span>
+                    )}
                   </span>
                   <span className="display mt-1.5 block text-[20px] leading-[1.1] tracking-[-0.02em] break-words hyphens-auto">{s.cls.name}</span>
                   <span className="mt-1 flex items-center gap-1 text-[13px] font-semibold">
                     <Icon name="pin" className="size-3.5" />
-                    {s.meeting.room || 'Room TBA'}
+                    {s.meeting.room || (s.mine ? 'No place set' : 'Room TBA')}
                   </span>
                 </button>
               </div>
             </Fragment>
           )
         })}
+        <button type="button" onClick={onAdd} className="label ml-[68px] flex h-11 items-center text-[11px] text-sky link-hover">
+          + Add a slot
+        </button>
       </div>
     </div>
   )
 }
 
-function Legend() {
-  const items: ClassType[] = ['lecture', 'lab', 'tutorial']
+function Legend({ mine }: { mine: boolean }) {
+  const items: ClassType[] = mine ? ['lecture', 'lab', 'tutorial', 'mine'] : ['lecture', 'lab', 'tutorial']
   return (
     <div className="mt-8 flex items-center justify-center gap-5 border-t border-navy-line pt-5">
       {items.map((t) => (
