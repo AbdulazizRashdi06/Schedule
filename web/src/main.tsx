@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import './index.css'
 import { applyAccent, applyBackground, loadAccent, loadBackground } from './lib/theme'
+import { setUpNative } from './lib/native'
 import Colours from './student/Colours'
 import { SessionProvider, useSession } from './lib/session'
 import Login from './student/Login'
@@ -48,6 +49,7 @@ function StaffOnly({ children, ownerOnly }: { children: ReactNode; ownerOnly?: b
 // The saved colour theme, before the first paint.
 applyAccent(loadAccent())
 applyBackground(loadBackground())
+setUpNative()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

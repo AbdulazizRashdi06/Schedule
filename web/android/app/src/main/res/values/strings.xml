@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Classy</string>
+    <string name="title_activity_main">Classy</string>
+    <string name="package_name">om.tryzarqa.classy</string>
+    <string name="custom_url_scheme">om.tryzarqa.classy</string>
+</resources>

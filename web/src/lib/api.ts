@@ -9,6 +9,9 @@ export class ApiError extends Error {
   }
 }
 
+/** Empty on the web (same origin). The iOS and Android builds set it to the live server (.env.native). */
+export const API_BASE: string = import.meta.env.VITE_API_BASE ?? ''
+
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
   const init: RequestInit = { method, credentials: 'same-origin', headers: {} }
   if (body instanceof FormData) init.body = body
@@ -18,7 +21,7 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   }
   let res: Response
   try {
-    res = await fetch('/api' + url, init)
+    res = await fetch(API_BASE + '/api' + url, init)
   } catch {
     throw new ApiError(0, "Can't reach the server. Check your connection.")
   }
