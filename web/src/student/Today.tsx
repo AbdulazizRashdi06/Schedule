@@ -27,8 +27,6 @@ export default function Today() {
   // The next day with classes, for when today is over or free.
   const nextDate = Array.from({ length: 21 }, (_, i) => addDays(now, i + 1)).find((d) => sessions.some((s) => onDate(s, d)))
   const nextDay = nextDate ? sessions.filter((s) => onDate(s, nextDate)) : []
-  // The day's first class, plus any clashes that day so they aren't hidden.
-  const nextDayShown = nextDay.filter((s, i) => i === 0 || s.clash)
   const nextWeek = nextDate ? Math.round((weekStart(nextDate).getTime() - weekStart(now).getTime()) / (7 * 86_400_000)) : 0
   const nextDayLink = nextDate && `/schedule?view=day&day=${nextDate.getDay()}${nextWeek ? `&w=${nextWeek}` : ''}`
   const tomorrow = nextDate && addDays(now, 1).toDateString() === nextDate.toDateString()
@@ -84,7 +82,7 @@ export default function Today() {
                     Your last class ended at {today[today.length - 1].meeting.end}. Nothing else on today.
                   </Card>
                   {nextDate && (
-                    <List title={`${tomorrow ? 'Tomorrow' : DAY_LONG[nextDate.getDay()]} starts with`} sessions={nextDayShown}>
+                    <List title={tomorrow ? 'Tomorrow' : DAY_LONG[nextDate.getDay()]} sessions={nextDay}>
                       <MoreLink to={nextDayLink!}>See all of {DAY_LONG[nextDate.getDay()]}</MoreLink>
                     </List>
                   )}
@@ -95,7 +93,7 @@ export default function Today() {
                     No classes on {DAY_LONG[now.getDay()]}. Sleep in, catch up, or don’t.
                   </Card>
                   {nextDate && (
-                    <List title={`Back on ${DAY_LONG[nextDate.getDay()]}`} sessions={nextDayShown}>
+                    <List title={`Back on ${DAY_LONG[nextDate.getDay()]}`} sessions={nextDay}>
                       <MoreLink to="/schedule">See the week</MoreLink>
                     </List>
                   )}
