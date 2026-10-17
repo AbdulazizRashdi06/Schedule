@@ -21,6 +21,8 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
     public DbSet<CustomSlot> CustomSlots => Set<CustomSlot>();
     public DbSet<ClassNote> ClassNotes => Set<ClassNote>();
     public DbSet<NoteReport> NoteReports => Set<NoteReport>();
+    public DbSet<FeedbackPrompt> FeedbackPrompts => Set<FeedbackPrompt>();
+    public DbSet<FeedbackResponse> FeedbackResponses => Set<FeedbackResponse>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder b)
     {
@@ -101,6 +103,12 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
         {
             e.HasKey(x => new { x.NoteId, x.StudentId });
             e.HasOne<ClassNote>().WithMany().HasForeignKey(x => x.NoteId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Student>().WithMany().HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Cascade);
+        });
+        m.Entity<FeedbackResponse>(e =>
+        {
+            e.HasIndex(x => new { x.PromptId, x.StudentId }).IsUnique();
+            e.HasOne<FeedbackPrompt>().WithMany().HasForeignKey(x => x.PromptId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<Student>().WithMany().HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Cascade);
         });
         m.Entity<UploadLog>(e =>

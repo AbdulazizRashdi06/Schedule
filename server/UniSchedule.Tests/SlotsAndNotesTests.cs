@@ -152,6 +152,11 @@ public class SlotsAndNotesTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var listed = (await Json(await rsa.GetAsync($"/api/admin/courses/{w.Course}/notes")))[0];
         Assert.Equal(1, listed.GetProperty("reports").GetInt32());
         Assert.StartsWith("25-", listed.GetProperty("author").GetString());
+        // The all-notes page lists it with its course, for the semester asked for.
+        var sem = (await Json(await rsa.GetAsync("/api/admin/semesters"))).EnumerateArray().First(x => x.GetProperty("year").GetInt32() == 2063).GetProperty("id").GetInt32();
+        var all = (await Json(await rsa.GetAsync($"/api/admin/notes?semesterId={sem}"))).EnumerateArray().ToList();
+        Assert.Contains(all, n => n.GetProperty("id").GetInt32() == note && n.GetProperty("code").GetString() == "NB101");
+        Assert.All(all, n => Assert.NotEqual("my own reminder", n.GetProperty("text").GetString()));
         Assert.Equal(HttpStatusCode.NoContent, (await rsa.PutAsJsonAsync($"/api/admin/notes/{note}/hidden", new { hidden = true })).StatusCode);
 
         Assert.Empty(await Notes(reader, w.Course));

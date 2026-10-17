@@ -85,6 +85,12 @@ export default function AdminLayout() {
           <NavLink to="/admin/defaults" className={link}>
             Defaults
           </NavLink>
+          <NavLink to="/admin/notes" className={link}>
+            Notes
+          </NavLink>
+          <NavLink to="/admin/feedback" className={link}>
+            Feedback
+          </NavLink>
           {isOwner && <span className="label px-3 pt-[18px] pb-1.5 text-[10px] tracking-[0.14em] text-muted">Owners</span>}
           {isOwner && (
             <NavLink to="/admin/students" className={link}>

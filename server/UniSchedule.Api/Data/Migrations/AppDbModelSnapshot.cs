@@ -240,6 +240,65 @@ namespace UniSchedule.Api.Data.Migrations
                     b.ToTable("CustomSlots");
                 });
 
+            modelBuilder.Entity("UniSchedule.Api.Data.FeedbackPrompt", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("By")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("ClosedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("FeedbackPrompts");
+                });
+
+            modelBuilder.Entity("UniSchedule.Api.Data.FeedbackResponse", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("At")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Comment")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Dismissed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PromptId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("Rating")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("StudentId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StudentId");
+
+                    b.HasIndex("PromptId", "StudentId")
+                        .IsUnique();
+
+                    b.ToTable("FeedbackResponses");
+                });
+
             modelBuilder.Entity("UniSchedule.Api.Data.LoginCode", b =>
                 {
                     b.Property<int>("Id")
@@ -632,6 +691,21 @@ namespace UniSchedule.Api.Data.Migrations
                     b.HasOne("UniSchedule.Api.Data.Semester", null)
                         .WithMany()
                         .HasForeignKey("SemesterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("UniSchedule.Api.Data.Student", null)
+                        .WithMany()
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("UniSchedule.Api.Data.FeedbackResponse", b =>
+                {
+                    b.HasOne("UniSchedule.Api.Data.FeedbackPrompt", null)
+                        .WithMany()
+                        .HasForeignKey("PromptId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

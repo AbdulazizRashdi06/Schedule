@@ -118,6 +118,20 @@ public static class AdminEndpoints
                     reports = n.ReportCount, hidden = n.HiddenAt != null, n.CreatedAt,
                 }).ToListAsync(ct)));
 
+        // Every public note in a semester (the current one by default), newest first.
+        admin.MapGet("/notes", async (int? semesterId, AppDb db, CancellationToken ct) =>
+        {
+            var sid = semesterId ?? await db.Semesters.Where(s => s.IsCurrent).Select(s => (int?)s.Id).FirstOrDefaultAsync(ct);
+            return Results.Ok(await db.ClassNotes.Where(n => n.IsPublic && n.Course.SemesterId == sid)
+                .OrderByDescending(n => n.CreatedAt).Take(1000)
+                .Select(n => new
+                {
+                    n.Id, courseId = n.CourseId, code = n.Course.Code, course = n.Course.Name, author = n.Student.UniversityId, n.Text,
+                    date = n.Date, section = n.Section == null ? null : n.Section.Number,
+                    reports = n.ReportCount, hidden = n.HiddenAt != null, n.CreatedAt,
+                }).ToListAsync(ct));
+        });
+
         admin.MapPut("/notes/{id:int}/hidden", async (int id, HiddenBody body, AppDb db, TimeProvider clock, CancellationToken ct) =>
         {
             var note = await db.ClassNotes.FirstOrDefaultAsync(n => n.Id == id && n.IsPublic, ct);

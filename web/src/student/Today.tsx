@@ -5,6 +5,7 @@ import { TYPE_NAME, addDays, clock, fmtDate, fmtDuration, nowMinutes, onDate, se
 import { Button, ErrorText, Sk, cx } from '../components/ui'
 import { MenuSheet } from './StudentShell'
 import { Icon, NeedsSection, useNow, useTimetable } from './timetable'
+import RatePrompt from './RatePrompt'
 
 export default function Today() {
   const { me, tt, sessions, error, offline, retry } = useTimetable()
@@ -32,6 +33,7 @@ export default function Today() {
     <div className="min-h-dvh bg-cream text-navy">
       <div className="mx-auto flex min-h-dvh max-w-[480px] flex-col pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1.75rem,env(safe-area-inset-bottom))]">
         {offline && <OfflineBanner savedAt={offline} retry={retry} />}
+        {!offline && me && <RatePrompt />}
         <header className="flex items-start justify-between gap-4 px-6 pt-2">
           <div className="flex min-w-0 flex-col gap-0.5">
             <p className="label text-[12px] tracking-[0.14em]">

@@ -26,6 +26,8 @@ import Families from './admin/Families'
 import Students from './admin/Students'
 import StudentDetail from './admin/StudentDetail'
 import Accounts from './admin/Accounts'
+import Feedback from './admin/Feedback'
+import Notes from './admin/Notes'
 
 function StudentOnly({ children }: { children: ReactNode }) {
   const { session } = useSession()
@@ -75,6 +77,8 @@ createRoot(document.getElementById('root')!).render(
             <Route path="defaults" element={<Defaults />} />
             <Route path="students" element={<StaffOnly ownerOnly><Students /></StaffOnly>} />
             <Route path="students/:id" element={<StaffOnly ownerOnly><StudentDetail /></StaffOnly>} />
+            <Route path="notes" element={<Notes />} />
+            <Route path="feedback" element={<Feedback />} />
             <Route path="accounts" element={<Accounts />} />
           </Route>
           <Route path="*" element={<NotFound />} />

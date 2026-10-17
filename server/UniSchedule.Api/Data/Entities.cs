@@ -229,6 +229,28 @@ public class NoteReport
     public int StudentId { get; set; }
 }
 
+/// <summary>A "Rate Classy" message staff push to students. The newest open one is shown; pushing another closes it.</summary>
+public class FeedbackPrompt
+{
+    public int Id { get; set; }
+    public string Message { get; set; } = "";
+    public string By { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? ClosedAt { get; set; }
+}
+
+/// <summary>A student's answer to a prompt: a 1–5 rating and comment, or "Not now". One per student per prompt.</summary>
+public class FeedbackResponse
+{
+    public int Id { get; set; }
+    public int PromptId { get; set; }
+    public int StudentId { get; set; }
+    public int? Rating { get; set; }
+    public string? Comment { get; set; }
+    public bool Dismissed { get; set; }
+    public DateTimeOffset At { get; set; }
+}
+
 /// <summary>One applied upload, for "Recent uploads" on the dashboard home.</summary>
 public class UploadLog
 {

@@ -100,6 +100,7 @@ api.MapStudent();
 api.MapPersonal();
 api.MapAdmin();
 api.MapOwner();
+api.MapFeedback();
 api.Map("/{**rest}", () => Errors.NotFound());
 
 // Client-side routes (/, /setup, /admin/...) all load the app.
