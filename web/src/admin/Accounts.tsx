@@ -24,7 +24,7 @@ interface Data {
 const signedIn = (iso: string | null) => {
   if (!iso) return 'Never signed in'
   const s = seen(iso)
-  return s.startsWith('Today') ? 'Signed in today' : s === 'Yesterday' ? 'Signed in yesterday' : `Last signed in ${s}`
+  return s.startsWith('Today') ? 'Active today' : s === 'Yesterday' ? 'Active yesterday' : `Last active ${s}`
 }
 
 export default function Accounts() {

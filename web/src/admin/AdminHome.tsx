@@ -2,12 +2,14 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { api, errorText } from '../lib/api'
 import type { Semester } from '../lib/types'
-import { ErrorText, Loading, Notice, Sk } from '../components/ui'
+import { ErrorText, Loading, Notice, Sk, cx } from '../components/ui'
 import { PageTitle, shortDate, useAdmin } from './AdminLayout'
 
 interface Stats {
   semester: Semester | null
   studentsRegistered: number
+  activeNow: number
+  activeToday: number
   studentsFinished: number
   courses: number
   sections: number
@@ -29,7 +31,11 @@ export default function AdminHome() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [error, setError] = useState('')
   useEffect(() => {
-    api.get<Stats>(`/admin/stats${semester ? `?semesterId=${semester.id}` : ''}`).then(setStats, (e) => setError(errorText(e)))
+    const load = () => api.get<Stats>(`/admin/stats${semester ? `?semesterId=${semester.id}` : ''}`).then(setStats, (e) => setError(errorText(e)))
+    void load()
+    // Keeps "active now" current while the page is open.
+    const timer = setInterval(load, 60_000)
+    return () => clearInterval(timer)
   }, [semester])
 
   if (error) return <ErrorText>{error}</ErrorText>
@@ -45,6 +51,8 @@ export default function AdminHome() {
   const shown = semester ?? stats.semester
   const live = stats.semester && shown?.id === stats.semester.id
   const numbers = [
+    { value: stats.activeNow, label: 'active now' },
+    { value: stats.activeToday, label: 'active today' },
     { value: stats.studentsRegistered, label: 'students signed in' },
     { value: stats.studentsFinished, label: stats.semester ? 'finished setup' : 'finished setup (nothing published)' },
     { value: stats.courses, label: `courses, ${plural(stats.sections, 'section')}` },
@@ -104,9 +112,15 @@ export default function AdminHome() {
           a semester.
         </Notice>
       )}
-      <dl className="grid grid-cols-2 border-t-[2.5px] border-b-[1.5px] border-t-navy border-b-navy/[0.12] lg:grid-cols-4">
+      <dl className="grid grid-cols-2 border-t-[2.5px] border-b-[1.5px] border-t-navy border-b-navy/[0.12] lg:grid-cols-3">
         {numbers.map((n, i) => (
-          <div key={i} className={`flex flex-col-reverse gap-1.5 py-5 ${i % 2 ? 'border-l-[1.5px] border-navy/[0.12] pl-5' : 'pr-5'} lg:px-5 ${i > 0 ? 'lg:border-l-[1.5px] lg:border-navy/[0.12]' : 'lg:pl-0'} ${i > 1 ? 'max-lg:border-t-[1.5px] max-lg:border-navy/[0.12]' : ''}`}>
+          <div key={i} className={cx(
+              'flex flex-col-reverse gap-1.5 border-navy/[0.12] py-5',
+              i % 2 ? 'max-lg:border-l-[1.5px] max-lg:pl-5' : 'max-lg:pr-5',
+              i > 1 && 'max-lg:border-t-[1.5px]',
+              i % 3 ? 'lg:border-l-[1.5px] lg:px-5' : 'lg:pr-5',
+              i > 2 && 'lg:border-t-[1.5px]',
+            )}>
             <dt className="text-[14px] font-bold text-muted">{n.label}</dt>
             <dd className="display text-[52px] leading-[0.9] tracking-[-0.04em] tabular-nums">{n.value}</dd>
           </div>

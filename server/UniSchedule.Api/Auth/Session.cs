@@ -41,23 +41,32 @@ public static class Session
     public static string? Role(this ClaimsPrincipal user) => user.FindFirstValue(RoleClaim);
     public static bool IsOwner(this ClaimsPrincipal user) => user.Role() == "owner";
 
-    /// <summary>Checks the cookie's account still exists and attaches its current role.</summary>
+    /// <summary>"Last seen" is written at most this often, so active counts stay current without a write per request.</summary>
+    public static readonly TimeSpan SeenEvery = TimeSpan.FromMinutes(1);
+
+    /// <summary>Checks the cookie's account still exists, attaches its current role, and keeps "last seen" up to date.</summary>
     public static async Task ValidateAsync(CookieValidatePrincipalContext ctx)
     {
         var db = ctx.HttpContext.RequestServices.GetRequiredService<AppDb>();
+        var now = ctx.HttpContext.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow();
+        var stale = now - SeenEvery;
         var principal = ctx.Principal!;
         var id = principal.Id();
         var identity = (ClaimsIdentity)principal.Identity!;
         if (principal.Kind() == "student")
         {
-            var s = await db.Students.Where(x => x.Id == id).Select(x => new { x.IsOwner }).FirstOrDefaultAsync();
+            var s = await db.Students.Where(x => x.Id == id).Select(x => new { x.IsOwner, x.LastSeenAt }).FirstOrDefaultAsync();
             if (s is null) { await Reject(ctx); return; }
             if (s.IsOwner) identity.AddClaim(new Claim(RoleClaim, "owner"));
+            if (s.LastSeenAt is null || s.LastSeenAt < stale)
+                await db.Students.Where(x => x.Id == id).ExecuteUpdateAsync(u => u.SetProperty(x => x.LastSeenAt, now));
         }
         else if (principal.Kind() == "admin")
         {
-            var a = await db.AdminUsers.Where(x => x.Id == id).Select(x => new { x.Role, x.MustChangePassword }).FirstOrDefaultAsync();
+            var a = await db.AdminUsers.Where(x => x.Id == id).Select(x => new { x.Role, x.MustChangePassword, x.LastSeenAt }).FirstOrDefaultAsync();
             if (a is null) { await Reject(ctx); return; }
+            if (a.LastSeenAt is null || a.LastSeenAt < stale)
+                await db.AdminUsers.Where(x => x.Id == id).ExecuteUpdateAsync(u => u.SetProperty(x => x.LastSeenAt, now));
             identity.AddClaim(new Claim(RoleClaim, a.Role == AdminRole.Owner ? "owner" : "rsa"));
             if (a.MustChangePassword) identity.AddClaim(new Claim(MustChangeClaim, "1"));
         }

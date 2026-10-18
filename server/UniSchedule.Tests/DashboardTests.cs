@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -104,5 +105,34 @@ public class DashboardTests(ApiFactory factory) : IClassFixture<ApiFactory>
     public void Password_rules_accept_a_good_password()
     {
         Assert.Null(AuthEndpoints.PasswordProblem("timetable-2026", "rsa-office"));
+    }
+
+    [Fact]
+    public async Task Using_the_app_counts_as_active_without_signing_in_again()
+    {
+        var owner = await Owner("owner-active");
+        var id = "25-9301";
+        var student = factory.Client();
+        var code = (await Json(await student.PostAsJsonAsync("/api/auth/request-code", new { universityId = id }))).GetProperty("testCode").GetString();
+        Assert.Equal(HttpStatusCode.OK, (await student.PostAsJsonAsync("/api/auth/verify", new { universityId = id, code })).StatusCode);
+
+        // Pretend the sign-in was days ago: the cookie still works, and using the app moves "last seen" up.
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+            var s = db.Students.Single(x => x.UniversityId == id);
+            s.LastSeenAt = DateTimeOffset.UtcNow.AddDays(-3);
+            db.SaveChanges();
+        }
+        var before = await Json(await owner.GetAsync("/api/admin/stats"));
+        Assert.Equal(HttpStatusCode.OK, (await student.GetAsync("/api/me")).StatusCode);
+        var after = await Json(await owner.GetAsync("/api/admin/stats"));
+        Assert.Equal(before.GetProperty("activeNow").GetInt32() + 1, after.GetProperty("activeNow").GetInt32());
+        Assert.True(after.GetProperty("activeToday").GetInt32() >= after.GetProperty("activeNow").GetInt32());
+        using (var scope = factory.Services.CreateScope())
+        {
+            var seen = scope.ServiceProvider.GetRequiredService<AppDb>().Students.Single(x => x.UniversityId == id).LastSeenAt;
+            Assert.True(seen > DateTimeOffset.UtcNow.AddMinutes(-1));
+        }
     }
 }

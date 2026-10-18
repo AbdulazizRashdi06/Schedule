@@ -408,7 +408,12 @@ public static class AdminEndpoints
             var current = await db.Semesters.Where(s => s.IsCurrent).FirstOrDefaultAsync(ct);
             var sid = semesterId ?? current?.Id;
             var currentId = current?.Id;
-            var weekAgo = clock.GetUtcNow().AddDays(-7);
+            var now = clock.GetUtcNow();
+            var weekAgo = now.AddDays(-7);
+            // "Today" is Oman time (UTC+4), from midnight.
+            var oman = now.ToOffset(TimeSpan.FromHours(4));
+            var todayStart = new DateTimeOffset(oman.Date, oman.Offset).ToUniversalTime();
+            var activeSince = now.AddMinutes(-5);
             // "Needs attention" on the dashboard home: removed sections students must re-pick, sections without a room, students stuck in setup.
             var removed = sid is null ? [] : await db.Picks.Where(p => p.Course.SemesterId == sid && p.SectionRemoved && p.SectionId == null)
                 .GroupBy(p => new { p.CourseId, p.Course.Code })
@@ -425,6 +430,9 @@ public static class AdminEndpoints
             {
                 semester = current is null ? null : Dto.Of(current),
                 studentsRegistered = await db.Students.CountAsync(ct),
+                // Students who used the app in the last 5 minutes, and since midnight.
+                activeNow = await db.Students.CountAsync(s => s.LastSeenAt != null && s.LastSeenAt >= activeSince, ct),
+                activeToday = await db.Students.CountAsync(s => s.LastSeenAt != null && s.LastSeenAt >= todayStart, ct),
                 studentsFinished = current is null ? 0 : await db.Students.CountAsync(s => s.SetupSemesterId == current.Id && s.SetupCompletedAt != null, ct),
                 courses = sid is null ? 0 : await db.Courses.CountAsync(c => c.SemesterId == sid, ct),
                 sections = sid is null ? 0 : await db.Sections.CountAsync(s => s.Course.SemesterId == sid, ct),
