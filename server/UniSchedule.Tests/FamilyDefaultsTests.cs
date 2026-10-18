@@ -150,4 +150,30 @@ public class FamilyDefaultsTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var r = await owner.PutAsJsonAsync($"/api/admin/majors/{cs}", new { code = "FDCS", name = "Computer Science", family = "FDAI" });
         Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
     }
+
+    [Fact]
+    public async Task Changing_year_after_setup_swaps_core_courses_and_keeps_the_rest()
+    {
+        var (_, _, cs, _, courses) = await Setup("FY", 2081);
+        var s = await Student(cs, 1);
+        Assert.Equal([courses["FY101"]], await Picked(s));
+
+        // Add the life skill, finish setup.
+        var options = (await Json(await s.GetAsync("/api/me/options"))).GetProperty("courses").EnumerateArray()
+            .ToDictionary(c => c.GetProperty("id").GetInt32(), c => c.GetProperty("sections")[0].GetProperty("id").GetInt32());
+        var picks = new[] { courses["FY101"], courses["FYLS"] }.Select(id => new { courseId = id, sectionId = options[id] }).ToArray();
+        Assert.Equal(HttpStatusCode.OK, (await s.PutAsJsonAsync("/api/me/picks", new { picks, step = "ls" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await s.PostAsync("/api/me/finish", null)).StatusCode);
+
+        // Picked the wrong year: Year 2's core replaces Year 1's, the life skill stays, setup stays done.
+        Assert.Equal(HttpStatusCode.NoContent, (await s.PutAsJsonAsync("/api/me/profile", new { year = 2 })).StatusCode);
+        Assert.Equal([courses["FY201"], courses["FYLS"]], (await Picked(s)).Order());
+        var me = await Json(await s.GetAsync("/api/me"));
+        Assert.True(me.GetProperty("setupDone").GetBoolean());
+        Assert.Equal(2, me.GetProperty("year").GetInt32());
+
+        // Saving the same year again changes nothing.
+        Assert.Equal(HttpStatusCode.NoContent, (await s.PutAsJsonAsync("/api/me/profile", new { year = 2 })).StatusCode);
+        Assert.Equal([courses["FY201"], courses["FYLS"]], (await Picked(s)).Order());
+    }
 }

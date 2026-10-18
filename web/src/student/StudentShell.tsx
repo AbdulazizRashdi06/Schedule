@@ -3,8 +3,9 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useSession } from '../lib/session'
 import type { Me } from '../lib/types'
 import { yearName } from '../lib/year'
-import { Sheet, Tag } from '../components/ui'
+import { Sheet, Tag, cx } from '../components/ui'
 import LogoutConfirm from '../components/LogoutConfirm'
+import ChangeYear from './ChangeYear'
 
 /** Menu / profile sheet: who you are, where to go, colours, log out. */
 export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () => void; me: Me | null }) {
@@ -12,6 +13,7 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
   const navigate = useNavigate()
   const staff = session?.role === 'owner'
   const [confirmOut, setConfirmOut] = useState(false)
+  const [changingYear, setChangingYear] = useState(false)
   const item = 'tint flex h-14 items-center justify-between rounded-[12px] text-[22px] font-extrabold'
   return (
     <>
@@ -38,6 +40,16 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
             <Link to="/edit" onClick={onClose} className={item}>
               Edit my courses<span aria-hidden="true" className="text-[18px]">→</span>
             </Link>
+            <button
+              type="button"
+              onClick={() => {
+                onClose()
+                setChangingYear(true)
+              }}
+              className={cx(item, 'text-left')}
+            >
+              Change my year<span aria-hidden="true" className="text-[18px]">→</span>
+            </button>
           </>
         )}
         {staff && (
@@ -69,6 +81,7 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
         Log out
       </button>
       </Sheet>
+      {me && <ChangeYear key={String(changingYear)} open={changingYear} onClose={() => setChangingYear(false)} current={me.year} />}
       <LogoutConfirm
         open={confirmOut}
         onClose={() => setConfirmOut(false)}
