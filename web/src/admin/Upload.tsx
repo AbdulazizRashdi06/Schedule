@@ -5,18 +5,19 @@ import type { Semester } from '../lib/types'
 import { Button, Confirm, ErrorText, Notice, Select, TextField, cx } from '../components/ui'
 import { PageTitle, useAdmin } from './AdminLayout'
 import WeeksEditor from './WeeksEditor'
+import EduWaveSync from './EduWaveSync'
 
-interface Change {
+export interface Change {
   kind: 'course' | 'section'
   code: string
   section: string | null
   detail: string
 }
-interface Issue {
+export interface Issue {
   line: number
   message: string
 }
-interface Preview {
+export interface Preview {
   rows: number
   courses: number
   sections: number
@@ -81,6 +82,7 @@ export default function Upload() {
   return (
     <>
       <PageTitle title="Upload a timetable" />
+      {semester && <EduWaveSync key={semester.id} semester={semester} />}
       <ol aria-label="Progress" className="grid grid-cols-4 gap-2.5">
         {LABELS.map((l, i) => (
           <li key={l} aria-current={i === step ? 'step' : undefined} className="flex flex-col gap-2">
@@ -371,7 +373,7 @@ function DropZone({ file, onFile }: { file: File | null; onFile: (f: File) => vo
   )
 }
 
-function CheckStep({ p, onBack, onNext }: { p: Preview; onBack: () => void; onNext: () => void }) {
+export function CheckStep({ p, onBack, onNext, backLabel = 'Back' }: { p: Preview; onBack: () => void; onNext: () => void; backLabel?: string }) {
   const [tab, setTab] = useState<Tab>(p.errors.length ? 'errors' : p.updated.length ? 'changed' : 'added')
   const changeRows = (list: Change[]) => list.map((c) => ({ a: `${c.code}${c.section ? ` ${c.section}` : ''}`, b: c.kind === 'course' ? 'Course' : 'Section', c: c.detail }))
   const DATA: Record<Tab, { n: number; label: string; rows: { a: string; b: string; c: string; bad?: boolean }[] }> = {
@@ -426,7 +428,7 @@ function CheckStep({ p, onBack, onNext }: { p: Preview; onBack: () => void; onNe
       {nothing && p.errors.length === 0 && <Notice>Nothing changed: the semester already matches this file.</Notice>}
       <div className="flex flex-wrap items-center gap-2.5">
         <Button variant="secondary" onClick={onBack}>
-          Back
+          {backLabel}
         </Button>
         <Button disabled={!p.canApply || nothing} onClick={onNext}>
           {!p.canApply ? `Fix ${p.errors.length} bad ${p.errors.length === 1 ? 'row' : 'rows'} first` : nothing ? 'Nothing to save' : 'Confirm'}

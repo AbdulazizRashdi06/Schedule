@@ -229,6 +229,34 @@ public class NoteReport
     public int StudentId { get; set; }
 }
 
+/// <summary>A secret the Classy Sync browser extension sends to push the EduWave timetable. Only its SHA-256 is stored.</summary>
+public class SyncToken
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public string Hash { get; set; } = "";
+    public string CreatedBy { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? LastUsedAt { get; set; }
+}
+
+/// <summary>A timetable the extension fetched from EduWave, waiting for staff to check and apply it like an upload.</summary>
+public class PendingSync
+{
+    public int Id { get; set; }
+    public int SemesterId { get; set; }
+    /// <summary>The upload rows as JSON (<see cref="UniSchedule.Api.Schedule.ScheduleRow"/>).</summary>
+    public string RowsJson { get; set; } = "";
+    /// <summary>Course codes EduWave didn't answer for; their classes were kept as they were.</summary>
+    public string Failed { get; set; } = "";
+    public int Courses { get; set; }
+    public int Classes { get; set; }
+    public string Source { get; set; } = "";
+    public DateTimeOffset ReceivedAt { get; set; }
+    public DateTimeOffset? AppliedAt { get; set; }
+    public string? AppliedBy { get; set; }
+}
+
 /// <summary>A "Rate Classy" message staff push to students. The newest open one is shown; pushing another closes it.</summary>
 public class FeedbackPrompt
 {

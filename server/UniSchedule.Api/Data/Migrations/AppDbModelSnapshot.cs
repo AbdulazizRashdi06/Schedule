@@ -419,6 +419,49 @@ namespace UniSchedule.Api.Data.Migrations
                     b.ToTable("NoteReports");
                 });
 
+            modelBuilder.Entity("UniSchedule.Api.Data.PendingSync", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("AppliedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AppliedBy")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Classes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Courses")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Failed")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("ReceivedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("RowsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SemesterId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SemesterId");
+
+                    b.ToTable("PendingSyncs");
+                });
+
             modelBuilder.Entity("UniSchedule.Api.Data.Pick", b =>
                 {
                     b.Property<int>("Id")
@@ -568,6 +611,38 @@ namespace UniSchedule.Api.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Students");
+                });
+
+            modelBuilder.Entity("UniSchedule.Api.Data.SyncToken", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Hash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("LastUsedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Hash")
+                        .IsUnique();
+
+                    b.ToTable("SyncTokens");
                 });
 
             modelBuilder.Entity("UniSchedule.Api.Data.UploadLog", b =>
@@ -747,6 +822,15 @@ namespace UniSchedule.Api.Data.Migrations
                     b.HasOne("UniSchedule.Api.Data.Student", null)
                         .WithMany()
                         .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("UniSchedule.Api.Data.PendingSync", b =>
+                {
+                    b.HasOne("UniSchedule.Api.Data.Semester", null)
+                        .WithMany()
+                        .HasForeignKey("SemesterId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

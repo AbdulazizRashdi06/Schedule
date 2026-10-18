@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Classy Sync",
+  "version": "1.0.0",
+  "description": "Fetches the GUtech timetable from EduWave in your signed-in browser and sends it to Classy.",
+  "permissions": ["storage", "alarms", "offscreen"],
+  "host_permissions": ["https://eduwave.gutech.edu.om/*", "https://schedule.tryzarqa.com/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "Classy Sync", "default_popup": "popup.html" },
+  "content_scripts": [
+    {
+      "matches": ["https://eduwave.gutech.edu.om/*"],
+      "include_globs": ["*AdvisorStudentPlan.aspx*"],
+      "js": ["fetcher.js", "content.js"]
+    }
+  ]
+}

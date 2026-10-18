@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { api, errorText } from '../lib/api'
 import { Button, Confirm, ErrorText, Loading, Modal, Tag, TextField, cx } from '../components/ui'
 import { PageTitle, seen, useAdmin } from './AdminLayout'
+import SyncTokens from './SyncTokens'
 import DeleteAllData from './DeleteAllData'
 
 interface Account {
@@ -118,6 +119,8 @@ export default function Accounts() {
           )}
         </>
       )}
+
+      {isOwner && <SyncTokens />}
 
       {isOwner && (
         <DeleteAllData

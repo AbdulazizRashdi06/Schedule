@@ -2,6 +2,9 @@
 
 How Classy's real timetable is pulled out of GUtech's EduWave and loaded into the app. It's done by hand, from a signed-in browser, about once a week or whenever the timetable changes.
 
+## The easy way: Classy Sync
+The **Classy Sync** browser extension (`extension/`, see its README) does steps 1–6 below by itself: it fetches every course in the background, sends the result to Classy, and staff apply it from **Upload → From EduWave**. It can sync every morning. The steps below are the manual way, and what the extension does under the hood.
+
 ## What you need
 - A student account that can open **Advisor Plan** in EduWave.
 - The list of course codes to fetch, which is in `imports/offered-codes.md` together with their names and majors.
