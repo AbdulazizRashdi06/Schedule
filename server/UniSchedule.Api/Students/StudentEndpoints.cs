@@ -73,7 +73,11 @@ public static class StudentEndpoints
     /// Courses ticked when setup starts: the major's own defaults for that year, else its family's,
     /// else the upload's core courses listed for that major and year.
     /// </summary>
-    public static async Task<List<int>> DefaultCourseIds(AppDb db, int semesterId, int majorId, int year, CancellationToken ct)
+    public static async Task<List<int>> DefaultCourseIds(AppDb db, int semesterId, int majorId, int year, CancellationToken ct) =>
+        // A lab (CS 1 102-L) is ticked wherever its course is.
+        await Labs.WithLabsAsync(db, semesterId, await DefaultsWithoutLabs(db, semesterId, majorId, year, ct), ct);
+
+    static async Task<List<int>> DefaultsWithoutLabs(AppDb db, int semesterId, int majorId, int year, CancellationToken ct)
     {
         var defaults = db.CourseDefaults.Where(d => d.SemesterId == semesterId && d.Year == year);
         var own = await defaults.Where(d => d.MajorId == majorId).Select(d => d.CourseId).ToListAsync(ct);

@@ -187,6 +187,12 @@ public static class AdminEndpoints
             }
             if (problems.Count > 0)
                 return Results.Json(new { error = $"{problems.Count} {(problems.Count == 1 ? "row has a problem" : "rows have problems")}. Nothing was saved.", problems }, statusCode: StatusCodes.Status400BadRequest);
+            // A lab follows its course: its own rows are dropped and the course's rows are copied onto it.
+            var labParents = await Labs.ParentsAsync(db, id, ct);
+            rows.RemoveAll(r => labParents.ContainsKey(r.CourseId));
+            foreach (var (lab, parent) in labParents)
+                rows.AddRange(rows.Where(r => r.CourseId == parent).ToList()
+                    .Select(r => new CourseDefault { SemesterId = id, CourseId = lab, MajorId = r.MajorId, Family = r.Family, Year = r.Year }));
             await db.CourseDefaults.Where(d => d.SemesterId == id).ExecuteDeleteAsync(ct);
             db.CourseDefaults.AddRange(rows);
             // A course placed in another year takes that year (the one it's used in most; the lower on a tie).
@@ -194,6 +200,7 @@ public static class AdminEndpoints
             foreach (var course in await db.Courses.Where(c => years.Keys.Contains(c.Id)).ToListAsync(ct))
                 course.Year = years[course.Id];
             await db.SaveChangesAsync(ct);
+            await Labs.AlignAsync(db, id, ct);
             return Results.Ok(new { saved = rows.Count });
         });
 
@@ -218,6 +225,7 @@ public static class AdminEndpoints
             var preview = await ScheduleImport.PreviewAsync(db, id, parsed, ct);
             var now = clock.GetUtcNow();
             await ScheduleImport.ApplyAsync(db, semester, parsed, now, ct);
+            await Labs.AlignAsync(db, semester.Id, ct);
             var fileName = Path.GetFileName(req.Form.Files.GetFile("file")?.FileName ?? "");
             db.UploadLogs.Add(new UploadLog
             {

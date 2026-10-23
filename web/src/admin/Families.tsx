@@ -29,6 +29,8 @@ const YEARS = [0, 1, 2, 3, 4, 5]
 /** One target's defaults: year → course codes. */
 type Board = Record<number, string[]>
 const norm = (code: string) => code.replace(/\s+/g, '').toUpperCase()
+/** A lab (CS 1 102-L) follows its course: it isn't placed on its own, and the server copies the course's rows onto it. */
+const isLab = (code: string) => norm(code).endsWith('-L')
 
 /** A family's default courses by year, edited by dragging courses into year columns (or tap a course, then a column). */
 export default function Families() {
@@ -65,6 +67,8 @@ export default function Families() {
   const families = useMemo(() => [...new Set((majors ?? []).flatMap((m) => (m.family ? [m.family] : [])))].sort(), [majors])
   const members = useMemo(() => (majors ?? []).filter((m) => m.family === family), [majors, family])
   const byCode = useMemo(() => new Map((courses ?? []).map((c) => [norm(c.code), c])), [courses])
+  /** Course code → its lab, when it has one. */
+  const labOf = useMemo(() => new Map((courses ?? []).filter((c) => isLab(c.code)).map((c) => [norm(c.code).slice(0, -2), c])), [courses])
 
   // Pick the first family once everything has loaded.
   useEffect(() => {
@@ -77,12 +81,13 @@ export default function Families() {
     const next: Record<string, Board> = {}
     for (const t of [family, ...members.map((m) => m.code)]) next[t] = {}
     for (const r of saved) {
+      if (isLab(r.id) && labOf.has(norm(r.id).slice(0, -2))) continue
       const b = next[r.major.toUpperCase()]
       if (b) (b[r.year] ??= []).push(r.id)
     }
     setBoards(next)
     setDirty(false)
-  }, [family, saved, members])
+  }, [family, saved, members, labOf])
 
   // A different family starts on its shared defaults.
   useEffect(() => {
@@ -174,6 +179,7 @@ export default function Families() {
   const term = q.trim().toLowerCase()
   const pool = courses.filter(
     (c) =>
+      !(isLab(c.code) && byCode.has(norm(c.code).slice(0, -2))) &&
       (!onlyFamily || c.majors.some((m) => memberCodes.has(m))) &&
       (!term || c.code.toLowerCase().replace(/\s+/g, '').includes(term.replace(/\s+/g, '')) || c.name.toLowerCase().includes(term)),
   )
@@ -243,7 +249,8 @@ export default function Families() {
         <span className="text-[14px] font-semibold text-muted">
           {isMajor
             ? `Courses only for ${target}. A year you fill here replaces the shared one for ${target}; empty years use the shared list (shown faded).`
-            : `Shared by ${members.map((m) => m.code).join(', ')}. With nothing set for a year, the upload’s core courses are ticked.`}
+            : `Shared by ${members.map((m) => m.code).join(', ')}. With nothing set for a year, the upload’s core courses are ticked.`}{' '}
+          Labs (codes ending in -L) go wherever their course goes.
         </span>
       </div>
 
@@ -283,7 +290,10 @@ export default function Families() {
                     >
                       <span className="flex min-w-0 flex-1 flex-col">
                         <span className="text-[14px] leading-tight font-extrabold">{c?.name ?? code}</span>
-                        <span className="font-mono text-[11px] font-bold text-muted">{c?.code ?? code}</span>
+                        <span className="font-mono text-[11px] font-bold text-muted">
+                          {c?.code ?? code}
+                          {labOf.has(norm(code)) && ' + lab'}
+                        </span>
                       </span>
                       <button type="button" aria-label={`Remove ${code}`} onClick={() => remove(code)} className="press grid size-7 shrink-0 place-items-center rounded-full text-muted hover:text-navy">
                         <Icon name="x" className="size-3.5" strokeWidth={3} />
@@ -337,6 +347,7 @@ export default function Families() {
                     <span className="text-[14px] leading-tight font-extrabold">{c.name}</span>
                     <span className="font-mono text-[11px] font-bold opacity-70">
                       {c.code} · {c.type}
+                      {labOf.has(norm(c.code)) && ' + lab'}
                     </span>
                   </span>
                   {at !== undefined && <span className="label shrink-0 text-[10px] opacity-70">{yearName(at)}</span>}

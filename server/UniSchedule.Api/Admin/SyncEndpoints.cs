@@ -81,6 +81,9 @@ public static partial class SyncEndpoints
             string code, name, majors, type, year, credits;
             if (existing.TryGetValue(key, out var c))
                 (code, name, majors, type, year, credits) = (c.Code, c.Name, string.Join(", ", c.Majors.Select(m => m.Major.Code)), c.Type.ToString(), Year(c.Year), c.Credits?.ToString() ?? "");
+            else if (Labs.ParentKey(key) is { } pk && existing.TryGetValue(pk, out var parent))
+                // A new lab takes its course's details.
+                (code, name, majors, type, year, credits) = (key, $"{parent.Name} Lab", string.Join(", ", parent.Majors.Select(m => m.Major.Code)), parent.Type.ToString(), Year(parent.Year), "");
             else
             {
                 var m = CodeParts().Match(key);
@@ -226,6 +229,7 @@ public static partial class SyncEndpoints
             var preview = await ScheduleImport.PreviewAsync(db, id, parsed, ct);
             var now = clock.GetUtcNow();
             await ScheduleImport.ApplyAsync(db, semester, parsed, now, ct);
+            await Labs.AlignAsync(db, semester.Id, ct);
             var by = await OwnerEndpoints.ActorName(http, db, ct);
             pending.AppliedAt = now;
             pending.AppliedBy = by;
