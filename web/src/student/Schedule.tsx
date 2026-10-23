@@ -34,6 +34,8 @@ export default function Schedule() {
 
   const go = (next: { view?: string; w?: number; day?: number }) => {
     const p = new URLSearchParams(params)
+    // Moving to another week drops the day picked last time, so day view opens on today again.
+    if (next.w !== undefined) p.delete('day')
     for (const [k, v] of Object.entries(next)) p.set(k, String(v))
     setParams(p, { replace: true })
   }
@@ -70,7 +72,7 @@ export default function Schedule() {
               {fmtWeekRange(start, days.length)}
               {thisWeek && me?.semester?.weeks?.week1Start && ' · this week'}
               {!thisWeek && (
-                <button type="button" className="ml-2 text-sky link-hover" onClick={() => go({ w: 0 })}>
+                <button type="button" className="ml-2 whitespace-nowrap text-sky link-hover" onClick={() => go({ w: 0 })}>
                   · Today
                 </button>
               )}
