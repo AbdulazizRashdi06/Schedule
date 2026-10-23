@@ -26,17 +26,24 @@ public static partial class SyncEndpoints
     static string Hash(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
     static string Key(string code) => string.Concat(code.Where(c => !char.IsWhiteSpace(c))).ToUpperInvariant();
 
-    [GeneratedRegex(@"^([A-Z]+(?:-[A-Z]+)?)(\d+)$")]
+    [GeneratedRegex(@"^([A-Z]+(?:-[A-Z]+)?)(\d+)(-[A-Z]+)?$")]
     private static partial Regex CodeParts();
 
-    /// <summary>"CS1107" → "CS 1 107", "IBSM-FE340" → "IBSM-FE 340": how EduWave writes codes.</summary>
+    /// <summary>"CS1107" → "CS 1 107", "IBSM-FE340" → "IBSM-FE 340", "CS1102-L" → "CS 1 102-L": how EduWave writes codes.</summary>
     public static string EduWaveCode(string code)
     {
         var m = CodeParts().Match(Key(code));
         if (!m.Success) return code;
-        var (prefix, digits) = (m.Groups[1].Value, m.Groups[2].Value);
-        return digits.Length == 4 ? $"{prefix} {digits[0]} {digits[1..]}" : $"{prefix} {digits}";
+        var (prefix, digits, suffix) = (m.Groups[1].Value, m.Groups[2].Value, m.Groups[3].Value);
+        return (digits.Length == 4 ? $"{prefix} {digits[0]} {digits[1..]}" : $"{prefix} {digits}") + suffix;
     }
+
+    /// <summary>
+    /// Codes to fetch even when the semester doesn't have them yet (Sync:ExtraCodes, comma-separated), such as lab
+    /// courses EduWave lists separately. After the first sync they're ordinary courses of the semester.
+    /// </summary>
+    public static List<string> ExtraCodes(IConfiguration config) =>
+        (config["Sync:ExtraCodes"] ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 
     static async Task<SyncToken?> TokenOf(HttpRequest req, AppDb db, CancellationToken ct)
     {
@@ -133,7 +140,7 @@ public static partial class SyncEndpoints
         var sync = api.MapGroup("/sync");
 
         // Which courses to fetch: every course in the semester, with EduWave's spelling of the code.
-        sync.MapGet("/courses", async (int? semesterId, HttpRequest req, AppDb db, TimeProvider clock, CancellationToken ct) =>
+        sync.MapGet("/courses", async (int? semesterId, HttpRequest req, AppDb db, TimeProvider clock, IConfiguration config, CancellationToken ct) =>
         {
             var token = await TokenOf(req, db, ct);
             if (token is null) return Errors.Unauthorized("Connect Classy Sync to Classy again.");
@@ -142,10 +149,12 @@ public static partial class SyncEndpoints
             token.LastUsedAt = clock.GetUtcNow();
             await db.SaveChangesAsync(ct);
             var courses = await db.Courses.Where(c => c.SemesterId == semester.Id).OrderBy(c => c.Code).Select(c => new { c.Code, c.Name }).ToListAsync(ct);
+            var known = courses.Select(c => Key(c.Code)).ToHashSet();
+            var extra = ExtraCodes(config).Where(c => known.Add(Key(c))).Select(c => new { Code = Key(c), Name = "" });
             return Results.Ok(new
             {
                 semester = new { semester.Id, semester.Name },
-                courses = courses.Select(c => new { c.Code, eduwave = EduWaveCode(c.Code), c.Name }),
+                courses = courses.Concat(extra).Select(c => new { c.Code, eduwave = EduWaveCode(c.Code), c.Name }),
             });
         });
 

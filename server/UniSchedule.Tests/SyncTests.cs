@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using UniSchedule.Api.Admin;
 using UniSchedule.Api.Data;
 
@@ -26,7 +27,17 @@ public class SyncTests(ApiFactory factory) : IClassFixture<ApiFactory>
     [InlineData("IBSM-FE340", "IBSM-FE 340")]
     [InlineData("LOG-E 464", "LOG-E 464")]
     [InlineData("LS1003", "LS 1 003")]
+    [InlineData("CS1102-L", "CS 1 102-L")]
+    [InlineData("CS 1 102-L", "CS 1 102-L")]
     public void Codes_are_written_the_EduWave_way(string code, string eduwave) => Assert.Equal(eduwave, SyncEndpoints.EduWaveCode(code));
+
+    [Fact]
+    public void Extra_codes_come_from_config()
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Sync:ExtraCodes"] = "CS1102-L, LOG2201-L" }).Build();
+        Assert.Equal(["CS1102-L", "LOG2201-L"], SyncEndpoints.ExtraCodes(config));
+        Assert.Equal("CS 1 102-L", SyncEndpoints.EduWaveCode(SyncEndpoints.ExtraCodes(config)[0]));
+    }
 
     [Fact]
     public async Task A_sync_waits_for_staff_and_keeps_failed_courses()

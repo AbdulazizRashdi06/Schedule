@@ -14,7 +14,7 @@ A browser extension that fetches the GUtech timetable from EduWave in your signe
 
 ## Syncing
 - Press **Sync now**, or leave **Sync every morning at 06:30** on.
-- It fetches every course in Classy's current semester, **one a second** (about 4 minutes for 217 courses).
+- It fetches every course in Classy's current semester, **one a second** (about 4 minutes for 217 courses), plus any codes listed in the server setting `Sync:ExtraCodes` (comma-separated, for example `CS1102-L`) that the semester doesn't have yet. Those come in as new courses on the next apply.
 - It works through an open Advisor Plan tab when there is one, and otherwise in the background. Moving to another tab doesn't stop it.
 - Progress is saved after each course. If EduWave signs you out, the badge turns red **!**. Sign in and open Advisor Plan again, and it carries on from where it stopped.
 - When it's done, Classy keeps the result as a **pending sync**. Nothing changes for students until someone presses **Apply** under **Upload → From EduWave**.

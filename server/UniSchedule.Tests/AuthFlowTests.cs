@@ -23,6 +23,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Owners:Ids", OwnerId);
         builder.UseSetting("RateLimits:RequestCode", "1000");
         builder.UseSetting("RateLimits:Verify", "1000");
+        builder.UseSetting("Sync:ExtraCodes", "");
     }
 
     public HttpClient Client() => CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true });
