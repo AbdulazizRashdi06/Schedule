@@ -5,6 +5,7 @@ import { SLOTS, TYPE_BG, TYPE_NAME, addDays, isoDate as iso, fmtDuration, fmtWee
 import { ErrorText, Sk, cx } from '../components/ui'
 import type { CustomSlot } from '../lib/types'
 import SlotSheet, { type SlotPreset } from './SlotSheet'
+import ShareSheet from './ShareSheet'
 import { Icon, NeedsSection, RoundButton, useBack, useNow, useTimetable } from './timetable'
 
 const ROW = 86
@@ -14,6 +15,7 @@ export default function Schedule() {
   const { me, tt, sessions: all, error, retry } = useTimetable()
   const [editing, setEditing] = useState<CustomSlot | null>(null)
   const [adding, setAdding] = useState<SlotPreset | null>(null)
+  const [sharing, setSharing] = useState(false)
   const now = useNow()
   const back = useBack('/')
   const navigate = useNavigate()
@@ -47,6 +49,10 @@ export default function Schedule() {
           <RoundButton label="Back to today" onClick={back} className="border-[2.5px] border-sky text-sky">
             <Icon name="back" />
           </RoundButton>
+          <div className="flex items-center gap-2">
+          <RoundButton label="Share as a picture" onClick={() => setSharing(true)} className="size-11 bg-navy-800 text-sky tint-dark">
+            <Icon name="share" className="size-[18px]" />
+          </RoundButton>
           <div role="group" aria-label="View" className="label flex gap-0.5 rounded-full border-2 border-navy-line p-1 text-[11px]">
             {(['day', 'week'] as const).map((v) => (
               <button
@@ -59,6 +65,7 @@ export default function Schedule() {
                 {v}
               </button>
             ))}
+          </div>
           </div>
         </header>
 
@@ -113,6 +120,11 @@ export default function Schedule() {
                 />
               )}
               <Legend mine={sessions.some((s) => s.mine)} />
+              <ShareSheet
+                open={sharing}
+                onClose={() => setSharing(false)}
+                input={{ sessions, days, start, title: weekTitle(offset, start, me?.semester?.weeks), range: fmtWeekRange(start, days.length), day: view === 'day' ? day : undefined }}
+              />
               <SlotSheet
                 slot={editing}
                 preset={adding}

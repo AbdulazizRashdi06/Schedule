@@ -6,6 +6,7 @@ export { cx }
 /** Lucide-style stroke icons. */
 const PATHS = {
   back: 'M15 18l-6-6 6-6',
+  share: 'M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7M16 6l-4-4-4 4M12 2v14',
   prev: 'M19 12H5M11 18l-6-6 6-6',
   next: 'M5 12h14M13 6l6 6-6 6',
   arrow: 'M5 12h14M13 6l6 6-6 6',
