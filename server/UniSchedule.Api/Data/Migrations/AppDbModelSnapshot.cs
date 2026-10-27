@@ -387,6 +387,38 @@ namespace UniSchedule.Api.Data.Migrations
                     b.ToTable("FeedbackResponses");
                 });
 
+            modelBuilder.Entity("UniSchedule.Api.Data.GroupMember", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("GroupId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("JoinedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("ShowClasses")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("StudentId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StudentId");
+
+                    b.HasIndex("GroupId", "StudentId")
+                        .IsUnique();
+
+                    b.ToTable("GroupMembers");
+                });
+
             modelBuilder.Entity("UniSchedule.Api.Data.LoginCode", b =>
                 {
                     b.Property<int>("Id")
@@ -701,6 +733,44 @@ namespace UniSchedule.Api.Data.Migrations
                     b.ToTable("Students");
                 });
 
+            modelBuilder.Entity("UniSchedule.Api.Data.StudyGroup", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ArriveEarlyMinutes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("InviteCode")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TravelMinutes")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InviteCode")
+                        .IsUnique();
+
+                    b.ToTable("StudyGroups");
+                });
+
             modelBuilder.Entity("UniSchedule.Api.Data.SyncToken", b =>
                 {
                     b.Property<int>("Id")
@@ -888,6 +958,23 @@ namespace UniSchedule.Api.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("UniSchedule.Api.Data.GroupMember", b =>
+                {
+                    b.HasOne("UniSchedule.Api.Data.StudyGroup", "Group")
+                        .WithMany("Members")
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("UniSchedule.Api.Data.Student", null)
+                        .WithMany()
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Group");
+                });
+
             modelBuilder.Entity("UniSchedule.Api.Data.MajorElective", b =>
                 {
                     b.HasOne("UniSchedule.Api.Data.Major", "Major")
@@ -1018,6 +1105,11 @@ namespace UniSchedule.Api.Data.Migrations
             modelBuilder.Entity("UniSchedule.Api.Data.Student", b =>
                 {
                     b.Navigation("Picks");
+                });
+
+            modelBuilder.Entity("UniSchedule.Api.Data.StudyGroup", b =>
+                {
+                    b.Navigation("Members");
                 });
 #pragma warning restore 612, 618
         }

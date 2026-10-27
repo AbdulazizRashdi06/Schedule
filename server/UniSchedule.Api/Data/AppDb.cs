@@ -24,6 +24,8 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
     public DbSet<FeedbackPrompt> FeedbackPrompts => Set<FeedbackPrompt>();
     public DbSet<SyncToken> SyncTokens => Set<SyncToken>();
     public DbSet<Connection> Connections => Set<Connection>();
+    public DbSet<StudyGroup> StudyGroups => Set<StudyGroup>();
+    public DbSet<GroupMember> GroupMembers => Set<GroupMember>();
     public DbSet<Enrollment> Enrollments => Set<Enrollment>();
     public DbSet<PendingSync> PendingSyncs => Set<PendingSync>();
     public DbSet<FeedbackResponse> FeedbackResponses => Set<FeedbackResponse>();
@@ -111,6 +113,14 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
         });
         m.Entity<SyncToken>(e => e.HasIndex(x => x.Hash).IsUnique());
         m.Entity<Connection>(e => e.HasIndex(x => x.Kind).IsUnique());
+        m.Entity<StudyGroup>(e => e.HasIndex(x => x.InviteCode).IsUnique());
+        m.Entity<GroupMember>(e =>
+        {
+            e.HasIndex(x => new { x.GroupId, x.StudentId }).IsUnique();
+            e.HasIndex(x => x.StudentId);
+            e.HasOne(x => x.Group).WithMany(g => g.Members).HasForeignKey(x => x.GroupId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Student>().WithMany().HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Cascade);
+        });
         m.Entity<Enrollment>(e =>
         {
             e.HasIndex(x => new { x.SemesterId, x.UniversityId });

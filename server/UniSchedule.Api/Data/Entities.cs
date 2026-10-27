@@ -293,6 +293,36 @@ public class Enrollment
     public DateTimeOffset ReceivedAt { get; set; }
 }
 
+/// <summary>
+/// Students who want to see when they're all free (<c>friends</c>), or who share a car to uni (<c>car</c>).
+/// People join only through the invite link; members see each other by the name they typed, never by university ID.
+/// </summary>
+public class StudyGroup
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public string Kind { get; set; } = "friends";
+    public string InviteCode { get; set; } = "";
+    public int CreatedById { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    /// <summary>Car groups: minutes from home to uni, and how early to arrive before the first class.</summary>
+    public int TravelMinutes { get; set; } = 30;
+    public int ArriveEarlyMinutes { get; set; } = 10;
+    public List<GroupMember> Members { get; set; } = [];
+}
+
+public class GroupMember
+{
+    public int Id { get; set; }
+    public int GroupId { get; set; }
+    public StudyGroup Group { get; set; } = null!;
+    public int StudentId { get; set; }
+    public string DisplayName { get; set; } = "";
+    /// <summary>Off: the group only sees when this member is busy. On: also which class, when and where.</summary>
+    public bool ShowClasses { get; set; }
+    public DateTimeOffset JoinedAt { get; set; }
+}
+
 /// <summary>A "Rate Classy" message staff push to students. The newest open one is shown; pushing another closes it.</summary>
 public class FeedbackPrompt
 {

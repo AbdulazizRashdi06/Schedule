@@ -106,6 +106,7 @@ api.MapOwner();
 api.MapFeedback();
 api.MapSync();
 api.MapConnections();
+api.MapGroups();
 api.Map("/{**rest}", () => Errors.NotFound());
 
 // Client-side routes (/, /setup, /admin/...) all load the app.

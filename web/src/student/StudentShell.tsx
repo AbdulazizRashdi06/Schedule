@@ -40,6 +40,9 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
             <Link to="/edit" onClick={onClose} className={item}>
               Edit my courses<span aria-hidden="true" className="text-[18px]">→</span>
             </Link>
+            <Link to="/groups" onClick={onClose} className={item}>
+              Groups<span aria-hidden="true" className="text-[18px]">→</span>
+            </Link>
             <button
               type="button"
               onClick={() => {

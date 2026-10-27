@@ -5,6 +5,9 @@ import './index.css'
 import { applyAccent, applyBackground, loadAccent, loadBackground } from './lib/theme'
 import { setUpNative } from './lib/native'
 import Colours from './student/Colours'
+import Groups from './student/Groups'
+import Group from './student/Group'
+import Join from './student/Join'
 import { SessionProvider, useSession } from './lib/session'
 import Login from './student/Login'
 import Today, { TodaySkeleton } from './student/Today'
@@ -66,6 +69,9 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/setup" element={<StudentOnly><Setup /></StudentOnly>} />
           <Route path="/edit" element={<StudentOnly><EditCourses /></StudentOnly>} />
           <Route path="/colours" element={<StudentOnly><Colours /></StudentOnly>} />
+          <Route path="/groups" element={<StudentOnly><Groups /></StudentOnly>} />
+          <Route path="/groups/:id" element={<StudentOnly><Group /></StudentOnly>} />
+          <Route path="/join/:code" element={<Join />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/password" element={<ChangePassword />} />
           <Route path="/admin" element={<StaffOnly><AdminLayout /></StaffOnly>}>

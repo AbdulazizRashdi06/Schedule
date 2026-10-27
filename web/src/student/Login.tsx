@@ -4,6 +4,7 @@ import { ApiError, api, errorText } from '../lib/api'
 import { useSession } from '../lib/session'
 import { Icon, Spinner, cx, useShake, useToast } from '../components/ui'
 import { BackButton } from './timetable'
+import { afterSignIn } from '../lib/groups'
 
 interface CodeSent {
   email: string
@@ -50,12 +51,12 @@ export default function Login() {
         setEntering(true)
         if (!isNew) {
           await refresh()
-          navigate('/', { replace: true })
+          navigate(afterSignIn(), { replace: true })
         }
       }}
       onContinue={async () => {
         await refresh()
-        navigate('/', { replace: true })
+        navigate(afterSignIn(), { replace: true })
       }}
     />
   ) : (
