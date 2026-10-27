@@ -23,6 +23,8 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
     public DbSet<NoteReport> NoteReports => Set<NoteReport>();
     public DbSet<FeedbackPrompt> FeedbackPrompts => Set<FeedbackPrompt>();
     public DbSet<SyncToken> SyncTokens => Set<SyncToken>();
+    public DbSet<Connection> Connections => Set<Connection>();
+    public DbSet<Enrollment> Enrollments => Set<Enrollment>();
     public DbSet<PendingSync> PendingSyncs => Set<PendingSync>();
     public DbSet<FeedbackResponse> FeedbackResponses => Set<FeedbackResponse>();
 
@@ -108,6 +110,12 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
             e.HasOne<Student>().WithMany().HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Cascade);
         });
         m.Entity<SyncToken>(e => e.HasIndex(x => x.Hash).IsUnique());
+        m.Entity<Connection>(e => e.HasIndex(x => x.Kind).IsUnique());
+        m.Entity<Enrollment>(e =>
+        {
+            e.HasIndex(x => new { x.SemesterId, x.UniversityId });
+            e.HasOne<Semester>().WithMany().HasForeignKey(x => x.SemesterId).OnDelete(DeleteBehavior.Cascade);
+        });
         m.Entity<PendingSync>(e => e.HasOne<Semester>().WithMany().HasForeignKey(x => x.SemesterId).OnDelete(DeleteBehavior.Cascade));
         m.Entity<FeedbackResponse>(e =>
         {

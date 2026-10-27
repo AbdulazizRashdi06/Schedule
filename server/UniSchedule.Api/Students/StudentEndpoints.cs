@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using UniSchedule.Api.Admin;
 using UniSchedule.Api.Auth;
 using UniSchedule.Api.Data;
 using UniSchedule.Api.Schedule;
@@ -52,14 +53,19 @@ public static class StudentEndpoints
         return family is null ? [majorId] : await db.Majors.Where(m => m.Family == family).Select(m => m.Id).ToListAsync(ct);
     }
 
-    /// <summary>Courses this student may pick: core for their major's family (every year), all LS, electives the family allows.</summary>
-    public static async Task<List<Course>> Options(AppDb db, int semesterId, int majorId, CancellationToken ct)
+    /// <summary>
+    /// Courses this student may pick: core for their major's family (every year), all LS, electives the family allows,
+    /// and anything already picked (courses imported from GUtech can be outside the major).
+    /// </summary>
+    public static async Task<List<Course>> Options(AppDb db, int semesterId, int majorId, CancellationToken ct, int? studentId = null)
     {
+        var picked = studentId is null ? [] : (await db.Picks.Where(p => p.StudentId == studentId && p.Course.SemesterId == semesterId)
+            .Select(p => p.CourseId).ToListAsync(ct)).ToHashSet();
         var all = await SemesterCourses(db, semesterId).ToListAsync(ct);
         var majors = await FamilyMajorIds(db, majorId, ct);
         var extra = (await db.MajorElectives.Where(e => majors.Contains(e.MajorId)).Select(e => e.CourseCode).ToListAsync(ct))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        return all.Where(c => c.Type switch
+        return all.Where(c => picked.Contains(c.Id) || c.Type switch
         {
             CourseType.Core => c.Majors.Any(m => majors.Contains(m.MajorId)),
             CourseType.LS => true,
@@ -137,6 +143,8 @@ public static class StudentEndpoints
                 semester = current is null ? null : new { current.Id, current.Name, weeks = await SemesterWeeks.ForAsync(db, current, ct) },
                 step,
                 setupDone = done,
+                // "Get my courses from GUtech" is offered when a student-courses API is on, or GUtech pushed this student's courses.
+                canImport = await Connections.CanImport(db, current, s.UniversityId, ct),
             });
         });
 
@@ -211,7 +219,7 @@ public static class StudentEndpoints
             var current = await CurrentSemester(db, ct);
             if (current is null) return Errors.Conflict("No semester has been published yet.");
             if (s.MajorId is null) return Errors.Conflict("Pick your major first.");
-            var courses = await Options(db, current.Id, s.MajorId.Value, ct);
+            var courses = await Options(db, current.Id, s.MajorId.Value, ct, s.Id);
             // Last semester's picks, shown as suggestions after a new semester is published.
             var lastSemester = await db.Picks.Where(p => p.StudentId == s.Id && p.Course.SemesterId != current.Id)
                 .OrderByDescending(p => p.Course.SemesterId).Select(p => (int?)p.Course.SemesterId).FirstOrDefaultAsync(ct);
@@ -239,7 +247,7 @@ public static class StudentEndpoints
             var wanted = body.Picks ?? [];
             if (wanted.Select(p => p.CourseId).Distinct().Count() != wanted.Count) return Errors.BadRequest("Each course can only be picked once.");
 
-            var allowed = (await Options(db, current.Id, s.MajorId.Value, ct)).ToDictionary(c => c.Id);
+            var allowed = (await Options(db, current.Id, s.MajorId.Value, ct, s.Id)).ToDictionary(c => c.Id);
             foreach (var p in wanted)
             {
                 if (!allowed.TryGetValue(p.CourseId, out var course)) return Errors.BadRequest("One of the courses isn't available for your major.");

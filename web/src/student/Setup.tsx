@@ -8,6 +8,7 @@ import { ErrorText, Icon, Sk, cx } from '../components/ui'
 import LogoutConfirm from '../components/LogoutConfirm'
 import { CourseRow, clashDetail, type Picks } from '../components/CourseRow'
 import { BackButton, clearTimetableCache } from './timetable'
+import ImportCourses from './ImportCourses'
 
 /** Steps on the progress bar. "editcore" is a sub-page of core; done and waiting sit outside the bar. */
 const STEPS = ['major', 'year', 'core', 'ls', 'electives'] as const
@@ -391,7 +392,7 @@ function PickSteps({ me, view, go }: { me: Me; view: View; go: (v: View, persist
   const [busy, setBusy] = useState(false)
   const navigate = useNavigate()
 
-  useEffect(() => {
+  const load = () =>
     Promise.all([api.get<Options>('/me/options'), api.get<PickRow[]>('/me/picks')]).then(
       ([o, p]) => {
         setOptions(o)
@@ -399,6 +400,8 @@ function PickSteps({ me, view, go }: { me: Me; view: View; go: (v: View, persist
       },
       (e) => setError(errorText(e)),
     )
+  useEffect(() => {
+    void load()
   }, [])
 
   const byId = useMemo(() => new Map((options?.courses ?? []).map((c) => [c.id, c])), [options])
@@ -469,6 +472,11 @@ function PickSteps({ me, view, go }: { me: Me; view: View; go: (v: View, persist
             </>
           }
         />
+        {me.canImport && (
+          <div className="px-6 pt-4">
+            <ImportCourses onDone={load} />
+          </div>
+        )}
         {cores.length === 0 ? <p className="px-6 pt-5 text-[16px] font-semibold text-muted">No core courses are listed for {yearName(me.year ?? 0)} this semester.</p> : list(cores)}
         <button type="button" onClick={() => save('editcore', 'core')} className="label mx-6 mb-4 h-11 self-start text-[12px] link-hover">
           + Add a core course from another year

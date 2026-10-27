@@ -257,6 +257,42 @@ public class PendingSync
     public string? AppliedBy { get; set; }
 }
 
+/// <summary>
+/// An outside API Classy reads, set up by owners: the whole timetable (<c>timetable</c>), or one student's courses
+/// (<c>student-courses</c>, its URL holding <c>{studentId}</c>). Fields map the API's names to Classy's.
+/// </summary>
+public class Connection
+{
+    public int Id { get; set; }
+    public string Kind { get; set; } = "";
+    public string Url { get; set; } = "";
+    /// <summary>An auth header to send, such as Authorization or X-Api-Key. Its value is stored encrypted.</summary>
+    public string HeaderName { get; set; } = "";
+    public string HeaderSecret { get; set; } = "";
+    /// <summary>Where the list sits in the JSON reply, such as "data.items"; empty when the reply is the list.</summary>
+    public string ListPath { get; set; } = "";
+    /// <summary>JSON object: Classy field to path inside each item, e.g. {"code":"course.code","room":"location"}.</summary>
+    public string FieldsJson { get; set; } = "{}";
+    public bool Enabled { get; set; }
+    /// <summary>Timetable only: fetch it every morning as a pending sync.</summary>
+    public bool AutoDaily { get; set; }
+    public DateTimeOffset? LastRunAt { get; set; }
+    public string? LastResult { get; set; }
+    public string UpdatedBy { get; set; } = "";
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+/// <summary>A course GUtech says a student takes this semester, pushed with a sync token; offered as "Get my courses".</summary>
+public class Enrollment
+{
+    public int Id { get; set; }
+    public int SemesterId { get; set; }
+    public string UniversityId { get; set; } = "";
+    public string CourseCode { get; set; } = "";
+    public string Section { get; set; } = "";
+    public DateTimeOffset ReceivedAt { get; set; }
+}
+
 /// <summary>A "Rate Classy" message staff push to students. The newest open one is shown; pushing another closes it.</summary>
 public class FeedbackPrompt
 {

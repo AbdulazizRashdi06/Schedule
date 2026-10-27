@@ -97,6 +97,11 @@ export default function AdminLayout() {
               Students
             </NavLink>
           )}
+          {isOwner && (
+            <NavLink to="/admin/connections" className={link}>
+              Connections
+            </NavLink>
+          )}
           <NavLink to="/admin/accounts" className={link}>
             Accounts
           </NavLink>

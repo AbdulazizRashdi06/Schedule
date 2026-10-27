@@ -19,7 +19,8 @@ public static partial class SyncEndpoints
     public const string TokenPrefix = "csync_";
 
     public record TokenBody(string? Name);
-    public record SyncRow(string? Code, string? Name, string? Section, string? Instructor, string? Date, string? Start, string? End, string? Room);
+    /// <summary>One class: a Date (one class) or Days (every week, "Sun/Tue"); Start and End, or Time ("09:45-11:15").</summary>
+    public record SyncRow(string? Code, string? Name, string? Section, string? Instructor, string? Date, string? Start, string? End, string? Room, string? Days = null, string? Time = null);
     public record SyncBody(int? SemesterId, List<SyncRow>? Rows, List<string>? Failed);
     public record ApplyBody(int Id);
 
@@ -97,7 +98,9 @@ public static partial class SyncEndpoints
                 credits = "";
             }
             output.Add(new ScheduleRow(output.Count + 2, code, name, majors, type, year, credits,
-                (r.Section ?? "").Trim(), Clip(r.Instructor, 120), "", $"{r.Start?.Trim()}-{r.End?.Trim()}", Clip(r.Room, 60), (r.Date ?? "").Trim()));
+                (r.Section ?? "").Trim(), Clip(r.Instructor, 120), (r.Days ?? "").Trim(),
+                string.IsNullOrWhiteSpace(r.Start) && !string.IsNullOrWhiteSpace(r.Time) ? r.Time.Trim() : $"{r.Start?.Trim()}-{r.End?.Trim()}",
+                Clip(r.Room, 60), (r.Date ?? "").Trim()));
         }
         foreach (var key in failed.Select(Key).Distinct())
         {
@@ -111,6 +114,43 @@ public static partial class SyncEndpoints
         }
         return output;
     }
+
+    public record Kept(int Id, string Semester, int Courses, int Classes, int Added, int Updated, int Removed, int Errors);
+
+    /// <summary>
+    /// Checks a fetched timetable and keeps it as the semester's pending sync for staff to apply (replacing an older
+    /// unapplied one). Refused when too many courses failed or would be removed: that usually means the source sent errors.
+    /// </summary>
+    public static async Task<(Kept? Kept, string? Problem)> KeepAsync(AppDb db, Semester semester, List<SyncRow> rows, List<string> failed,
+        string source, DateTimeOffset now, string retry, CancellationToken ct)
+    {
+        if (rows.Count == 0) return (null, "Nothing came back. " + retry);
+        if (rows.Count > MaxRows) return (null, "Too many classes in one sync.");
+        var known = await db.Courses.CountAsync(c => c.SemesterId == semester.Id, ct);
+        if (failed.Count > Math.Max(3, known / 4)) return (null, $"{failed.Count} courses failed, so this sync wasn't kept. {retry}");
+
+        var built = await BuildRows(db, semester.Id, rows, failed, ct);
+        var parsed = ScheduleImport.Parse(built);
+        var preview = await ScheduleImport.PreviewAsync(db, semester.Id, parsed, ct);
+        // Error pages look like courses with no sections: don't keep a sync that empties the semester.
+        var gone = preview.Removed.Count(c => c.Kind == "course");
+        if (gone > Math.Max(5, known / 4)) return (null, $"This sync would remove {gone} courses, so it wasn't kept. {retry}");
+        await db.PendingSyncs.Where(p => p.SemesterId == semester.Id && p.AppliedAt == null).ExecuteDeleteAsync(ct);
+        var pending = new PendingSync
+        {
+            SemesterId = semester.Id, RowsJson = JsonSerializer.Serialize(built), Failed = string.Join(", ", failed.Take(300)),
+            Courses = parsed.Courses.Count, Classes = built.Count, Source = source, ReceivedAt = now,
+        };
+        db.PendingSyncs.Add(pending);
+        await db.SaveChangesAsync(ct);
+        return (new Kept(pending.Id, semester.Name, parsed.Courses.Count, built.Count, preview.Added.Count, preview.Updated.Count, preview.Removed.Count, preview.Errors.Count), null);
+    }
+
+    public static Task<Semester?> TargetSemester(AppDb db, int? id, CancellationToken ct) => SemesterOf(db, id, ct);
+
+    public static Task<SyncToken?> Token(HttpRequest req, AppDb db, CancellationToken ct) => TokenOf(req, db, ct);
+
+    public static string CodeKey(string code) => Key(code);
 
     static string Clip(string? s, int max)
     {
@@ -167,35 +207,10 @@ public static partial class SyncEndpoints
             if (token is null) return Errors.Unauthorized("Connect Classy Sync to Classy again.");
             var semester = await SemesterOf(db, body.SemesterId, ct);
             if (semester is null) return Errors.NotFound("That semester doesn't exist.");
-            var rows = body.Rows ?? [];
-            var failed = body.Failed ?? [];
-            if (rows.Count == 0) return Errors.BadRequest("Nothing came back from EduWave.");
-            if (rows.Count > MaxRows) return Errors.BadRequest("Too many classes in one sync.");
-            var known = await db.Courses.CountAsync(c => c.SemesterId == semester.Id, ct);
-            if (failed.Count > Math.Max(3, known / 4)) return Errors.BadRequest($"{failed.Count} courses failed, so this sync wasn't kept. Sign in to EduWave and sync again.");
-
-            var built = await BuildRows(db, semester.Id, rows, failed, ct);
-            var parsed = ScheduleImport.Parse(built);
-            var preview = await ScheduleImport.PreviewAsync(db, semester.Id, parsed, ct);
-            // EduWave answering with error pages looks like courses with no sections: don't keep a sync that empties the semester.
-            var gone = preview.Removed.Count(c => c.Kind == "course");
-            if (gone > Math.Max(5, known / 4)) return Errors.BadRequest($"This sync would remove {gone} courses, so it wasn't kept. Open Advisor Plan in EduWave and sync again.");
-            var now = clock.GetUtcNow();
-            // Only the newest unapplied sync is kept.
-            await db.PendingSyncs.Where(p => p.SemesterId == semester.Id && p.AppliedAt == null).ExecuteDeleteAsync(ct);
-            var pending = new PendingSync
-            {
-                SemesterId = semester.Id, RowsJson = JsonSerializer.Serialize(built), Failed = string.Join(", ", failed.Take(300)),
-                Courses = parsed.Courses.Count, Classes = built.Count, Source = token.Name, ReceivedAt = now,
-            };
-            db.PendingSyncs.Add(pending);
-            token.LastUsedAt = now;
-            await db.SaveChangesAsync(ct);
-            return Results.Ok(new
-            {
-                pending.Id, semester = semester.Name, courses = parsed.Courses.Count, classes = built.Count,
-                added = preview.Added.Count, updated = preview.Updated.Count, removed = preview.Removed.Count, errors = preview.Errors.Count,
-            });
+            token.LastUsedAt = clock.GetUtcNow();
+            var (kept, problem) = await KeepAsync(db, semester, body.Rows ?? [], body.Failed ?? [], token.Name, clock.GetUtcNow(),
+                "Sign in to EduWave and sync again.", ct);
+            return problem is null ? Results.Ok(kept) : Errors.BadRequest(problem);
         });
 
         // ---- Staff: check the latest sync and apply it ----
@@ -235,7 +250,7 @@ public static partial class SyncEndpoints
             pending.AppliedBy = by;
             db.UploadLogs.Add(new UploadLog
             {
-                SemesterId = id, FileName = "EduWave sync", By = by, At = now,
+                SemesterId = id, FileName = $"Sync: {pending.Source}", By = by, At = now,
                 Added = preview.Added.Count, Updated = preview.Updated.Count, Removed = preview.Removed.Count,
             });
             await db.SaveChangesAsync(ct);

@@ -110,6 +110,63 @@ namespace UniSchedule.Api.Data.Migrations
                     b.ToTable("ClassNotes");
                 });
 
+            modelBuilder.Entity("UniSchedule.Api.Data.Connection", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AutoDaily")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FieldsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HeaderName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HeaderSecret")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastResult")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("LastRunAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ListPath")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("UpdatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UpdatedBy")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Kind")
+                        .IsUnique();
+
+                    b.ToTable("Connections");
+                });
+
             modelBuilder.Entity("UniSchedule.Api.Data.Course", b =>
                 {
                     b.Property<int>("Id")
@@ -238,6 +295,37 @@ namespace UniSchedule.Api.Data.Migrations
                     b.HasIndex("StudentId", "SemesterId");
 
                     b.ToTable("CustomSlots");
+                });
+
+            modelBuilder.Entity("UniSchedule.Api.Data.Enrollment", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CourseCode")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("ReceivedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Section")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SemesterId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UniversityId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SemesterId", "UniversityId");
+
+                    b.ToTable("Enrollments");
                 });
 
             modelBuilder.Entity("UniSchedule.Api.Data.FeedbackPrompt", b =>
@@ -772,6 +860,15 @@ namespace UniSchedule.Api.Data.Migrations
                     b.HasOne("UniSchedule.Api.Data.Student", null)
                         .WithMany()
                         .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("UniSchedule.Api.Data.Enrollment", b =>
+                {
+                    b.HasOne("UniSchedule.Api.Data.Semester", null)
+                        .WithMany()
+                        .HasForeignKey("SemesterId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

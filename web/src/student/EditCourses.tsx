@@ -6,6 +6,7 @@ import { yearName } from '../lib/year'
 import { ErrorText, Sheet, Sk, TextField, Toast, cx, useToast } from '../components/ui'
 import { ClashNotice, SectionChips, clashDetail, meetsText, type Picks } from '../components/CourseRow'
 import { BackButton, clearTimetableCache } from './timetable'
+import ImportCourses from './ImportCourses'
 
 const TYPE_ORDER = { Core: 0, LS: 1, Elective: 2 } as const
 const KIND = { Core: 'Core', LS: 'LS', Elective: 'Elective' } as const
@@ -24,7 +25,7 @@ export default function EditCourses() {
   const [error, setError] = useState('')
   const toast = useToast(2400)
 
-  useEffect(() => {
+  const load = () =>
     api
       .get<Me>('/me')
       .then(async (m) => {
@@ -35,8 +36,11 @@ export default function EditCourses() {
         const map: Picks = new Map(p.map((x) => [x.courseId, x.sectionId]))
         setPicks(map)
         setSaved(map)
+        setDropped(new Map())
       })
       .catch((e) => setError(errorText(e)))
+  useEffect(() => {
+    void load()
   }, [])
 
   const byId = useMemo(() => new Map((options?.courses ?? []).map((c) => [c.id, c])), [options])
@@ -96,6 +100,11 @@ export default function EditCourses() {
             Add course
           </button>
         </div>
+        {me?.canImport && options && (
+          <div className="px-6 pt-4">
+            <ImportCourses onDone={load} />
+          </div>
+        )}
 
         {error && !options ? (
           <div className="px-6 pt-6">

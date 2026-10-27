@@ -46,6 +46,8 @@ export interface Me {
   semester: { id: number; name: string; weeks?: Weeks } | null
   step: Step
   setupDone: boolean
+  /** GUtech can fill in this student's courses ("Get my courses from GUtech"). */
+  canImport?: boolean
 }
 
 /** Teaching weeks: week 1's Sunday ("2026-09-20") and the last week's number. `set` = chosen by an admin. */

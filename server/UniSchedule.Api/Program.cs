@@ -23,6 +23,9 @@ builder.Services.AddDataProtection()
     .SetApplicationName("UniSchedule");
 
 builder.Services.AddSingleton(TimeProvider.System);
+// Outside APIs (timetable, student courses) that owners connect in the dashboard.
+builder.Services.AddHttpClient<IConnectionFetcher, HttpConnectionFetcher>(c => c.Timeout = TimeSpan.FromSeconds(30));
+if (!builder.Environment.IsEnvironment("Testing")) builder.Services.AddHostedService<ConnectionScheduler>();
 builder.Services.Configure<EmailOptions>(config.GetSection("Email"));
 if (string.Equals(config["Email:Provider"], "resend", StringComparison.OrdinalIgnoreCase))
     builder.Services.AddHttpClient<IEmailSender, ResendEmailSender>(c => c.Timeout = TimeSpan.FromSeconds(15));
@@ -102,6 +105,7 @@ api.MapAdmin();
 api.MapOwner();
 api.MapFeedback();
 api.MapSync();
+api.MapConnections();
 api.Map("/{**rest}", () => Errors.NotFound());
 
 // Client-side routes (/, /setup, /admin/...) all load the app.
