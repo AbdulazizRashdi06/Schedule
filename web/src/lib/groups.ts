@@ -62,3 +62,32 @@ export function afterSignIn() {
   store.remove(PENDING)
   return `/join/${code}`
 }
+
+export interface RideRider {
+  name: string
+  firstClass: string
+  lastClass: string
+  morningWait: number
+  afternoonWait: number
+}
+
+export interface RideDay {
+  date: string
+  day: number
+  ride: {
+    leaveHome: string
+    arrive: string
+    leaveUni: string
+    backHome: string
+    riders: RideRider[]
+    secondRide: { leaveUni: string; riders: string[] } | null
+  } | null
+  notComing: string[]
+}
+
+export interface GroupRides {
+  start: string
+  travelMinutes: number
+  arriveEarlyMinutes: number
+  days: RideDay[]
+}

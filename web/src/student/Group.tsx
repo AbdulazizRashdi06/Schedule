@@ -7,6 +7,7 @@ import { KIND_NAME, inviteLink, type Group as GroupInfo, type GroupWeek } from '
 import type { Me } from '../lib/types'
 import { Button, Checkbox, Confirm, ErrorText, Sk, TextField, Toast, cx, useToast } from '../components/ui'
 import { Icon, RoundButton, useBack, useNow } from './timetable'
+import Rides from './Rides'
 
 const MIN_OPTIONS = [30, 60, 90] as const
 
@@ -24,6 +25,7 @@ export default function Group() {
   const [error, setError] = useState('')
   const [atLeast, setAtLeast] = useState<number>(30)
   const [leaving, setLeaving] = useState(false)
+  const [tab, setTab] = useState<'rides' | 'free'>('rides')
 
   const offset = Number(params.get('w')) || 0
   const start = weekStart(now, offset)
@@ -105,6 +107,24 @@ export default function Group() {
           </RoundButton>
         </div>
 
+        {group?.kind === 'car' && (
+          <div role="tablist" aria-label="Show" className="label grid grid-cols-2 gap-0.5 rounded-full p-1 text-[11px] shadow-[inset_0_0_0_2px_rgb(11_25_87/0.14)]">
+            {(
+              [
+                ['rides', 'Rides'],
+                ['free', 'Free time'],
+              ] as const
+            ).map(([t, label]) => (
+              <button key={t} type="button" role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={cx('press h-10 rounded-full', tab === t ? 'bg-navy text-cream' : '')}>
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {group?.kind === 'car' && tab === 'rides' ? (
+          <Rides group={group} start={start} startIso={startIso} onSaved={setGroup} />
+        ) : (
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-[22px] font-extrabold tracking-[-0.02em]">Everyone free</h2>
@@ -170,6 +190,7 @@ export default function Group() {
             })
           )}
         </div>
+        )}
 
         {group && <MeCard group={group} onSaved={setGroup} />}
 

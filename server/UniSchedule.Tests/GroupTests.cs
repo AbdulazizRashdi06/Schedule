@@ -31,13 +31,14 @@ public class GroupTests(ApiFactory factory) : IClassFixture<ApiFactory>
     record World(int Major, Dictionary<string, (int Course, int Section)> Courses);
 
     /// <summary>GA101 every Sunday 08:00–09:30, GA102 once on Mon 19 Oct 2026 11:30–13:00. Published.</summary>
-    async Task<World> Setup()
+    async Task<World> Setup(int year = 2095)
     {
-        var owner = await Owner("owner-groups");
+        var owner = await Owner($"owner-groups-{year}");
         var csv = "code,name,major,type,year,section,instructor,date,days,time,room\n" +
             "GA101,Weekly,GAM,Core,1,1,A,,Sun,08:00-09:30,R1\n" +
-            "GA102,Dated,GAM,Core,1,1,B,2026-10-19,,11:30-13:00,R2\n";
-        var sem = (await Json(await owner.PostAsJsonAsync("/api/admin/semesters", new { term = "Fall", year = 2095 }))).GetProperty("id").GetInt32();
+            "GA102,Dated,GAM,Core,1,1,B,2026-10-19,,11:30-13:00,R2\n" +
+            "GA103,Long,GAM,Core,1,1,C,,Sun,13:15-16:30,R3\n";
+        var sem = (await Json(await owner.PostAsJsonAsync("/api/admin/semesters", new { term = "Fall", year }))).GetProperty("id").GetInt32();
         using var file = new MultipartFormDataContent { { new ByteArrayContent(System.Text.Encoding.UTF8.GetBytes(csv)), "file", "g.csv" } };
         Assert.Equal(HttpStatusCode.OK, (await owner.PostAsync($"/api/admin/semesters/{sem}/upload/apply", file)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await owner.PostAsync($"/api/admin/semesters/{sem}/publish", null)).StatusCode);
@@ -132,5 +133,49 @@ public class GroupTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var late = await Student();
         Assert.True((await Json(await late.GetAsync($"/api/groups/invite/{code}"))).GetProperty("full").GetBoolean());
         Assert.Equal(HttpStatusCode.Conflict, (await late.PostAsJsonAsync($"/api/groups/invite/{code}/join", new { displayName = "P13" })).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_car_group_plans_each_day_around_everyones_classes()
+    {
+        var w = await Setup(2096);
+        var ali = await Student();
+        var bader = await Student();
+        var sara = await Student();
+        await Takes(ali, w, "GA101");
+        await Takes(bader, w, "GA103");
+        // Sara's own slot doesn't bring the car in.
+        Assert.Equal(HttpStatusCode.OK, (await sara.PostAsJsonAsync("/api/me/slots", new { title = "Work", day = 0, start = "10:00", end = "11:00" })).StatusCode);
+
+        var car = await Json(await ali.PostAsJsonAsync("/api/me/groups", new { name = "Morning car", kind = "car", displayName = "Ali" }));
+        var id = car.GetProperty("id").GetInt32();
+        var code = car.GetProperty("inviteCode").GetString();
+        Assert.Equal(30, car.GetProperty("travelMinutes").GetInt32());
+        Assert.Equal(HttpStatusCode.OK, (await bader.PostAsJsonAsync($"/api/groups/invite/{code}/join", new { displayName = "Bader" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await sara.PostAsJsonAsync($"/api/groups/invite/{code}/join", new { displayName = "Sara" })).StatusCode);
+
+        var week = await Json(await sara.GetAsync($"/api/me/groups/{id}/rides?start=2026-10-18"));
+        var sunday = week.GetProperty("days").EnumerateArray().First(d => d.GetProperty("date").GetString() == "2026-10-18");
+        var ride = sunday.GetProperty("ride");
+        // First class 08:00, arrive 10 minutes early, 30 minutes' drive.
+        Assert.Equal("07:20", ride.GetProperty("leaveHome").GetString());
+        Assert.Equal("07:50", ride.GetProperty("arrive").GetString());
+        Assert.Equal("16:30", ride.GetProperty("leaveUni").GetString());
+        Assert.Equal(["Sara"], sunday.GetProperty("notComing").EnumerateArray().Select(x => x.GetString()));
+        var riders = ride.GetProperty("riders").EnumerateArray().ToDictionary(r => r.GetProperty("name").GetString()!);
+        Assert.Equal(420, riders["Ali"].GetProperty("afternoonWait").GetInt32());
+        Assert.Equal(325, riders["Bader"].GetProperty("morningWait").GetInt32());
+        // Ali would wait seven hours, so a second ride home after his class is suggested.
+        var second = ride.GetProperty("secondRide");
+        Assert.Equal("09:30", second.GetProperty("leaveUni").GetString());
+        Assert.Equal(["Ali"], second.GetProperty("riders").EnumerateArray().Select(x => x.GetString()));
+        // Nobody has class on Tuesday: no ride.
+        var tuesday = week.GetProperty("days").EnumerateArray().First(d => d.GetProperty("date").GetString() == "2026-10-20");
+        Assert.Equal(JsonValueKind.Null, tuesday.GetProperty("ride").ValueKind);
+
+        Assert.Equal(HttpStatusCode.BadRequest, (await bader.PutAsJsonAsync($"/api/me/groups/{id}/car", new { travelMinutes = 0, arriveEarlyMinutes = 10 })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await bader.PutAsJsonAsync($"/api/me/groups/{id}/car", new { travelMinutes = 45, arriveEarlyMinutes = 15 })).StatusCode);
+        var later = await Json(await ali.GetAsync($"/api/me/groups/{id}/rides?start=2026-10-18"));
+        Assert.Equal("07:00", later.GetProperty("days")[0].GetProperty("ride").GetProperty("leaveHome").GetString());
     }
 }
