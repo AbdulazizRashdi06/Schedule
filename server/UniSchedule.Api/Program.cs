@@ -58,15 +58,17 @@ builder.Services.AddRateLimiter(o =>
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     o.OnRejected = async (ctx, ct) =>
         await ctx.HttpContext.Response.WriteAsJsonAsync(new { error = "Too many tries. Wait a minute and try again." }, ct);
-    // Per client IP, per 5 minutes. RateLimits:RequestCode / RateLimits:Verify override the defaults.
+    // Per client IP, per 5 minutes: only a flood guard. Everyone on campus Wi-Fi shares one IP, so the caps are high;
+    // each university ID has its own tighter limits (one code a minute, four per 15 minutes, five wrong tries per code).
+    // RateLimits:RequestCode / RateLimits:Verify override the defaults.
     static RateLimitPartition<string> PerIp(HttpContext http, string key, int fallback) =>
         RateLimitPartition.GetFixedWindowLimiter(http.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = http.RequestServices.GetRequiredService<IConfiguration>().GetValue($"RateLimits:{key}", fallback),
             Window = TimeSpan.FromMinutes(5),
         });
-    o.AddPolicy(AuthEndpoints.RequestCodeLimit, http => PerIp(http, "RequestCode", 10));
-    o.AddPolicy(AuthEndpoints.VerifyLimit, http => PerIp(http, "Verify", 20));
+    o.AddPolicy(AuthEndpoints.RequestCodeLimit, http => PerIp(http, "RequestCode", 1000));
+    o.AddPolicy(AuthEndpoints.VerifyLimit, http => PerIp(http, "Verify", 2000));
 });
 
 // Behind Caddy on the Docker network: trust its X-Forwarded-* headers.
