@@ -345,6 +345,15 @@ public class FeedbackResponse
     public DateTimeOffset At { get; set; }
 }
 
+/// <summary>A site-wide switch or value owners change in the dashboard, such as whether the public timetable API is on.</summary>
+public class AppSetting
+{
+    public string Key { get; set; } = "";
+    public string Value { get; set; } = "";
+    public string UpdatedBy { get; set; } = "";
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
 /// <summary>One applied upload, for "Recent uploads" on the dashboard home.</summary>
 public class UploadLog
 {

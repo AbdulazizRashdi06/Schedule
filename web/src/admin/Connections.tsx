@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { api, errorText } from '../lib/api'
 import { Button, Checkbox, ErrorText, TextField } from '../components/ui'
 import { PageTitle, shortDate, useAdmin } from './AdminLayout'
+import PublicTimetable from './PublicTimetable'
 
 type Kind = 'timetable' | 'student-courses'
 
@@ -67,6 +68,7 @@ export default function Connections() {
       />
       <ErrorText>{error}</ErrorText>
       {list?.map((c) => <ConnectionCard key={c.kind} initial={c} />)}
+      <PublicTimetable />
       <section className="flex max-w-[760px] flex-col gap-2 text-[15px] font-semibold text-muted">
         <h2 className="text-[20px] font-extrabold text-navy">GUtech can also send data to Classy</h2>
         <p>

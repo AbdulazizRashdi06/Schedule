@@ -17,6 +17,7 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
     public DbSet<Meeting> Meetings => Set<Meeting>();
     public DbSet<Pick> Picks => Set<Pick>();
     public DbSet<UploadLog> UploadLogs => Set<UploadLog>();
+    public DbSet<AppSetting> AppSettings => Set<AppSetting>();
     public DbSet<CourseDefault> CourseDefaults => Set<CourseDefault>();
     public DbSet<CustomSlot> CustomSlots => Set<CustomSlot>();
     public DbSet<ClassNote> ClassNotes => Set<ClassNote>();
@@ -112,6 +113,7 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
             e.HasOne<Student>().WithMany().HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Cascade);
         });
         m.Entity<SyncToken>(e => e.HasIndex(x => x.Hash).IsUnique());
+        m.Entity<AppSetting>(e => e.HasKey(x => x.Key));
         m.Entity<Connection>(e => e.HasIndex(x => x.Kind).IsUnique());
         m.Entity<StudyGroup>(e => e.HasIndex(x => x.InviteCode).IsUnique());
         m.Entity<GroupMember>(e =>

@@ -8,6 +8,7 @@ using UniSchedule.Api;
 using UniSchedule.Api.Admin;
 using UniSchedule.Api.Auth;
 using UniSchedule.Api.Data;
+using UniSchedule.Api.Schedule;
 using UniSchedule.Api.Students;
 
 var builder = WebApplication.CreateBuilder(args.FirstOrDefault() == Cli.CreateAdmin ? [] : args);
@@ -69,6 +70,7 @@ builder.Services.AddRateLimiter(o =>
         });
     o.AddPolicy(AuthEndpoints.RequestCodeLimit, http => PerIp(http, "RequestCode", 1000));
     o.AddPolicy(AuthEndpoints.VerifyLimit, http => PerIp(http, "Verify", 2000));
+    o.AddPolicy(PublicTimetableEndpoints.Limit, http => PerIp(http, "PublicTimetable", 600));
 });
 
 // Behind Caddy on the Docker network: trust its X-Forwarded-* headers.
@@ -109,6 +111,7 @@ api.MapFeedback();
 api.MapSync();
 api.MapConnections();
 api.MapGroups();
+api.MapPublicTimetable();
 api.Map("/{**rest}", () => Errors.NotFound());
 
 // Client-side routes (/, /setup, /admin/...) all load the app.
