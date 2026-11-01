@@ -6,6 +6,7 @@ import { Button, Confirm, ErrorText, Notice, Select, TextField, cx } from '../co
 import { PageTitle, useAdmin } from './AdminLayout'
 import WeeksEditor from './WeeksEditor'
 import EduWaveSync from './EduWaveSync'
+import ExportButton from './ExportButton'
 
 export interface Change {
   kind: 'course' | 'section'
@@ -81,7 +82,7 @@ export default function Upload() {
 
   return (
     <>
-      <PageTitle title="Upload a timetable" />
+      <PageTitle title="Upload a timetable" action={semester && <ExportButton semesterId={semester.id} />} />
       {semester && <EduWaveSync key={semester.id} semester={semester} />}
       <ol aria-label="Progress" className="grid grid-cols-4 gap-2.5">
         {LABELS.map((l, i) => (

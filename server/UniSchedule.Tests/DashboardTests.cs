@@ -135,4 +135,38 @@ public class DashboardTests(ApiFactory factory) : IClassFixture<ApiFactory>
             Assert.True(seen > DateTimeOffset.UtcNow.AddMinutes(-1));
         }
     }
+
+    [Fact]
+    public async Task Export_gives_every_class_as_a_csv_that_uploads_back_unchanged()
+    {
+        var c = await Owner("owner-export");
+        var csv = "code,name,major,type,year,section,instructor,date,days,time,room\n" +
+            "EX101,\"Maths, Part 1\",EXA,Core,Foundation,1,Dr. A,,Sun/Tue,08:00-09:30,R1\n" +
+            "EX101,\"Maths, Part 1\",EXA,Core,Foundation,2,Dr. B,2026-10-19,,11:30-13:00,R2\n" +
+            "EX201,Lab,EXA,Elective,,1,Dr. C,2026-10-20,,13:15-14:45,\n";
+        var sem = (await Json(await c.PostAsJsonAsync("/api/admin/semesters", new { term = "Fall", year = 2097 }))).GetProperty("id").GetInt32();
+        using (var file = new MultipartFormDataContent { { new ByteArrayContent(System.Text.Encoding.UTF8.GetBytes(csv)), "file", "x.csv" } })
+            Assert.Equal(HttpStatusCode.OK, (await c.PostAsync($"/api/admin/semesters/{sem}/upload/apply", file)).StatusCode);
+
+        var res = await c.GetAsync($"/api/admin/semesters/{sem}/export.csv");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        Assert.Equal("text/csv", res.Content.Headers.ContentType?.MediaType);
+        Assert.Contains("classy-fall-2097-classes.csv", res.Content.Headers.ContentDisposition?.ToString());
+        var bytes = await res.Content.ReadAsByteArrayAsync();
+        var text = System.Text.Encoding.UTF8.GetString(bytes).TrimStart('\uFEFF');
+        var lines = text.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        // Header, two weekly classes (Sun, Tue), and two dated ones.
+        Assert.Equal(5, lines.Length);
+        Assert.Contains("\"Maths, Part 1\"", text);
+        Assert.Contains("Foundation", text);
+
+        // Uploading the export again changes nothing.
+        using var again = new MultipartFormDataContent { { new ByteArrayContent(bytes), "file", "export.csv" } };
+        var preview = await Json(await c.PostAsync($"/api/admin/semesters/{sem}/upload/preview", again));
+        Assert.Equal(0, preview.GetProperty("errors").GetArrayLength());
+        Assert.Equal(0, preview.GetProperty("added").GetArrayLength() + preview.GetProperty("updated").GetArrayLength() + preview.GetProperty("removed").GetArrayLength());
+
+        // Admins only.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await factory.Client().GetAsync($"/api/admin/semesters/{sem}/export.csv")).StatusCode);
+    }
 }

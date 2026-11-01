@@ -204,6 +204,37 @@ public static class AdminEndpoints
             return Results.Ok(new { saved = rows.Count });
         });
 
+        // ---- Export: every class of the semester as CSV, in the upload's own columns, so it can be edited and uploaded back ----
+
+        admin.MapGet("/semesters/{id:int}/export.csv", async (int id, AppDb db, CancellationToken ct) =>
+        {
+            var semester = await db.Semesters.FirstOrDefaultAsync(s => s.Id == id, ct);
+            if (semester is null) return Errors.NotFound("That semester doesn't exist.");
+            var courses = await db.Courses.Where(c => c.SemesterId == id)
+                .Include(c => c.Majors).ThenInclude(m => m.Major)
+                .Include(c => c.Sections).ThenInclude(s => s.Meetings)
+                .AsSplitQuery().OrderBy(c => c.Code).ToListAsync(ct);
+            static string Cell(string v) => v.IndexOfAny([',', '"', '\n', '\r']) >= 0 ? $"\"{v.Replace("\"", "\"\"")}\"" : v;
+            var csv = new System.Text.StringBuilder("Course Code,Course Name,Major,Type,Year,Credits,Section,Instructor,Date,Days,Time,Room\r\n");
+            foreach (var c in courses)
+            {
+                var majors = string.Join(", ", c.Majors.Select(m => m.Major.Code).Order());
+                var year = c.Year switch { null => "", 0 => "Foundation", var y => y.ToString()! };
+                foreach (var s in c.Sections.OrderBy(s => s.Number))
+                foreach (var m in s.Meetings.OrderBy(m => m.Date).ThenBy(m => m.Day).ThenBy(m => m.Start))
+                    csv.Append(string.Join(",", new[]
+                    {
+                        c.Code, c.Name, majors, c.Type.ToString(), year, c.Credits?.ToString() ?? "", s.Number, s.Instructor,
+                        m.Date?.ToString("yyyy-MM-dd") ?? "", m.Date is null ? Timeslots.DayNames[m.Day] : "",
+                        $"{Timeslots.Format(m.Start)}-{Timeslots.Format(m.End)}", m.Room,
+                    }.Select(Cell))).Append("\r\n");
+            }
+            var name = string.Concat(semester.Name.Select(ch => char.IsLetterOrDigit(ch) ? ch : '-')).ToLowerInvariant();
+            // A byte-order mark so Excel opens it as UTF-8.
+            return Results.File(System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(csv.ToString())).ToArray(),
+                "text/csv; charset=utf-8", $"classy-{name}-classes.csv");
+        });
+
         // ---- Upload: the same file is sent to preview, then again to apply ----
 
         admin.MapPost("/semesters/{id:int}/upload/preview", async (int id, HttpRequest req, AppDb db, CancellationToken ct) =>

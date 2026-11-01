@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { api, errorText, store } from '../lib/api'
 import { ErrorText, Loading, Notice, Tag, TextField } from '../components/ui'
 import { Filters, PageTitle, Th, useAdmin } from './AdminLayout'
+import ExportButton from './ExportButton'
 
 interface CourseRow {
   id: number
@@ -46,7 +47,17 @@ export default function Courses() {
 
   return (
     <>
-      <PageTitle title="Courses" action={<span className="label text-[12px]">{semester.name} · {list ? rows.length : '…'} shown</span>} />
+      <PageTitle
+        title="Courses"
+        action={
+          <span className="flex items-center gap-3">
+            <span className="label text-[12px]">
+              {semester.name} · {list ? rows.length : '…'} shown
+            </span>
+            <ExportButton semesterId={semester.id} />
+          </span>
+        }
+      />
       <div className="flex flex-wrap items-end gap-3">
         <TextField label="Search" placeholder="Code, title or instructor" value={q} onChange={(e) => setQ(e.target.value)} className="flex-[1_1_280px]" />
         <Filters<Filter> value={filter} onChange={setFilter} options={[['all', 'All'], ['fix', 'Needs fix'], ['changed', 'Changed']]} />
