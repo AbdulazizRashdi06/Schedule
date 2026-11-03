@@ -238,6 +238,11 @@ public class SyncToken
     public string CreatedBy { get; set; } = "";
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? LastUsedAt { get; set; }
+    /// <summary>
+    /// Also allowed to send students' enrollments (GUtech IT's push). Off for the Classy Sync extension's tokens,
+    /// which only ever send the timetable.
+    /// </summary>
+    public bool CanSendEnrollments { get; set; }
 }
 
 /// <summary>A timetable the extension fetched from EduWave, waiting for staff to check and apply it like an upload.</summary>

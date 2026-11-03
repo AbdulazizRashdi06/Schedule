@@ -42,7 +42,8 @@ public static class DevSeed
             await db.SaveChangesAsync();
         }
         var now = DateTimeOffset.UtcNow;
-        var semester = new Semester { Name = "Fall 2026", Term = "Fall", Year = 2026, CreatedAt = now };
+        // A full 15-week term, so week numbers and the views that page through weeks have a real semester to show.
+        var semester = new Semester { Name = "Fall 2026", Term = "Fall", Year = 2026, CreatedAt = now, Week1Start = new DateOnly(2026, 9, 6), LastWeek = 15 };
         db.Semesters.Add(semester);
         await db.SaveChangesAsync();
         await ScheduleImport.ApplyAsync(db, semester, parsed, now, CancellationToken.None);

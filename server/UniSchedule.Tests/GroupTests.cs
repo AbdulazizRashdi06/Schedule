@@ -162,9 +162,22 @@ public class GroupTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal("07:50", ride.GetProperty("arrive").GetString());
         Assert.Equal("16:30", ride.GetProperty("leaveUni").GetString());
         Assert.Equal(["Sara"], sunday.GetProperty("notComing").EnumerateArray().Select(x => x.GetString()));
+        // Sara sees the ride, but not Ali's or Bader's class times: neither shows their classes to the group.
         var riders = ride.GetProperty("riders").EnumerateArray().ToDictionary(r => r.GetProperty("name").GetString()!);
-        Assert.Equal(420, riders["Ali"].GetProperty("afternoonWait").GetInt32());
-        Assert.Equal(325, riders["Bader"].GetProperty("morningWait").GetInt32());
+        Assert.Equal(JsonValueKind.Null, riders["Ali"].GetProperty("firstClass").ValueKind);
+        Assert.Equal(JsonValueKind.Null, riders["Ali"].GetProperty("afternoonWait").ValueKind);
+        // Each rider sees their own times.
+        var alis = (await Json(await ali.GetAsync($"/api/me/groups/{id}/rides?start=2026-10-18"))).GetProperty("days").EnumerateArray()
+            .First(d => d.GetProperty("date").GetString() == "2026-10-18").GetProperty("ride").GetProperty("riders").EnumerateArray()
+            .ToDictionary(r => r.GetProperty("name").GetString()!);
+        Assert.Equal(420, alis["Ali"].GetProperty("afternoonWait").GetInt32());
+        Assert.Equal(JsonValueKind.Null, alis["Bader"].GetProperty("morningWait").ValueKind);
+        // Once Bader shows his classes, the others see his times too.
+        Assert.Equal(HttpStatusCode.OK, (await bader.PutAsJsonAsync($"/api/me/groups/{id}/me", new { displayName = "Bader", showClasses = true })).StatusCode);
+        var shown = (await Json(await sara.GetAsync($"/api/me/groups/{id}/rides?start=2026-10-18"))).GetProperty("days").EnumerateArray()
+            .First(d => d.GetProperty("date").GetString() == "2026-10-18").GetProperty("ride").GetProperty("riders").EnumerateArray()
+            .ToDictionary(r => r.GetProperty("name").GetString()!);
+        Assert.Equal(325, shown["Bader"].GetProperty("morningWait").GetInt32());
         // Ali would wait seven hours, so a second ride home after his class is suggested.
         var second = ride.GetProperty("secondRide");
         Assert.Equal("09:30", second.GetProperty("leaveUni").GetString());

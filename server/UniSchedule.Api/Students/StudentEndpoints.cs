@@ -65,14 +65,15 @@ public static class StudentEndpoints
         var majors = await FamilyMajorIds(db, majorId, ct);
         var extra = (await db.MajorElectives.Where(e => majors.Contains(e.MajorId)).Select(e => e.CourseCode).ToListAsync(ct))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        return all.Where(c => picked.Contains(c.Id) || c.Type switch
+        // A course with no sections left (dropped by an upload but kept for those who picked it) can't be newly picked.
+        return all.Where(c => picked.Contains(c.Id) || (c.Sections.Count > 0 && c.Type switch
         {
             CourseType.Core => c.Majors.Any(m => majors.Contains(m.MajorId)),
             CourseType.LS => true,
             // No majors listed means any major may take it; admins can allow more under Majors.
             CourseType.Elective => c.Majors.Count == 0 || c.Majors.Any(m => majors.Contains(m.MajorId)) || extra.Contains(c.Code),
             _ => false,
-        }).OrderBy(c => c.Code).ToList();
+        })).OrderBy(c => c.Code).ToList();
     }
 
     /// <summary>

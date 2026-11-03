@@ -73,12 +73,15 @@ builder.Services.AddRateLimiter(o =>
     o.AddPolicy(PublicTimetableEndpoints.Limit, http => PerIp(http, "PublicTimetable", 600));
 });
 
-// Behind Caddy on the Docker network: trust its X-Forwarded-* headers.
+// Behind Caddy on the Docker network: trust X-Forwarded-* only from there (private and loopback addresses), so a request
+// that reaches the app any other way can't pick its own IP and slip past the per-IP rate limits.
 builder.Services.Configure<ForwardedHeadersOptions>(o =>
 {
     o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
     o.KnownIPNetworks.Clear();
     o.KnownProxies.Clear();
+    foreach (var net in new[] { "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8", "::1/128", "fc00::/7" })
+        o.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(net));
 });
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o => o.MultipartBodyLengthLimit = AdminEndpoints.MaxUploadBytes + 64 * 1024);

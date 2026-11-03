@@ -9,6 +9,28 @@ export function setUpNative() {
   SystemBars.setStyle({ style: SystemBarsStyle.Light }).catch(() => {})
 }
 
+/** Status bar icons for the surface underneath: dark on cream, light on navy. */
+export function setBars(onNavy: boolean) {
+  if (!isNative) return
+  SystemBars.setStyle({ style: onNavy ? SystemBarsStyle.Dark : SystemBarsStyle.Light }).catch(() => {})
+}
+
+/** A light haptic tap in the phone apps; nothing on the web. `select` is the lighter tick for stepping through days. */
+export function tick(kind: 'impact' | 'select' = 'impact') {
+  if (!isNative) return
+  void import('@capacitor/haptics').then(async ({ Haptics, ImpactStyle }) => {
+    try {
+      if (kind === 'impact') return await Haptics.impact({ style: ImpactStyle.Light })
+      // iOS only plays a selection tick inside a started selection.
+      await Haptics.selectionStart()
+      await Haptics.selectionChanged()
+      await Haptics.selectionEnd()
+    } catch {
+      /* no haptics on this device */
+    }
+  })
+}
+
 /** Saves a picture as a download (the web fallback when the browser can't share files). */
 export function saveImage(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob)

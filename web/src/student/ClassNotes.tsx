@@ -35,12 +35,19 @@ function upcomingDates(section: Section, today: Date) {
   return Array.from({ length: 70 }, (_, i) => addDays(today, i)).filter((d) => days.has(d.getDay())).map(isoDate).slice(0, 20)
 }
 
-/** Notes on a class: private ones only you see, public ones your classmates see (with your student ID). */
-export default function ClassNotes({ courseId, section, me, onChanged }: { courseId: number; section: Section; me: string; onChanged: () => void }) {
+/**
+ * Notes on a class: private ones only you see, public ones your classmates see (with your student ID). Given a
+ * `session` date, a toggle switches between that session's notes and the whole course's, in place of the date picker.
+ */
+export default function ClassNotes({ courseId, section, me, onChanged, session }: { courseId: number; section: Section; me: string; onChanged: () => void; session?: string }) {
   const [notes, setNotes] = useState<Note[] | null>(null)
   const [text, setText] = useState('')
   const [isPublic, setIsPublic] = useState(false)
-  const [date, setDate] = useState('')
+  const [picked, setPicked] = useState('')
+  const [scope, setScope] = useState<'session' | 'course'>('session')
+  // With a session the toggle decides the date; without, the picker does.
+  const date = session ? (scope === 'session' ? session : '') : picked
+  const shown = session ? notes?.filter((n) => (scope === 'session' ? n.date === session : n.date === null)) : notes
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState<{ id: number; text: string } | null>(null)
@@ -63,6 +70,26 @@ export default function ClassNotes({ courseId, section, me, onChanged }: { cours
   return (
     <div className="flex flex-col gap-3">
       <h2 className="text-[18px] font-extrabold">Notes</h2>
+      {session && (
+        <div role="radiogroup" aria-label="Notes for" className="grid grid-cols-2 gap-1 rounded-full bg-navy-800 p-1">
+          {[
+            { v: 'session' as const, label: 'This session', n: notes?.filter((x) => x.date === session).length ?? 0 },
+            { v: 'course' as const, label: 'Whole course', n: notes?.filter((x) => x.date === null).length ?? 0 },
+          ].map((o) => (
+            <button
+              key={o.v}
+              type="button"
+              role="radio"
+              aria-checked={scope === o.v}
+              onClick={() => setScope(o.v)}
+              className={cx('press flex h-10 items-center justify-center gap-1.5 rounded-full text-[14px] font-extrabold', scope === o.v ? 'bg-sky text-navy' : 'text-ice')}
+            >
+              {o.label}
+              {o.n > 0 && <span className={cx('label rounded-full px-1.5 py-0.5 text-[9px]', scope === o.v ? 'bg-navy text-sky' : 'bg-navy text-ice')}>{o.n}</span>}
+            </button>
+          ))}
+        </div>
+      )}
       <form
         className="flex flex-col gap-2 rounded-[18px] bg-navy-800 p-3"
         onSubmit={(e) => {
@@ -106,19 +133,23 @@ export default function ClassNotes({ courseId, section, me, onChanged }: { cours
               </button>
             ))}
           </div>
-          <select
-            aria-label="For"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            className="label h-9 min-w-0 flex-1 rounded-full bg-navy px-3 text-[10px] text-ice outline-none"
-          >
-            <option value="">Whole class</option>
-            {dates.map((d) => (
-              <option key={d} value={d}>
-                {label(d)}
-              </option>
-            ))}
-          </select>
+          {session ? (
+            <span className="flex-1" />
+          ) : (
+            <select
+              aria-label="For"
+              value={picked}
+              onChange={(e) => setPicked(e.target.value)}
+              className="label h-9 min-w-0 flex-1 rounded-full bg-navy px-3 text-[10px] text-ice outline-none"
+            >
+              <option value="">Whole class</option>
+              {dates.map((d) => (
+                <option key={d} value={d}>
+                  {label(d)}
+                </option>
+              ))}
+            </select>
+          )}
           <button type="submit" disabled={busy || !text.trim()} className="press label h-9 rounded-full bg-cream px-4 text-[10px] text-navy disabled:opacity-50">
             {busy ? 'Posting…' : 'Post'}
           </button>
@@ -129,9 +160,9 @@ export default function ClassNotes({ courseId, section, me, onChanged }: { cours
       </form>
       <ErrorText>{error}</ErrorText>
 
-      {notes && notes.length === 0 && <p className="text-[14px] font-semibold text-ice">No notes yet.</p>}
+      {shown && shown.length === 0 && <p className="text-[14px] font-semibold text-ice">{session ? (scope === 'session' ? 'Nothing on this session yet.' : 'Nothing on the course yet.') : 'No notes yet.'}</p>}
       <ul className="flex flex-col gap-2">
-        {notes?.map((n) => (
+        {shown?.map((n) => (
           <li key={n.id} className="flex flex-col gap-1.5 rounded-[18px] bg-navy-800 px-3.5 py-3">
             <span className="flex flex-wrap items-center gap-1.5">
               <span className="font-mono text-[12px] font-bold">{n.mine ? 'You' : n.author}</span>
@@ -147,7 +178,7 @@ export default function ClassNotes({ courseId, section, me, onChanged }: { cours
                   e.preventDefault()
                   void act(async () => {
                     const updated = await api.put<Note>(`/me/notes/${n.id}`, { text: editing.text })
-                    setNotes(notes.map((x) => (x.id === n.id ? updated : x)))
+                    setNotes((notes ?? []).map((x) => (x.id === n.id ? updated : x)))
                     setEditing(null)
                   })
                 }}
@@ -185,7 +216,7 @@ export default function ClassNotes({ courseId, section, me, onChanged }: { cours
                       onClick={() =>
                         act(async () => {
                           await api.del(`/me/notes/${n.id}`)
-                          setNotes(notes.filter((x) => x.id !== n.id))
+                          setNotes((notes ?? []).filter((x) => x.id !== n.id))
                         })
                       }
                     >
@@ -201,7 +232,7 @@ export default function ClassNotes({ courseId, section, me, onChanged }: { cours
                     onClick={() =>
                       act(async () => {
                         await api.post(`/me/notes/${n.id}/report`)
-                        setNotes(notes.map((x) => (x.id === n.id ? { ...x, reported: true } : x)))
+                        setNotes((notes ?? []).map((x) => (x.id === n.id ? { ...x, reported: true } : x)))
                       })
                     }
                   >

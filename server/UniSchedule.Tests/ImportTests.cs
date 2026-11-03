@@ -119,10 +119,14 @@ public sealed class ImportTests : IDisposable
     }
 
     [Fact]
-    public async Task Removed_section_flags_the_pick_and_removed_course_drops_it()
+    public async Task Removed_section_or_course_flags_the_picks_and_keeps_the_notes()
     {
         await Apply(Base);
         var student = await StudentWith(("CS201", "2"), ("CS210", "1"));
+        // A session note on the section that's about to go.
+        var gone = await db.Sections.Include(s => s.Course).SingleAsync(s => s.Course.Code == "CS201" && s.Number == "2");
+        db.ClassNotes.Add(new ClassNote { StudentId = student.Id, CourseId = gone.CourseId, SectionId = gone.Id, Date = new DateOnly(2026, 10, 18), Text = "Bring the lab sheet", CreatedAt = Now, UpdatedAt = Now });
+        await db.SaveChangesAsync();
 
         var next = string.Join("\n", Base.Split('\n').Where(l => !l.Contains("Dr. B") && !l.StartsWith("CS210")));
         var p = await ScheduleImport.PreviewAsync(db, semester.Id, Parse(next), CancellationToken.None);
@@ -132,11 +136,26 @@ public sealed class ImportTests : IDisposable
         Assert.Equal(1, p.StudentsAffected);
 
         await Apply(next);
-        var picks = await db.Picks.Include(x => x.Course).Where(x => x.StudentId == student.Id).ToListAsync();
-        var pick = Assert.Single(picks);
-        Assert.Equal("CS201", pick.Course.Code);
-        Assert.Null(pick.SectionId);
-        Assert.True(pick.SectionRemoved);
+        db.ChangeTracker.Clear();
+        // Both picks stay, flagged, so the student is told rather than the class silently vanishing.
+        var picks = await db.Picks.Include(x => x.Course).Where(x => x.StudentId == student.Id).OrderBy(x => x.Course.Code).ToListAsync();
+        Assert.Equal(["CS201", "CS210"], picks.Select(x => x.Course.Code));
+        Assert.All(picks, x => Assert.Null(x.SectionId));
+        Assert.All(picks, x => Assert.True(x.SectionRemoved));
+        // The dropped course is kept with no sections, and nobody else can pick it.
+        Assert.Empty(await db.Sections.Where(s => s.Course.Code == "CS210").ToListAsync());
+        // The note on the removed section survives, as a note on the course's date.
+        var note = await db.ClassNotes.SingleAsync(n => n.StudentId == student.Id);
+        Assert.Null(note.SectionId);
+        Assert.Equal(new DateOnly(2026, 10, 18), note.Date);
+    }
+
+    [Fact]
+    public async Task A_dropped_course_nobody_picked_is_deleted()
+    {
+        await Apply(Base);
+        await Apply(string.Join("\n", Base.Split('\n').Where(l => !l.StartsWith("CS210"))));
+        Assert.False(await db.Courses.AnyAsync(c => c.Code == "CS210"));
     }
 
     [Fact]

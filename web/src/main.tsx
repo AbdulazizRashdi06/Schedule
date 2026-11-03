@@ -10,8 +10,9 @@ import Group from './student/Group'
 import Join from './student/Join'
 import { SessionProvider, useSession } from './lib/session'
 import Login from './student/Login'
-import Today, { TodaySkeleton } from './student/Today'
+import { TodaySkeleton } from './student/Today'
 import Schedule from './student/Schedule'
+import Lab from './student/Lab'
 import Course from './student/Course'
 import Setup from './student/Setup'
 import EditCourses from './student/EditCourses'
@@ -63,8 +64,11 @@ createRoot(document.getElementById('root')!).render(
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/" element={<StudentOnly><Today /></StudentOnly>} />
+          {/* Home: the days and the week as one page you swipe and scroll around in. */}
+          <Route path="/" element={<StudentOnly><Lab /></StudentOnly>} />
           <Route path="/schedule" element={<StudentOnly><Schedule /></StudentOnly>} />
+          {/* Where the new home was tried out; old links land on home. */}
+          <Route path="/lab" element={<Navigate to="/" replace />} />
           <Route path="/course/:courseId" element={<StudentOnly><Course /></StudentOnly>} />
           <Route path="/setup" element={<StudentOnly><Setup /></StudentOnly>} />
           <Route path="/edit" element={<StudentOnly><EditCourses /></StudentOnly>} />

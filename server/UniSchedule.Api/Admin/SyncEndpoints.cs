@@ -18,7 +18,8 @@ public static partial class SyncEndpoints
     public const int MaxRows = 20_000;
     public const string TokenPrefix = "csync_";
 
-    public record TokenBody(string? Name);
+    /// <summary>`Enrollments`: a token for GUtech IT that may also send students' enrollments; the extension's tokens don't.</summary>
+    public record TokenBody(string? Name, bool Enrollments = false);
     /// <summary>One class: a Date (one class) or Days (every week, "Sun/Tue"); Start and End, or Time ("09:45-11:15").</summary>
     public record SyncRow(string? Code, string? Name, string? Section, string? Instructor, string? Date, string? Start, string? End, string? Room, string? Days = null, string? Time = null);
     public record SyncBody(int? SemesterId, List<SyncRow>? Rows, List<string>? Failed);
@@ -164,14 +165,18 @@ public static partial class SyncEndpoints
         var tokens = api.MapGroup("/admin/sync-tokens").RequireAuthorization(Session.OwnerPolicy);
 
         tokens.MapGet("", async (AppDb db, CancellationToken ct) =>
-            await db.SyncTokens.OrderByDescending(t => t.Id).Select(t => new { t.Id, t.Name, t.CreatedBy, t.CreatedAt, t.LastUsedAt }).ToListAsync(ct));
+            await db.SyncTokens.OrderByDescending(t => t.Id).Select(t => new { t.Id, t.Name, t.CreatedBy, t.CreatedAt, t.LastUsedAt, t.CanSendEnrollments }).ToListAsync(ct));
 
         tokens.MapPost("", async (TokenBody body, HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) =>
         {
             var name = Clip(body.Name, 60);
             if (name.Length == 0) name = "Classy Sync";
             var token = TokenPrefix + Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
-            db.SyncTokens.Add(new SyncToken { Name = name, Hash = Hash(token), CreatedBy = await OwnerEndpoints.ActorName(http, db, ct), CreatedAt = clock.GetUtcNow() });
+            db.SyncTokens.Add(new SyncToken
+            {
+                Name = name, Hash = Hash(token), CreatedBy = await OwnerEndpoints.ActorName(http, db, ct), CreatedAt = clock.GetUtcNow(),
+                CanSendEnrollments = body.Enrollments,
+            });
             await db.SaveChangesAsync(ct);
             return Results.Ok(new { token });
         });

@@ -160,6 +160,8 @@ public static partial class ConnectionEndpoints
         {
             var token = await SyncEndpoints.Token(req, db, ct);
             if (token is null) return Errors.Unauthorized("Send a valid sync token.");
+            // Only a token made for it may write enrollments: the extension's tokens only send the timetable.
+            if (!token.CanSendEnrollments) return Errors.Forbidden("This token can only send the timetable. Make a GUtech IT token under Accounts → Classy Sync.");
             var semester = await SyncEndpoints.TargetSemester(db, body.SemesterId, ct);
             if (semester is null) return Errors.NotFound("That semester doesn't exist.");
             var students = body.Students ?? [];

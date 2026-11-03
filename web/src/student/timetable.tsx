@@ -26,10 +26,27 @@ function saved(): (Data & { savedAt: string }) | null {
   }
 }
 
-async function load(): Promise<Data> {
+async function fetchData(): Promise<Data> {
   const me = await api.get<Me>('/me')
   const tt = me.setupDone ? await api.get<Timetable>('/me/timetable') : null
   return { me, tt }
+}
+
+// Screens that mount together (home and the Today inside it) share one request instead of each sending their own,
+// and a screen that mounts just after a load (the Today home draws once the data is in) uses it rather than asking again.
+let inflight: Promise<Data> | null = null
+let loadedAt = 0
+const FRESH_MS = 5_000
+function load(): Promise<Data> {
+  inflight ??= fetchData()
+    .then((d) => {
+      loadedAt = Date.now()
+      return d
+    })
+    .finally(() => {
+      inflight = null
+    })
+  return inflight
 }
 
 export function useTimetable() {
@@ -58,6 +75,7 @@ export function useTimetable() {
   }, [])
 
   useEffect(() => {
+    if (cache && Date.now() - loadedAt < FRESH_MS) return
     void fetchNow()
   }, [fetchNow])
 

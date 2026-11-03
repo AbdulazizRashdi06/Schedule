@@ -296,8 +296,36 @@ public static class ScheduleImport
         var byCode = existing.ToDictionary(c => c.Code, StringComparer.OrdinalIgnoreCase);
         var markChanges = semester.IsCurrent;
 
+        // A section that goes away: students who picked it are told to pick another, and their notes on its sessions are
+        // kept (as notes on the course's dates) instead of being deleted along with it.
+        async Task DropSection(Course course, Section sec)
+        {
+            foreach (var pick in await db.Picks.Where(p => p.SectionId == sec.Id).ToListAsync(ct))
+            {
+                pick.SectionId = null;
+                pick.Section = null;
+                pick.SectionRemoved = true;
+            }
+            await db.ClassNotes.Where(n => n.SectionId == sec.Id).ExecuteUpdateAsync(u => u.SetProperty(n => n.SectionId, (int?)null), ct);
+            // Notes already loaded in this context would otherwise be cascade-deleted with the section on save.
+            foreach (var loaded in db.ChangeTracker.Entries<ClassNote>().Where(e => e.Entity.SectionId == sec.Id).ToList())
+            {
+                loaded.Entity.SectionId = null;
+                loaded.Entity.Section = null;
+            }
+            course.Sections.Remove(sec);
+            db.Sections.Remove(sec);
+        }
+
         foreach (var course in existing.Where(c => !parsed.Courses.Any(pc => string.Equals(pc.Code, c.Code, StringComparison.OrdinalIgnoreCase))))
-            db.Courses.Remove(course);
+        {
+            // A course someone picked isn't deleted out from under them: it stays with no sections, so they see that its
+            // section went (instead of the class silently vanishing) and keep their notes. A later upload that has the
+            // course again fills it back in.
+            if (await db.Picks.AnyAsync(p => p.CourseId == course.Id, ct))
+                foreach (var sec in course.Sections.ToList()) await DropSection(course, sec);
+            else db.Courses.Remove(course);
+        }
 
         foreach (var pc in parsed.Courses)
         {
@@ -316,16 +344,7 @@ public static class ScheduleImport
                 course.Majors.Add(new CourseMajor { Major = m, MajorId = m.Id });
 
             foreach (var sec in course.Sections.Where(s => !pc.Sections.Any(ps => string.Equals(ps.Number, s.Number, StringComparison.OrdinalIgnoreCase))).ToList())
-            {
-                foreach (var pick in await db.Picks.Where(p => p.SectionId == sec.Id).ToListAsync(ct))
-                {
-                    pick.SectionId = null;
-                    pick.Section = null;
-                    pick.SectionRemoved = true;
-                }
-                course.Sections.Remove(sec);
-                db.Sections.Remove(sec);
-            }
+                await DropSection(course, sec);
             foreach (var ps in pc.Sections)
             {
                 var sec = course.Sections.FirstOrDefault(s => string.Equals(s.Number, ps.Number, StringComparison.OrdinalIgnoreCase));

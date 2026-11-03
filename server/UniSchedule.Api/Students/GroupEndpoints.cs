@@ -172,7 +172,8 @@ public static class GroupEndpoints
         // The car's day: leave home for the earliest class, leave uni after the last one, and who waits how long.
         me.MapGet("/{groupId:int}/rides", async (int groupId, string? start, HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) =>
         {
-            if (await Mine(db, groupId, http.User.Id(), ct) is not { } g) return Errors.NotFound("That group doesn't exist.");
+            var me = http.User.Id();
+            if (await Mine(db, groupId, me, ct) is not { } g) return Errors.NotFound("That group doesn't exist.");
             var semester = await StudentEndpoints.CurrentSemester(db, ct);
             var sunday = WeekOf(start, clock);
             var members = g.Members.OrderBy(m => m.JoinedAt).ToList();
@@ -184,8 +185,10 @@ public static class GroupEndpoints
                 .Where(d => (int)d.DayOfWeek <= 4 || busy.Values.Any(x => x.ContainsKey(d)))
                 .Select(d =>
                 {
+                    // A rider's own times are only shown to others if they chose to show their classes.
                     var riders = members.Where(m => busy[m.StudentId].ContainsKey(d))
-                        .Select(m => (m.DisplayName, First: busy[m.StudentId][d].Min(b => b.Start), Last: busy[m.StudentId][d].Max(b => b.End))).ToList();
+                        .Select(m => (m.DisplayName, First: busy[m.StudentId][d].Min(b => b.Start), Last: busy[m.StudentId][d].Max(b => b.End),
+                            Shown: m.StudentId == me || m.ShowClasses)).ToList();
                     var notComing = members.Where(m => !busy[m.StudentId].ContainsKey(d)).Select(m => m.DisplayName).ToList();
                     if (riders.Count == 0)
                         return new { date = d.ToString("yyyy-MM-dd"), day = (int)d.DayOfWeek, ride = (object?)null, notComing };
@@ -200,7 +203,14 @@ public static class GroupEndpoints
                         {
                             leaveHome = Clock(arrive - g.TravelMinutes), arrive = Clock(arrive), leaveUni = Clock(leaveUni),
                             backHome = Clock(leaveUni + g.TravelMinutes),
-                            riders = riders.Select(r => new { name = r.DisplayName, firstClass = Clock(r.First), lastClass = Clock(r.Last), morningWait = r.First - arrive, afternoonWait = leaveUni - r.Last }),
+                            riders = riders.Select(r => new
+                            {
+                                name = r.DisplayName,
+                                firstClass = r.Shown ? Clock(r.First) : null,
+                                lastClass = r.Shown ? Clock(r.Last) : null,
+                                morningWait = r.Shown ? r.First - arrive : (int?)null,
+                                afternoonWait = r.Shown ? leaveUni - r.Last : (int?)null,
+                            }),
                             secondRide = early.Count == 0 ? null : new { leaveUni = Clock(early.Max(r => r.Last)), riders = early.Select(r => r.DisplayName) },
                         },
                         notComing,

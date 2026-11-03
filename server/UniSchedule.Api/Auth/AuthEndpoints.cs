@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
@@ -18,6 +19,26 @@ public static class AuthEndpoints
 
     static readonly PasswordHasher<AdminUser> Hasher = new();
     public static string HashPassword(AdminUser user, string password) => Hasher.HashPassword(user, password);
+
+    /// <summary>Checked against when the username doesn't exist, so that answer takes as long as a real one.</summary>
+    static readonly string DummyHash = Hasher.HashPassword(null!, "no-such-account-" + Guid.NewGuid());
+
+    /// <summary>Wrong passwords per username and client: five lock that pair out for 15 minutes.</summary>
+    static readonly ConcurrentDictionary<string, (int Fails, DateTimeOffset Until, DateTimeOffset Last)> AdminTries = new();
+    const int AdminTriesPerClient = 5;
+    /// <summary>Wrong passwords on one account from anywhere before the account itself locks for 15 minutes.</summary>
+    public const int AdminTriesPerAccount = 20;
+
+    static void FailedAdminTry(string client, DateTimeOffset now)
+    {
+        AdminTries.AddOrUpdate(client,
+            _ => (1, default, now),
+            (_, t) => t.Fails + 1 >= AdminTriesPerClient ? (0, now.AddMinutes(15), now) : (t.Fails + 1, t.Until, now));
+        // Forget clients that stopped trying long ago, so the table stays small.
+        if (AdminTries.Count > 5000)
+            foreach (var (key, t) in AdminTries)
+                if (t.Until < now && t.Last < now.AddMinutes(-15)) AdminTries.TryRemove(key, out _);
+    }
 
     /// <summary>Owner IDs listed in config (Owners:Ids, comma-separated) are always owners.</summary>
     public static bool IsConfiguredOwner(IConfiguration config, string universityId) =>
@@ -99,15 +120,23 @@ public static class AuthEndpoints
             if (login.Attempts >= LoginCodes.MaxAttempts)
                 return Errors.BadRequest("Too many wrong tries. Send a new code.");
 
-            login.Attempts++;
+            // Each try is claimed in the database before the code is checked, so guesses sent in parallel can't share a
+            // try: once the five are used, every other request finds none left.
+            var claimed = await db.LoginCodes
+                .Where(c => c.Id == login.Id && c.UsedAt == null && c.Attempts < LoginCodes.MaxAttempts)
+                .ExecuteUpdateAsync(u => u.SetProperty(c => c.Attempts, c => c.Attempts + 1), ct);
+            if (claimed == 0) return Errors.BadRequest("Too many wrong tries. Send a new code.");
             if (!LoginCodes.Verify(login.CodeHash, id, code!))
             {
-                await db.SaveChangesAsync(ct);
-                var left = LoginCodes.MaxAttempts - login.Attempts;
+                var tries = await db.LoginCodes.Where(c => c.Id == login.Id).Select(c => c.Attempts).FirstAsync(ct);
+                var left = LoginCodes.MaxAttempts - tries;
                 return Errors.BadRequest(left > 0 ? $"Wrong code. {left} {(left == 1 ? "try" : "tries")} left." : "Wrong code. Send a new one.");
             }
 
-            login.UsedAt = now;
+            // A code signs in once, even if two requests get here together.
+            var won = await db.LoginCodes.Where(c => c.Id == login.Id && c.UsedAt == null)
+                .ExecuteUpdateAsync(u => u.SetProperty(c => c.UsedAt, now), ct);
+            if (won == 0) return Errors.BadRequest("That code has expired. Send a new one.");
             var student = await db.Students.FirstOrDefaultAsync(s => s.UniversityId == id, ct);
             var isNew = student is null;
             if (student is null)
@@ -129,19 +158,32 @@ public static class AuthEndpoints
             if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(body.Password))
                 return Errors.BadRequest("Enter your username and password.");
             var now = clock.GetUtcNow();
+            var client = $"{username}|{http.Connection.RemoteIpAddress}";
+            if (AdminTries.TryGetValue(client, out var tries) && tries.Until > now)
+                return Errors.TooMany("Too many wrong passwords. Try again in 15 minutes.");
             var user = await db.AdminUsers.FirstOrDefaultAsync(a => a.Username == username, ct);
-            if (user is null) return Errors.Unauthorized("Wrong username or password.");
+            if (user is null)
+            {
+                // Same work as a real check, so the answer's timing doesn't say which usernames exist.
+                Hasher.VerifyHashedPassword(null!, DummyHash, body.Password);
+                FailedAdminTry(client, now);
+                return Errors.Unauthorized("Wrong username or password.");
+            }
             if (user.LockedUntil > now) return Errors.TooMany("Too many wrong passwords. Try again in 15 minutes.");
 
             var result = Hasher.VerifyHashedPassword(user, user.PasswordHash, body.Password);
             if (result == PasswordVerificationResult.Failed)
             {
+                FailedAdminTry(client, now);
+                // The account itself only locks after many more tries, from anywhere: enough to stop a spread-out guesser,
+                // too many for one person to keep the owner locked out by typing wrong passwords.
                 user.FailedLogins++;
-                if (user.FailedLogins >= 5) { user.LockedUntil = now.AddMinutes(15); user.FailedLogins = 0; }
+                if (user.FailedLogins >= AdminTriesPerAccount) { user.LockedUntil = now.AddMinutes(15); user.FailedLogins = 0; }
                 await db.SaveChangesAsync(ct);
                 return Errors.Unauthorized("Wrong username or password.");
             }
             if (result == PasswordVerificationResult.SuccessRehashNeeded) user.PasswordHash = Hasher.HashPassword(user, body.Password);
+            AdminTries.TryRemove(client, out _);
             user.FailedLogins = 0;
             user.LockedUntil = null;
             user.LastSeenAt = now;

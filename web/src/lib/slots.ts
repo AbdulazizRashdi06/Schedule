@@ -28,9 +28,14 @@ export interface Session {
   clash: boolean
   /** Set for the student's own slots; `cls` then holds its title so the views can show it like a class. */
   mine?: CustomSlot
-  /** Notes on this session: the class's whole-class notes plus any for this date. */
+  /** Notes on this session: the class's whole-class notes plus any for this date. For a weekly class use notesOn(). */
   notes: number
+  /** Note counts per date ("2026-11-03"), for each week a weekly class meets. */
+  noteDates: Record<string, number>
 }
+
+/** Notes on a session as it falls on a date: whole-class notes plus that day's session notes, weekly classes included. */
+export const notesOn = (s: Session, date: Date) => s.notes + (s.meeting.date ? 0 : (s.noteDates[isoDate(date)] ?? 0))
 
 /** The upload has no session type, so it comes from the room: "Lab L2" is a lab, "Tut 3" a tutorial, anything else a lecture. */
 export function sessionType(room: string): ClassType {
@@ -86,7 +91,7 @@ export function buildSessions(tt: Timetable): Session[] {
       const end = minutes(meeting.end)
       const { slot, span } = slotSpan(start, end)
       const notes = (cls.notes?.classWide ?? 0) + (meeting.date ? (cls.notes?.dates[meeting.date] ?? 0) : 0)
-      out.push({ cls, meeting, type: sessionType(meeting.room), slot, span, start, end, clash: false, notes })
+      out.push({ cls, meeting, type: sessionType(meeting.room), slot, span, start, end, clash: false, notes, noteDates: cls.notes?.dates ?? {} })
     }
   for (const mine of tt.slots ?? []) {
     const cls = slotClass(mine)
@@ -94,7 +99,7 @@ export function buildSessions(tt: Timetable): Session[] {
     const start = minutes(meeting.start)
     const end = minutes(meeting.end)
     const { slot, span } = slotSpan(start, end)
-    out.push({ cls, meeting, type: 'mine', slot, span, start, end, clash: false, mine, notes: mine.note ? 1 : 0 })
+    out.push({ cls, meeting, type: 'mine', slot, span, start, end, clash: false, mine, notes: mine.note ? 1 : 0, noteDates: {} })
   }
   for (const a of out)
     a.clash = out.some(

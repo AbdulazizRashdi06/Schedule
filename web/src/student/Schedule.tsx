@@ -1,7 +1,7 @@
 import { Fragment, useState } from 'react'
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { DAY_LONG, DAY_SHORT, minutes } from '../lib/time'
-import { SLOTS, TYPE_BG, TYPE_NAME, addDays, isoDate as iso, fmtDuration, fmtWeekRange, inWeek, nowMinutes, weekDays, weekStart, weekTitle, type ClassType, type Session } from '../lib/slots'
+import { SLOTS, TYPE_BG, TYPE_NAME, addDays, isoDate as iso, fmtDuration, fmtWeekRange, inWeek, notesOn, nowMinutes, weekDays, weekStart, weekTitle, type ClassType, type Session } from '../lib/slots'
 import { ErrorText, Sk, cx } from '../components/ui'
 import type { CustomSlot } from '../lib/types'
 import SlotSheet, { type SlotPreset } from './SlotSheet'
@@ -252,7 +252,7 @@ function WeekGrid({ days, sessions, start, today, nowMin, onDay, onEdit, onAdd }
                       </span>
                       {cell.length === 1 && <span className="mt-auto truncate text-[11px] font-semibold">{s.meeting.room}</span>}
                       {s.cls.changed && <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-navy" />}
-                      {s.notes > 0 && <span aria-hidden="true" className="absolute right-1.5 bottom-1.5 size-1.5 rounded-[2px] bg-navy/60" />}
+                      {notesOn(s, addDays(start, d)) > 0 && <span aria-hidden="true" className="absolute right-1.5 bottom-1.5 size-1.5 rounded-[2px] bg-navy/60" />}
                     </button>
                   )
                 })}
@@ -303,6 +303,7 @@ function DayView({ days, day, sessions, start, today, nowMin, onDay, onOpen, onA
         {list.map((s, i) => {
           const gap = i > 0 ? s.start - list[i - 1].end : 0
           const live = day === today && s.start <= nowMin && nowMin < s.end
+          const notes = notesOn(s, addDays(start, day))
           return (
             <Fragment key={i}>
               {gap >= 30 && (
@@ -327,9 +328,9 @@ function DayView({ days, day, sessions, start, today, nowMin, onDay, onOpen, onA
                     {live && <span className="label rounded-full bg-navy px-2 py-0.5 text-[9px] text-cream">● Now</span>}
                     {s.cls.changed && <span className="label rounded-full bg-navy px-2 py-0.5 text-[9px] text-cream">Changed</span>}
                     {s.clash && <span className="label rounded-full bg-alert-ink px-2 py-0.5 text-[9px] text-cream">Clash</span>}
-                    {s.notes > 0 && (
+                    {notes > 0 && (
                       <span className="label rounded-full bg-navy/10 px-2 py-0.5 text-[9px]">
-                        {s.mine ? 'Note' : `${s.notes} ${s.notes === 1 ? 'note' : 'notes'}`}
+                        {s.mine ? 'Note' : `${notes} ${notes === 1 ? 'note' : 'notes'}`}
                       </span>
                     )}
                   </span>

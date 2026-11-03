@@ -60,10 +60,11 @@ export default function Rides({ group, start, startIso, onSaved }: { group: Grou
                   {d.ride.riders.map((r) => (
                     <li key={r.name} className="flex justify-between gap-3">
                       <span className="font-extrabold">{r.name}</span>
+                      {/* Times only for you and for members who show their classes; the rest just ride. */}
                       <span className="text-right text-muted">
-                        {r.firstClass}–{r.lastClass}
-                        {r.morningWait > group.arriveEarlyMinutes && ` · waits ${fmtDuration(r.morningWait - group.arriveEarlyMinutes)} before`}
-                        {r.afternoonWait > 0 && ` · ${fmtDuration(r.afternoonWait)} after`}
+                        {r.firstClass && r.lastClass ? `${r.firstClass}–${r.lastClass}` : 'Riding'}
+                        {r.morningWait != null && r.morningWait > group.arriveEarlyMinutes && ` · waits ${fmtDuration(r.morningWait - group.arriveEarlyMinutes)} before`}
+                        {r.afternoonWait != null && r.afternoonWait > 0 && ` · ${fmtDuration(r.afternoonWait)} after`}
                       </span>
                     </li>
                   ))}

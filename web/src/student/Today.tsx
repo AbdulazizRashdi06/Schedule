@@ -1,16 +1,51 @@
-import { useState, type ReactNode } from 'react'
+import { useContext, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { DAY_LONG, DAY_SHORT } from '../lib/time'
 import { TYPE_NAME, addDays, clock, fmtDate, fmtDuration, nowMinutes, onDate, sessionHref, weekStart, type Session } from '../lib/slots'
 import { Button, ErrorText, Sk, cx } from '../components/ui'
 import { MenuSheet } from './StudentShell'
 import { Icon, NeedsSection, useNow, useTimetable } from './timetable'
+import { LabNav } from './labNav'
 import RatePrompt from './RatePrompt'
+
+/**
+ * A class's link: inside the home page, a class opens its session page and one of your own slots opens to edit;
+ * elsewhere, the course page (or the day, for your own slot).
+ */
+function useClassLink() {
+  const lab = useContext(LabNav)
+  return (s: Session, date?: Date): { to: string; onClick?: (e: MouseEvent) => void } => {
+    if (!lab) return { to: sessionHref(s) }
+    const mine = s.mine
+    if (!mine) return { to: lab.session(s, date) }
+    return {
+      to: sessionHref(s),
+      onClick: (e) => {
+        e.preventDefault()
+        lab.edit(mine)
+      },
+    }
+  }
+}
+
+/** On the home page, each day's own "+ Add a slot", as the old Day view had. */
+function AddSlot({ date }: { date: Date }) {
+  const lab = useContext(LabNav)
+  if (!lab) return null
+  return (
+    <div className="px-6 pt-4">
+      <button type="button" onClick={() => lab.add(date)} className="label flex min-h-11 items-center text-[12px] link-hover">
+        + Add a slot
+      </button>
+    </div>
+  )
+}
 
 export default function Today() {
   const { me, tt, sessions, error, offline, retry } = useTimetable()
   const now = useNow()
   const [menu, setMenu] = useState(false)
+  const lab = useContext(LabNav)
 
   if (me && !me.setupDone) return <Navigate to="/setup" replace />
   if (!error && (!me || !tt)) return <TodaySkeleton />
@@ -45,7 +80,7 @@ export default function Today() {
           </div>
           <button
             type="button"
-            onClick={() => setMenu(true)}
+            onClick={() => (lab ? lab.menu() : setMenu(true))}
             aria-label="Open menu"
             aria-expanded={menu}
             className="press label mt-1 flex h-12 shrink-0 items-center rounded-full border-[2.5px] border-navy px-[18px] text-[12px] tint"
@@ -82,8 +117,10 @@ export default function Today() {
                     Your last class ended at {today[today.length - 1].meeting.end}. Nothing else on today.
                   </Card>
                   {nextDate && (
-                    <List title={tomorrow ? 'Tomorrow' : DAY_LONG[nextDate.getDay()]} sessions={nextDay}>
-                      <MoreLink to={nextDayLink!}>See all of {DAY_LONG[nextDate.getDay()]}</MoreLink>
+                    <List title={tomorrow ? 'Tomorrow' : DAY_LONG[nextDate.getDay()]} sessions={nextDay} date={nextDate}>
+                      <MoreLink to={nextDayLink!} onLab={() => lab?.day(nextDate)}>
+                        See all of {DAY_LONG[nextDate.getDay()]}
+                      </MoreLink>
                     </List>
                   )}
                 </>
@@ -93,8 +130,10 @@ export default function Today() {
                     No classes on {DAY_LONG[now.getDay()]}. Sleep in, catch up, or don’t.
                   </Card>
                   {nextDate && (
-                    <List title={`Back on ${DAY_LONG[nextDate.getDay()]}`} sessions={nextDay}>
-                      <MoreLink to="/schedule">See the week</MoreLink>
+                    <List title={`Back on ${DAY_LONG[nextDate.getDay()]}`} sessions={nextDay} date={nextDate}>
+                      <MoreLink to="/schedule" onLab={() => lab?.week()}>
+                        See the week
+                      </MoreLink>
                     </List>
                   )}
                 </>
@@ -102,9 +141,99 @@ export default function Today() {
             </>
           )
         )}
+        {tt && <AddSlot date={now} />}
       </div>
-      <MenuSheet open={menu} onClose={() => setMenu(false)} me={me} />
+      {!lab && <MenuSheet open={menu} onClose={() => setMenu(false)} me={me} />}
     </div>
+  )
+}
+
+/**
+ * Any other day in the home screen's design: swiping sideways on Today lands here. The day's first class is the big
+ * card and the rest are listed under it, the way Today shows what's next.
+ */
+export function DayHome({ date, offset, sessions }: { date: Date; offset: number; sessions: Session[] }) {
+  const lab = useContext(LabNav)
+  const list = sessions.filter((s) => onDate(s, date))
+  const [first, ...rest] = list
+  const title = offset === 1 ? 'Tomorrow.' : offset === -1 ? 'Yesterday.' : `${DAY_LONG[date.getDay()]}.`
+  return (
+    <div className="min-h-dvh bg-cream text-navy">
+      <div className="mx-auto flex min-h-dvh max-w-[480px] flex-col pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1.75rem,env(safe-area-inset-bottom))]">
+        <header className="flex items-start justify-between gap-4 px-6 pt-2">
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <p className="label text-[12px] tracking-[0.14em]">
+              {DAY_SHORT[date.getDay()]} {fmtDate(date)}
+            </p>
+            <FitTitle>{title}</FitTitle>
+          </div>
+          <button
+            type="button"
+            onClick={() => lab?.menu()}
+            aria-label="Open menu"
+            className="press label mt-1 flex h-12 shrink-0 items-center rounded-full border-[2.5px] border-navy px-[18px] text-[12px] tint"
+          >
+            Menu
+          </button>
+        </header>
+        <div className="pt-[22px]" />
+        {first ? (
+          <>
+            <DayCard s={first} count={list.length} end={list[list.length - 1].meeting.end} date={date} />
+            {rest.length > 0 ? <List title="Later" sessions={rest} week date={date} /> : <LastOne>Only class that day</LastOne>}
+          </>
+        ) : (
+          <Card tone="sky" title="Free day." size={80}>
+            No classes on {DAY_LONG[date.getDay()]}. Sleep in, catch up, or don’t.
+          </Card>
+        )}
+        <AddSlot date={date} />
+      </div>
+    </div>
+  )
+}
+
+/** The day's headline at Today's size, stepped down only as far as it needs to fit beside the Menu button. */
+export function FitTitle({ children }: { children: string }) {
+  const ref = useRef<HTMLHeadingElement>(null)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    let size = 76
+    el.style.fontSize = `${size}px`
+    while (el.scrollWidth > el.clientWidth && size > 40) {
+      size -= 2
+      el.style.fontSize = `${size}px`
+    }
+  }, [children])
+  return (
+    <h1 ref={ref} className="display overflow-hidden leading-[0.86] tracking-[-0.05em] whitespace-nowrap">
+      {children}
+    </h1>
+  )
+}
+
+/** Another day's first class, in the same card as Today's "Next in". */
+function DayCard({ s, count, end, date }: { s: Session; count: number; end: string; date: Date }) {
+  const link = useClassLink()
+  return (
+    <Link {...link(s, date)} className="press mx-3 flex flex-col gap-3.5 rounded-[32px] bg-navy p-[22px] text-cream">
+      <span className="flex flex-wrap items-center gap-2">
+        <span className="label text-[12px] tracking-[0.14em] text-ice">First class · {s.cls.code}</span>
+        <Tags s={s} dark />
+      </span>
+      <span className="display text-[96px] leading-[0.8] tracking-[-0.06em] text-sky tabular-nums">{s.meeting.start}</span>
+      <span className="flex flex-col gap-1">
+        <span className="display text-[30px] leading-none tracking-[-0.02em] break-words hyphens-auto">{s.cls.name}</span>
+        <span className="text-[15px] text-ice">
+          {TYPE_NAME[s.type]}
+          {s.meeting.room ? ` in ${s.meeting.room}` : ''}, ends {s.meeting.end}
+        </span>
+      </span>
+      <span className="border-t-[1.5px] border-navy-line pt-3 text-[14px] font-semibold text-ice">
+        {count === 1 ? `One class, done by ${end}.` : `${count} classes, done by ${end}.`}
+      </span>
+    </Link>
   )
 }
 
@@ -119,11 +248,12 @@ function Tags({ s, dark }: { s: Session; dark?: boolean }) {
 
 /** A class on right now: start time, progress and minutes left. */
 function LiveCard({ s, nowMin }: { s: Session; nowMin: number }) {
+  const link = useClassLink()
   const total = s.end - s.start
   const done = Math.min(total, Math.max(0, nowMin - s.start))
   const left = total - done
   return (
-    <Link to={sessionHref(s)} className="press mx-3 flex flex-col gap-3.5 rounded-[32px] bg-navy p-[22px] pb-6 text-cream">
+    <Link {...link(s)} className="press mx-3 flex flex-col gap-3.5 rounded-[32px] bg-navy p-[22px] pb-6 text-cream">
       <span className="flex flex-wrap items-center gap-2">
         <span className="label text-[12px] tracking-[0.14em] text-ice">● Now · {s.cls.code}</span>
         <Tags s={s} dark />
@@ -161,6 +291,7 @@ function LiveCard({ s, nowMin }: { s: Session; nowMin: number }) {
 
 /** Between classes: a countdown to the next one. */
 function NextCard({ s, nowMin }: { s: Session; nowMin: number }) {
+  const link = useClassLink()
   const until = s.start - nowMin
   const hint =
     until <= 20
@@ -171,7 +302,7 @@ function NextCard({ s, nowMin }: { s: Session; nowMin: number }) {
           ? 'Time for lunch first.'
           : `Plenty of time. It starts at ${s.meeting.start}.`
   return (
-    <Link to={sessionHref(s)} className="press mx-3 flex flex-col gap-3.5 rounded-[32px] bg-navy p-[22px] text-cream">
+    <Link {...link(s)} className="press mx-3 flex flex-col gap-3.5 rounded-[32px] bg-navy p-[22px] text-cream">
       <span className="flex flex-wrap items-center gap-2">
         <span className="label text-[12px] tracking-[0.14em] text-ice">Next in</span>
         <Tags s={s} dark />
@@ -228,36 +359,52 @@ function LastOne({ children }: { children: ReactNode }) {
   return (
     <div className="flex items-center justify-between px-6 pt-6">
       <p className="label text-[12px] text-muted">{children}</p>
-      <Link to="/schedule" className="label py-3 text-[12px] link-hover">
-        Full week →
-      </Link>
+      <WeekLink />
     </div>
   )
 }
 
-function MoreLink({ to, children }: { to: string; children: ReactNode }) {
-  return (
-    <Link to={to} className="label flex min-h-11 items-center gap-1.5 border-t-[2.5px] border-navy py-3.5 text-[12px] link-hover">
+/** "Full week →": a link to /schedule, or on the home page a scroll down to the week. */
+function WeekLink() {
+  const lab = useContext(LabNav)
+  const cls = 'label py-3 text-[12px] link-hover'
+  return lab ? (
+    <button type="button" onClick={lab.week} className={cls}>
+      Full week →
+    </button>
+  ) : (
+    <Link to="/schedule" className={cls}>
+      Full week →
+    </Link>
+  )
+}
+
+function MoreLink({ to, onLab, children }: { to: string; onLab: () => void; children: ReactNode }) {
+  const lab = useContext(LabNav)
+  const cls = 'label flex min-h-11 w-full items-center gap-1.5 border-t-[2.5px] border-navy py-3.5 text-[12px] link-hover'
+  return lab ? (
+    <button type="button" onClick={onLab} className={cls}>
+      {children} <span aria-hidden="true">→</span>
+    </button>
+  ) : (
+    <Link to={to} className={cls}>
       {children} <span aria-hidden="true">→</span>
     </Link>
   )
 }
 
-function List({ title, sessions, week, children }: { title: string; sessions: Session[]; week?: boolean; children?: ReactNode }) {
+function List({ title, sessions, week, date, children }: { title: string; sessions: Session[]; week?: boolean; date?: Date; children?: ReactNode }) {
+  const link = useClassLink()
   return (
     <section className="flex flex-col px-6 pt-[22px]">
       <div className="mb-2 flex items-baseline justify-between">
         <h2 className="display text-[22px] tracking-[-0.02em]">{title}</h2>
-        {week && (
-          <Link to="/schedule" className="label py-3 text-[12px] link-hover">
-            Full week →
-          </Link>
-        )}
+        {week && <WeekLink />}
       </div>
       <ul>
         {sessions.map((s, i) => (
           <li key={i}>
-            <Link to={sessionHref(s)} className="grid grid-cols-[84px_minmax(0,1fr)_24px] items-center gap-3 border-t-[2.5px] border-navy py-3.5">
+            <Link {...link(s, date)} className="grid grid-cols-[84px_minmax(0,1fr)_24px] items-center gap-3 border-t-[2.5px] border-navy py-3.5">
               <span className="display text-[34px] leading-none tracking-[-0.05em] tabular-nums">{s.meeting.start}</span>
               <span className="flex min-w-0 flex-col gap-0.5">
                 <span className="flex flex-wrap items-center gap-1.5">

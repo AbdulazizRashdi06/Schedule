@@ -63,12 +63,13 @@ export function afterSignIn() {
   return `/join/${code}`
 }
 
+/** A rider's times are null unless it's you or they show their classes to the group. */
 export interface RideRider {
   name: string
-  firstClass: string
-  lastClass: string
-  morningWait: number
-  afternoonWait: number
+  firstClass: string | null
+  lastClass: string | null
+  morningWait: number | null
+  afternoonWait: number | null
 }
 
 export interface RideDay {

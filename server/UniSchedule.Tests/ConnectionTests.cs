@@ -185,7 +185,12 @@ public class ConnectionTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
         // 2. API off: GUtech pushes enrollments with a sync token instead.
         Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync("/api/admin/connections/student-courses", body with { enabled = false })).StatusCode);
-        var token = (await Json(await owner.PostAsJsonAsync("/api/admin/sync-tokens", new { name = "GUtech" }))).GetProperty("token").GetString();
+        // The extension's kind of token only sends the timetable; GUtech needs one made for enrollments.
+        var extension = (await Json(await owner.PostAsJsonAsync("/api/admin/sync-tokens", new { name = "My laptop" }))).GetProperty("token").GetString();
+        var withExtension = app.CreateClient();
+        withExtension.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", extension);
+        Assert.Equal(HttpStatusCode.Forbidden, (await withExtension.PostAsJsonAsync("/api/sync/enrollments", new { students = Array.Empty<object>() })).StatusCode);
+        var token = (await Json(await owner.PostAsJsonAsync("/api/admin/sync-tokens", new { name = "GUtech", enrollments = true }))).GetProperty("token").GetString();
         var gutech = app.CreateClient();
         Assert.Equal(HttpStatusCode.Unauthorized, (await gutech.PostAsJsonAsync("/api/sync/enrollments", new { students = Array.Empty<object>() })).StatusCode);
         gutech.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
