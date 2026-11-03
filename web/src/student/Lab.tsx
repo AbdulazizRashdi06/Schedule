@@ -237,6 +237,7 @@ export default function Lab() {
   const weeksStrip = useRef<HTMLDivElement>(null)
   const weekSection = useRef<HTMLElement>(null)
   const daysSection = useRef<HTMLElement>(null)
+  const lastPageTop = useRef(0)
 
   const todayIso = isoDate(now)
   const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate())
@@ -359,7 +360,7 @@ export default function Lab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, dates])
 
-  // Moving through days keeps the week below on the same week, and the other way round.
+  // Moving through days keeps the week below on the same week.
   const daysSettled = useMemo(
     () =>
       onSettle(() => {
@@ -380,18 +381,22 @@ export default function Lab() {
         tick('select')
         shownWeek.current = o
         setWeek(o)
-        // The days above move to the same weekday in that week, or its first day.
-        const from = dates.find((d) => isoDate(d) === shownIso.current) ?? now
-        let i = dates.findIndex((d) => weekOf(d) === o && d.getDay() === from.getDay())
-        if (i < 0) i = dates.findIndex((d) => weekOf(d) === o)
-        if (i < 0) return
-        showDay(i, 'instant')
-        shownIso.current = isoDate(dates[i])
-        setDayIndex(i)
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dates, weekOf, showDay, WEEKS],
+    [WEEKS],
   )
+
+  // Once the week covers the day view, prepare today above it. Browsing weeks leaves it there,
+  // so scrolling back up always returns to today; tapping a date still opens that specific day.
+  const pageScrolled = () => {
+    const top = page.current?.scrollTop ?? 0
+    const boundary = (weekSection.current?.offsetTop ?? Infinity) - 1
+    const enteredWeek = lastPageTop.current < boundary && top >= boundary
+    lastPageTop.current = top
+    if (!enteredWeek || !ready || shownIso.current === todayIso) return
+    shownIso.current = todayIso
+    setDayIndex(todayIndex)
+    showDay(todayIndex, 'instant')
+  }
 
   const toWeek = useCallback(() => {
     const el = weekSection.current
@@ -465,7 +470,7 @@ export default function Lab() {
 
   return (
     <LabNav.Provider value={nav}>
-      <div ref={page} className={cx('h-dvh snap-y snap-mandatory overflow-y-auto overscroll-y-contain bg-cream text-navy', noBar)}>
+      <div ref={page} onScroll={pageScrolled} className={cx('h-dvh snap-y snap-mandatory overflow-y-auto overscroll-y-contain bg-cream text-navy', noBar)}>
         <section ref={daysSection} className="snap-start" aria-label="Days">
           <motion.div className="relative" style={{ y: dayY, scale: dayScale, transformOrigin: '50% 0%' }}>
             {ready && dates.length > 1 && (
