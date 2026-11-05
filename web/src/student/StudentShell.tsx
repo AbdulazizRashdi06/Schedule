@@ -7,7 +7,6 @@ import { yearName } from '../lib/year'
 import { Sheet, Tag, cx } from '../components/ui'
 import LogoutConfirm from '../components/LogoutConfirm'
 import ChangeYear from './ChangeYear'
-import AnalyticsPreference from './AnalyticsPreference'
 
 /** Menu / profile sheet: who you are, where to go, colours, log out. */
 export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () => void; me: Me | null }) {
@@ -107,7 +106,6 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
           →
         </span>
       </Link>
-      <AnalyticsPreference />
       <button
         type="button"
         className="tint mt-4 flex h-14 items-center rounded-[12px] text-left text-[18px] font-extrabold text-alert"

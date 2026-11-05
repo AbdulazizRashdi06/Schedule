@@ -33,7 +33,6 @@ import Accounts from './admin/Accounts'
 import Feedback from './admin/Feedback'
 import Notes from './admin/Notes'
 import Connections from './admin/Connections'
-import { EngagementProvider } from './lib/engagement'
 
 function StudentOnly({ children }: { children: ReactNode }) {
   const { session } = useSession()
@@ -63,7 +62,6 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <SessionProvider>
       <BrowserRouter>
-        <EngagementProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
           {/* Home: the days and the week as one page you swipe and scroll around in. */}
@@ -97,7 +95,6 @@ createRoot(document.getElementById('root')!).render(
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
-        </EngagementProvider>
       </BrowserRouter>
     </SessionProvider>
   </StrictMode>,

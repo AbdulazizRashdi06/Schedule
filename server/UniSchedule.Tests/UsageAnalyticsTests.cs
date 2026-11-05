@@ -54,6 +54,21 @@ public class UsageAnalyticsTests
     }
 
     [Fact]
+    public async Task Optional_tracking_endpoints_and_account_linked_tables_are_removed()
+    {
+        using var factory = new ApiFactory();
+        var client = factory.Client();
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/me/analytics/consent")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.PostAsJsonAsync("/api/me/analytics/pulse", new { })).StatusCode);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+        await db.Database.OpenConnectionAsync();
+        await using var command = db.Database.GetDbConnection().CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('EngagementConsents', 'EngagementSessions', 'EngagementScreens')";
+        Assert.Equal(0L, await command.ExecuteScalarAsync());
+    }
+
+    [Fact]
     public async Task Collection_can_be_disabled()
     {
         using var factory = new ApiFactory();

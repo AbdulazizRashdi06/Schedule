@@ -59,10 +59,6 @@ builder.Services.AddAuthorizationBuilder()
 
 builder.Services.AddRateLimiter(o =>
 {
-    o.AddPolicy("engagement", http => RateLimitPartition.GetFixedWindowLimiter(http.User.Id().ToString(), _ => new FixedWindowRateLimiterOptions
-    {
-        PermitLimit = 120, Window = TimeSpan.FromMinutes(1),
-    }));
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     o.OnRejected = async (ctx, ct) =>
         await ctx.HttpContext.Response.WriteAsJsonAsync(new { error = "Too many tries. Wait a minute and try again." }, ct);
@@ -136,7 +132,6 @@ api.MapConnections();
 api.MapGroups();
 api.MapPublicTimetable();
 api.MapUsageAnalytics();
-api.MapEngagementAnalytics();
 api.Map("/{**rest}", () => Errors.NotFound());
 
 // Client-side routes (/, /setup, /admin/...) all load the app.

@@ -8,9 +8,6 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
 {
     public DbSet<UsageDay> UsageDays => Set<UsageDay>();
     public DbSet<UsageHour> UsageHours => Set<UsageHour>();
-    public DbSet<EngagementConsent> EngagementConsents => Set<EngagementConsent>();
-    public DbSet<EngagementSession> EngagementSessions => Set<EngagementSession>();
-    public DbSet<EngagementScreen> EngagementScreens => Set<EngagementScreen>();
     public DbSet<Student> Students => Set<Student>();
     public DbSet<AdminUser> AdminUsers => Set<AdminUser>();
     public DbSet<LoginCode> LoginCodes => Set<LoginCode>();
@@ -51,13 +48,6 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
         m.Entity<UsageDay>().HasKey(x => x.Day);
         m.Entity<UsageDay>().Property(x => x.Day).ValueGeneratedNever();
         m.Entity<UsageHour>().HasKey(x => new { x.Hour, x.Route, x.Method, x.Audience, x.Status });
-        m.Entity<EngagementConsent>().HasKey(x => x.StudentId);
-        m.Entity<EngagementConsent>().HasOne<Student>().WithMany().HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Cascade);
-        m.Entity<EngagementSession>().HasOne<Student>().WithMany().HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Cascade);
-        m.Entity<EngagementSession>().HasIndex(x => new { x.StudentId, x.LastAt });
-        m.Entity<EngagementSession>().HasIndex(x => x.StartedAt);
-        m.Entity<EngagementScreen>().HasKey(x => new { x.SessionId, x.Screen });
-        m.Entity<EngagementSession>().HasMany(x => x.Screens).WithOne().HasForeignKey(x => x.SessionId).OnDelete(DeleteBehavior.Cascade);
         m.Entity<Student>(e =>
         {
             e.HasIndex(x => x.UniversityId).IsUnique();

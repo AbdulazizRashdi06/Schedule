@@ -37,7 +37,6 @@ public static class UsageAnalytics
         var cutoff = OmanDay(now) - 89 * 86400;
         await db.UsageDays.Where(x => x.Day < cutoff).ExecuteDeleteAsync(ct);
         await db.UsageHours.Where(x => x.Hour < cutoff).ExecuteDeleteAsync(ct);
-        await db.EngagementSessions.Where(x => x.StartedAt < cutoff * 1000).ExecuteDeleteAsync(ct);
     }
 
     public static async Task Record(HttpContext http, long started, bool failed)
@@ -99,7 +98,6 @@ public static class UsageAnalytics
                 clientErrors = hourly.Where(x => x.Status is >= 400 and < 500).Sum(x => x.Requests),
                 averageResponseMs = requests == 0 ? 0 : hourly.Sum(x => x.TotalMs) / requests,
                 maxResponseMs = hourly.Count == 0 ? 0 : hourly.Max(x => x.MaxMs),
-                engagement = await EngagementAnalytics.Report(db, since, ct),
                 registrations = await db.Students.CountAsync(x => x.CreatedAt >= DateTimeOffset.FromUnixTimeSeconds(since), ct),
                 studentsRegistered = students,
                 setup = await db.Students.GroupBy(x => x.SetupStep ?? "not-started").Select(g => new { step = g.Key, students = g.Count() }).ToListAsync(ct),
