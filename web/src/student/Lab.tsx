@@ -220,7 +220,7 @@ function onSettle(fn: () => void) {
 /**
  * The home page: one page you move around in, instead of pages that replace each other. Across the top, the home screen for
  * each day side by side: Today, then Tomorrow, and so on. Scroll down and the same page carries on into the week.
- * Every move uses the phone's own scrolling; sideways strips snap to each day or week.
+ * Every move uses the phone's own scrolling, snapped to a day or the week.
  */
 export default function Lab() {
   const { me, tt, sessions: all, retry, markSeen } = useTimetable()
@@ -469,8 +469,7 @@ export default function Lab() {
 
   return (
     <LabNav.Provider value={nav}>
-      {/* Keep vertical scrolling native: snapping can pull short iPhone swipes back to the day. */}
-      <div ref={page} onScroll={pageScrolled} className={cx('h-dvh overflow-y-auto overscroll-y-contain bg-cream text-navy', noBar)}>
+      <div ref={page} onScroll={pageScrolled} className={cx('h-dvh snap-y snap-mandatory overflow-y-auto overscroll-y-contain bg-cream text-navy', noBar)}>
         <section ref={daysSection} className="snap-start" aria-label="Days">
           <motion.div className="relative" style={{ y: dayY, scale: dayScale, transformOrigin: '50% 0%' }}>
             {ready && dates.length > 1 && (
