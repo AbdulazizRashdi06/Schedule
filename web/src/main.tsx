@@ -21,6 +21,7 @@ import AdminLogin from './admin/AdminLogin'
 import ChangePassword from './admin/ChangePassword'
 import AdminLayout from './admin/AdminLayout'
 import AdminHome from './admin/AdminHome'
+import Analytics from './admin/Analytics'
 import Upload from './admin/Upload'
 import Courses from './admin/Courses'
 import CourseDetail from './admin/CourseDetail'
@@ -80,6 +81,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/admin/password" element={<ChangePassword />} />
           <Route path="/admin" element={<StaffOnly><AdminLayout /></StaffOnly>}>
             <Route index element={<AdminHome />} />
+            <Route path="analytics" element={<StaffOnly ownerOnly><Analytics /></StaffOnly>} />
             <Route path="upload" element={<Upload />} />
             <Route path="courses" element={<Courses />} />
             <Route path="courses/:id" element={<CourseDetail />} />

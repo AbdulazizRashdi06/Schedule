@@ -43,7 +43,7 @@ export default function AdminLayout() {
   const semester = semesters.find((s) => s.id === semesterId) ?? null
 
   const link = ({ isActive }: { isActive: boolean }) =>
-    cx('flex h-11 items-center rounded-[12px] px-3 text-[16px]', isActive ? 'bg-navy font-extrabold text-cream' : 'tint font-bold')
+    cx('flex h-11 shrink-0 items-center rounded-[12px] px-3 text-[16px] whitespace-nowrap', isActive ? 'bg-navy font-extrabold text-cream' : 'tint font-bold')
 
   return (
     <div className="flex min-h-dvh flex-wrap bg-cream text-navy">
@@ -66,7 +66,7 @@ export default function AdminLayout() {
             </select>
           </label>
         )}
-        <nav aria-label="Dashboard" className="flex flex-col gap-0.5">
+        <nav aria-label="Dashboard" className="flex min-w-0 flex-col gap-0.5 max-[799px]:flex-row max-[799px]:overflow-x-auto max-[799px]:pb-2">
           <NavLink to="/admin" end className={link}>
             Home
           </NavLink>
@@ -91,7 +91,8 @@ export default function AdminLayout() {
           <NavLink to="/admin/feedback" className={link}>
             Feedback
           </NavLink>
-          {isOwner && <span className="label px-3 pt-[18px] pb-1.5 text-[10px] tracking-[0.14em] text-muted">Owners</span>}
+          {isOwner && <span className="label px-3 pt-[18px] pb-1.5 text-[10px] tracking-[0.14em] text-muted max-[799px]:hidden">Owners</span>}
+          {isOwner && <NavLink to="/admin/analytics" className={link}>Analytics</NavLink>}
           {isOwner && (
             <NavLink to="/admin/students" className={link}>
               Students
@@ -106,7 +107,7 @@ export default function AdminLayout() {
             Accounts
           </NavLink>
         </nav>
-        <div className="mt-auto flex flex-col gap-1 border-t-[1.5px] border-navy/10 px-3 pt-4 max-[799px]:mt-4">
+        <div className="mt-auto flex flex-col gap-1 border-t-[1.5px] border-navy/10 px-3 pt-4 max-[799px]:mt-4 max-[799px]:flex-row max-[799px]:flex-wrap max-[799px]:items-center max-[799px]:gap-x-4">
           <span className="text-[15px] font-extrabold break-all">{session?.name}</span>
           <span className="text-[13px] font-semibold text-muted">{isOwner ? 'Owner' : 'RSA'}</span>
           {session?.kind === 'student' && (

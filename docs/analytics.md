@@ -4,6 +4,8 @@ Classy collects server-side operational totals without a student opt-in flow. Th
 
 Owner reports: `GET /api/admin/analytics?days=30` (1–90 days).
 
+The visible owner dashboard is `/admin/analytics`, linked under **Analytics** in admin navigation. It offers 7-, 30-, and 90-day ranges, daily active/peak charts and a values table, hourly request distribution, feature request totals, server performance, and current student account counts. It refreshes once a minute and shows empty or paused collection states explicitly. Data covers all semesters regardless of the admin semester selector. RSA accounts cannot open this page.
+
 ## Statistics
 
 - Daily active student accounts, busiest observed day, largest observed count active within five minutes, and the first time that peak was observed. Calendar days use Oman time. First/last sample timestamps expose partial-day coverage.
