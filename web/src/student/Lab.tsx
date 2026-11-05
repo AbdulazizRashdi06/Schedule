@@ -220,7 +220,7 @@ function onSettle(fn: () => void) {
 /**
  * The home page: one page you move around in, instead of pages that replace each other. Across the top, the home screen for
  * each day side by side: Today, then Tomorrow, and so on. Scroll down and the same page carries on into the week.
- * Every move is the phone's own scrolling, snapped to a day or the week.
+ * Every move uses the phone's own scrolling; sideways strips snap to each day or week.
  */
 export default function Lab() {
   const { me, tt, sessions: all, retry, markSeen } = useTimetable()
@@ -285,11 +285,6 @@ export default function Lab() {
   const { scrollYProgress: arriving } = useScroll({ container: page, target: weekSection, offset: ['start end', 'start start'] })
   // Resting on a day there is no mist over it; it gathers only as the week comes up.
   const mist = useTransform(arriving, [0, 0.45], [0, 1])
-  // The "This week" hint at the bottom of a day leaves as soon as the page starts to move down.
-  // Read from the page's own scroll position, so it's gone within the first 80px however tall the day is.
-  const { scrollY: pageY } = useScroll({ container: page })
-  const hint = useTransform(pageY, [0, 80], [1, 0])
-  const hintEvents = useTransform(hint, (v) => (v > 0.5 ? 'auto' : 'none'))
 
   // Once, the first time: the days give a small sideways nudge, so it's clear they slide.
   useEffect(() => {
@@ -366,6 +361,8 @@ export default function Lab() {
       onSettle(() => {
         const strip = daysStrip.current
         const i = strip ? Math.round(strip.scrollLeft / strip.clientWidth) : -1
+        // A pause during a touch isn't a settled page. Changing inert pages mid-swipe can interrupt native snapping.
+        if (strip && Math.abs(strip.scrollLeft - i * strip.clientWidth) > 1) return
         if (!strip || !dates[i] || isoDate(dates[i]) === shownIso.current) return
         tick('select')
         land(i, null)
@@ -376,7 +373,9 @@ export default function Lab() {
     () =>
       onSettle(() => {
         const strip = weeksStrip.current
-        const o = strip ? WEEKS[Math.round(strip.scrollLeft / strip.clientWidth)] : undefined
+        const i = strip ? Math.round(strip.scrollLeft / strip.clientWidth) : -1
+        if (strip && Math.abs(strip.scrollLeft - i * strip.clientWidth) > 1) return
+        const o = WEEKS[i]
         if (o === undefined || o === shownWeek.current) return
         tick('select')
         shownWeek.current = o
@@ -470,7 +469,8 @@ export default function Lab() {
 
   return (
     <LabNav.Provider value={nav}>
-      <div ref={page} onScroll={pageScrolled} className={cx('h-dvh snap-y snap-mandatory overflow-y-auto overscroll-y-contain bg-cream text-navy', noBar)}>
+      {/* Keep vertical scrolling native: snapping can pull short iPhone swipes back to the day. */}
+      <div ref={page} onScroll={pageScrolled} className={cx('h-dvh overflow-y-auto overscroll-y-contain bg-cream text-navy', noBar)}>
         <section ref={daysSection} className="snap-start" aria-label="Days">
           <motion.div className="relative" style={{ y: dayY, scale: dayScale, transformOrigin: '50% 0%' }}>
             {ready && dates.length > 1 && (
@@ -485,7 +485,7 @@ export default function Lab() {
               </div>
             )}
             {ready ? (
-              <div ref={daysStrip} onScroll={daysSettled} className={cx('flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain', noBar)}>
+              <div ref={daysStrip} onScroll={daysSettled} className={cx('flex snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain', noBar)}>
                 {dates.map((d, i) =>
                   Math.abs(i - dayIndex) > REACH ? (
                     <Far key={isoDate(d)} />
@@ -518,7 +518,7 @@ export default function Lab() {
             </div>
           )}
           {ready && (
-            <div ref={weeksStrip} onScroll={weeksSettled} className={cx('flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain', noBar)}>
+            <div ref={weeksStrip} onScroll={weeksSettled} className={cx('flex snap-x snap-mandatory overflow-x-auto overflow-y-hidden overscroll-x-contain', noBar)}>
               {WEEKS.map((o, j) =>
                 Math.abs(j - WEEKS.indexOf(week)) > REACH ? (
                   <Far key={o} />
@@ -544,18 +544,6 @@ export default function Lab() {
           )}
         </section>
       </div>
-      {ready && (
-        // Below a day, a quiet pointer to the week underneath. It goes as soon as the page moves down.
-        <motion.div
-          style={{ opacity: hint, pointerEvents: hintEvents }}
-          className="fixed inset-x-0 bottom-0 z-20 flex justify-center bg-linear-to-b from-cream/0 to-cream to-60% pt-10 pb-[max(1rem,env(safe-area-inset-bottom))]"
-        >
-          <button type="button" onClick={toWeek} className="press label flex min-h-11 items-center gap-1.5 px-4 text-[11px] tracking-[0.14em] link-hover">
-            This week
-            <Icon name="back" className="size-4 -rotate-90" strokeWidth={2.6} />
-          </button>
-        </motion.div>
-      )}
       {/* A session slides in from the side over the page, and back out, so where you were on the page is kept. */}
       <AnimatePresence>
         {open && (

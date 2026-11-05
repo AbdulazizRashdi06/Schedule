@@ -1,5 +1,4 @@
-import { useContext, useState } from 'react'
-import { LabNav } from './labNav'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useSession } from '../lib/session'
 import type { Me } from '../lib/types'
@@ -15,7 +14,6 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
   const staff = session?.role === 'owner'
   const [confirmOut, setConfirmOut] = useState(false)
   const [changingYear, setChangingYear] = useState(false)
-  const lab = useContext(LabNav)
   const item = 'tint flex h-14 items-center justify-between rounded-[12px] text-[22px] font-extrabold'
   return (
     <>
@@ -33,40 +31,6 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
       <nav aria-label="Menu" className="flex flex-col">
         {me?.setupDone && (
           <>
-            {/* On home, Today and the week are places on the page: these move there instead of opening a screen. */}
-            {lab ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose()
-                    lab.day(new Date())
-                  }}
-                  className={cx(item, 'text-left')}
-                >
-                  Today<span aria-hidden="true" className="text-[18px]">→</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose()
-                    lab.week()
-                  }}
-                  className={cx(item, 'text-left')}
-                >
-                  Full week<span aria-hidden="true" className="text-[18px]">→</span>
-                </button>
-              </>
-            ) : (
-              <>
-                <Link to="/" onClick={onClose} className={item}>
-                  Today<span aria-hidden="true" className="text-[18px]">→</span>
-                </Link>
-                <Link to="/schedule" onClick={onClose} className={item}>
-                  Full week<span aria-hidden="true" className="text-[18px]">→</span>
-                </Link>
-              </>
-            )}
             <Link to="/edit" onClick={onClose} className={item}>
               Edit my courses<span aria-hidden="true" className="text-[18px]">→</span>
             </Link>

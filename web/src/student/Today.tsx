@@ -28,15 +28,17 @@ function useClassLink() {
   }
 }
 
-/** On the home page, each day's own "+ Add a slot", as the old Day view had. */
-function AddSlot({ date }: { date: Date }) {
+/** The same day actions remain available with upcoming classes, after classes, and on free days. */
+function DayActions({ date }: { date: Date }) {
   const lab = useContext(LabNav)
-  if (!lab) return null
   return (
-    <div className="px-6 pt-4">
-      <button type="button" onClick={() => lab.add(date)} className="label flex min-h-11 items-center text-[12px] link-hover">
-        + Add a slot
-      </button>
+    <div className="flex items-center justify-between gap-4 px-6 pt-4">
+      {lab && (
+        <button type="button" onClick={() => lab.add(date)} className="label flex min-h-11 items-center text-[12px] link-hover">
+          + Add a slot
+        </button>
+      )}
+      <WeekLink />
     </div>
   )
 }
@@ -104,12 +106,12 @@ export default function Today() {
               ) : live ? (
                 <>
                   <LiveCard s={live} nowMin={nowMin} />
-                  {rest.length > 0 ? <List title="Up next" sessions={rest} week /> : <LastOne>Last class today</LastOne>}
+                  {rest.length > 0 ? <List title="Up next" sessions={rest} /> : <LastOne>Last class today</LastOne>}
                 </>
               ) : next ? (
                 <>
                   <NextCard s={next} nowMin={nowMin} />
-                  {rest.length > 0 ? <List title="Later today" sessions={rest} week /> : <LastOne>Nothing after this today</LastOne>}
+                  {rest.length > 0 ? <List title="Later today" sessions={rest} /> : <LastOne>Nothing after this today</LastOne>}
                 </>
               ) : today.length > 0 ? (
                 <>
@@ -130,18 +132,14 @@ export default function Today() {
                     No classes on {DAY_LONG[now.getDay()]}. Sleep in, catch up, or don’t.
                   </Card>
                   {nextDate && (
-                    <List title={`Back on ${DAY_LONG[nextDate.getDay()]}`} sessions={nextDay} date={nextDate}>
-                      <MoreLink to="/schedule" onLab={() => lab?.week()}>
-                        See the week
-                      </MoreLink>
-                    </List>
+                    <List title={`Back on ${DAY_LONG[nextDate.getDay()]}`} sessions={nextDay} date={nextDate} />
                   )}
                 </>
               )}
             </>
           )
         )}
-        {tt && <AddSlot date={now} />}
+        {tt && <DayActions date={now} />}
       </div>
       {!lab && <MenuSheet open={menu} onClose={() => setMenu(false)} me={me} />}
     </div>
@@ -180,14 +178,14 @@ export function DayHome({ date, offset, sessions }: { date: Date; offset: number
         {first ? (
           <>
             <DayCard s={first} count={list.length} end={list[list.length - 1].meeting.end} date={date} />
-            {rest.length > 0 ? <List title="Later" sessions={rest} week date={date} /> : <LastOne>Only class that day</LastOne>}
+            {rest.length > 0 ? <List title="Later" sessions={rest} date={date} /> : <LastOne>Only class that day</LastOne>}
           </>
         ) : (
           <Card tone="sky" title="Free day." size={80}>
             No classes on {DAY_LONG[date.getDay()]}. Sleep in, catch up, or don’t.
           </Card>
         )}
-        <AddSlot date={date} />
+        <DayActions date={date} />
       </div>
     </div>
   )
@@ -357,9 +355,8 @@ function NoClasses({ semester }: { semester?: string }) {
 
 function LastOne({ children }: { children: ReactNode }) {
   return (
-    <div className="flex items-center justify-between px-6 pt-6">
+    <div className="px-6 pt-6">
       <p className="label text-[12px] text-muted">{children}</p>
-      <WeekLink />
     </div>
   )
 }
@@ -367,7 +364,7 @@ function LastOne({ children }: { children: ReactNode }) {
 /** "Full week →": a link to /schedule, or on the home page a scroll down to the week. */
 function WeekLink() {
   const lab = useContext(LabNav)
-  const cls = 'label py-3 text-[12px] link-hover'
+  const cls = 'label ml-auto flex min-h-11 items-center py-3 text-[12px] link-hover'
   return lab ? (
     <button type="button" onClick={lab.week} className={cls}>
       Full week →
@@ -393,13 +390,12 @@ function MoreLink({ to, onLab, children }: { to: string; onLab: () => void; chil
   )
 }
 
-function List({ title, sessions, week, date, children }: { title: string; sessions: Session[]; week?: boolean; date?: Date; children?: ReactNode }) {
+function List({ title, sessions, date, children }: { title: string; sessions: Session[]; date?: Date; children?: ReactNode }) {
   const link = useClassLink()
   return (
     <section className="flex flex-col px-6 pt-[22px]">
       <div className="mb-2 flex items-baseline justify-between">
         <h2 className="display text-[22px] tracking-[-0.02em]">{title}</h2>
-        {week && <WeekLink />}
       </div>
       <ul>
         {sessions.map((s, i) => (
