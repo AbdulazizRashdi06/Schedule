@@ -17,6 +17,132 @@ namespace UniSchedule.Api.Data.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
 
+            modelBuilder.Entity("UniSchedule.Api.Analytics.EngagementConsent", b =>
+                {
+                    b.Property<int>("StudentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("ChangedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("StudentId");
+
+                    b.ToTable("EngagementConsents");
+                });
+
+            modelBuilder.Entity("UniSchedule.Api.Analytics.EngagementScreen", b =>
+                {
+                    b.Property<string>("SessionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Screen")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("ActiveMs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("ReportedMs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Views")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("SessionId", "Screen");
+
+                    b.ToTable("EngagementScreens");
+                });
+
+            modelBuilder.Entity("UniSchedule.Api.Analytics.EngagementSession", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("ActiveMs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("LastAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Sequence")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("StartedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("StudentId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StartedAt");
+
+                    b.HasIndex("StudentId", "LastAt");
+
+                    b.ToTable("EngagementSessions");
+                });
+
+            modelBuilder.Entity("UniSchedule.Api.Analytics.UsageDay", b =>
+                {
+                    b.Property<long>("Day")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ActiveUsers")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("FirstSample")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("LastSample")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("PeakAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PeakUsers")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Day");
+
+                    b.ToTable("UsageDays");
+                });
+
+            modelBuilder.Entity("UniSchedule.Api.Analytics.UsageHour", b =>
+                {
+                    b.Property<long>("Hour")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Route")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Method")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Audience")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("MaxMs")
+                        .HasColumnType("REAL");
+
+                    b.Property<long>("Requests")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("TotalMs")
+                        .HasColumnType("REAL");
+
+                    b.HasKey("Hour", "Route", "Method", "Audience", "Status");
+
+                    b.ToTable("UsageHours");
+                });
+
             modelBuilder.Entity("UniSchedule.Api.Data.AdminUser", b =>
                 {
                     b.Property<int>("Id")
@@ -865,6 +991,33 @@ namespace UniSchedule.Api.Data.Migrations
                     b.ToTable("UploadLogs");
                 });
 
+            modelBuilder.Entity("UniSchedule.Api.Analytics.EngagementConsent", b =>
+                {
+                    b.HasOne("UniSchedule.Api.Data.Student", null)
+                        .WithMany()
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("UniSchedule.Api.Analytics.EngagementScreen", b =>
+                {
+                    b.HasOne("UniSchedule.Api.Analytics.EngagementSession", null)
+                        .WithMany("Screens")
+                        .HasForeignKey("SessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("UniSchedule.Api.Analytics.EngagementSession", b =>
+                {
+                    b.HasOne("UniSchedule.Api.Data.Student", null)
+                        .WithMany()
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("UniSchedule.Api.Data.ClassNote", b =>
                 {
                     b.HasOne("UniSchedule.Api.Data.Course", "Course")
@@ -1102,6 +1255,11 @@ namespace UniSchedule.Api.Data.Migrations
                         .HasForeignKey("SemesterId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("UniSchedule.Api.Analytics.EngagementSession", b =>
+                {
+                    b.Navigation("Screens");
                 });
 
             modelBuilder.Entity("UniSchedule.Api.Data.Course", b =>

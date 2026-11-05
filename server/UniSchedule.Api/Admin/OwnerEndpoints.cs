@@ -190,6 +190,10 @@ public static partial class OwnerEndpoints
         {
             if (body.Confirm != "DELETE ALL DATA") return Errors.BadRequest("Confirm with DELETE ALL DATA.");
             await using var tx = await db.Database.BeginTransactionAsync(ct);
+            await db.UsageDays.ExecuteDeleteAsync(ct);
+            await db.UsageHours.ExecuteDeleteAsync(ct);
+            await db.EngagementSessions.ExecuteDeleteAsync(ct);
+            await db.EngagementConsents.ExecuteDeleteAsync(ct);
             var semesters = await db.Semesters.ExecuteDeleteAsync(ct);
             var students = await db.Students.Where(s => !s.IsOwner).ExecuteDeleteAsync(ct);
             await db.Students.ExecuteUpdateAsync(u => u

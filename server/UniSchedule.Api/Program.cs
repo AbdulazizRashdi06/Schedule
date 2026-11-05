@@ -10,6 +10,8 @@ using UniSchedule.Api.Auth;
 using UniSchedule.Api.Data;
 using UniSchedule.Api.Schedule;
 using UniSchedule.Api.Students;
+using UniSchedule.Api.Analytics;
+using System.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args.FirstOrDefault() == Cli.CreateAdmin ? [] : args);
 var config = builder.Configuration;
@@ -24,6 +26,7 @@ builder.Services.AddDataProtection()
     .SetApplicationName("UniSchedule");
 
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddHostedService<UsageRetention>();
 // Outside APIs (timetable, student courses) that owners connect in the dashboard.
 builder.Services.AddHttpClient<IConnectionFetcher, HttpConnectionFetcher>(c => c.Timeout = TimeSpan.FromSeconds(30));
 if (!builder.Environment.IsEnvironment("Testing")) builder.Services.AddHostedService<ConnectionScheduler>();
@@ -56,6 +59,10 @@ builder.Services.AddAuthorizationBuilder()
 
 builder.Services.AddRateLimiter(o =>
 {
+    o.AddPolicy("engagement", http => RateLimitPartition.GetFixedWindowLimiter(http.User.Id().ToString(), _ => new FixedWindowRateLimiterOptions
+    {
+        PermitLimit = 120, Window = TimeSpan.FromMinutes(1),
+    }));
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     o.OnRejected = async (ctx, ct) =>
         await ctx.HttpContext.Response.WriteAsJsonAsync(new { error = "Too many tries. Wait a minute and try again." }, ct);
@@ -99,6 +106,19 @@ using (var scope = app.Services.CreateScope())
 app.UseForwardedHeaders();
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.UseRouting();
+app.Use(async (http, next) =>
+{
+    var started = Stopwatch.GetTimestamp();
+    var failed = false;
+    try { await next(http); }
+    catch { failed = true; throw; }
+    finally
+    {
+        try { await UsageAnalytics.Record(http, started, failed); }
+        catch (Exception ex) { app.Logger.LogWarning(ex, "Could not record aggregate usage analytics"); }
+    }
+});
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
@@ -115,6 +135,8 @@ api.MapSync();
 api.MapConnections();
 api.MapGroups();
 api.MapPublicTimetable();
+api.MapUsageAnalytics();
+api.MapEngagementAnalytics();
 api.Map("/{**rest}", () => Errors.NotFound());
 
 // Client-side routes (/, /setup, /admin/...) all load the app.

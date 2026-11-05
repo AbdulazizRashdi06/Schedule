@@ -9,6 +9,7 @@
     "build:native": "tsc -b && vite build --mode native",
     "cap:sync": "npm run build:native && cap sync",
     "lint": "eslint .",
+    "test:engagement": "node scripts/test-engagement.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
