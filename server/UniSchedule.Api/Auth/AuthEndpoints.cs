@@ -223,7 +223,8 @@ public static class AuthEndpoints
             if (http.User.IsStudent())
             {
                 var s = await db.Students.Where(x => x.Id == id).Select(x => new { x.UniversityId }).FirstAsync(ct);
-                return Results.Ok(new { kind = "student", name = s.UniversityId, role = http.User.Role(), mustChangePassword = false });
+                return Results.Ok(new { kind = "student", name = s.UniversityId, role = http.User.Role(), mustChangePassword = false,
+                    batchRep = await UniSchedule.Api.Planner.PlannerEndpoints.RepInfo(db, id, ct) });
             }
             var a = await db.AdminUsers.Where(x => x.Id == id).Select(x => new { x.Username, x.MustChangePassword }).FirstAsync(ct);
             return Results.Ok(new { kind = "admin", name = a.Username, role = http.User.Role(), mustChangePassword = a.MustChangePassword });

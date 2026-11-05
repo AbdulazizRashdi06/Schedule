@@ -3,7 +3,7 @@ using UniSchedule.Api.Data;
 namespace UniSchedule.Api.Schedule;
 
 /// <summary><paramref name="Date"/>: "2026-09-21" for a class on that date only; null = every week.</summary>
-public record MeetingDto(int Day, string Start, string End, string Room, string? Date);
+public record MeetingDto(int Day, string Start, string End, string Room, string? Date, List<string>? ExcludedDates = null);
 public record SectionDto(int Id, string Number, string Instructor, List<MeetingDto> Meetings, string? ChangedAt, string? ChangeSummary);
 public record CourseDto(int Id, string Code, string Name, string Type, int? Year, int? Credits, List<string> Majors, List<SectionDto> Sections);
 

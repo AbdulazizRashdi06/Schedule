@@ -67,6 +67,7 @@ export default function AdminLayout() {
           </label>
         )}
         <nav aria-label="Dashboard" className="flex min-w-0 flex-col gap-0.5 max-[799px]:flex-row max-[799px]:overflow-x-auto max-[799px]:pb-2">
+          {isOwner && <NavLink to="/rep/planner" className={link}>Semester Planner</NavLink>}
           <NavLink to="/admin" end className={link}>
             Home
           </NavLink>

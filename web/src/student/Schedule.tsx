@@ -159,10 +159,13 @@ function nowY(nowMin: number) {
 }
 
 function WeekGrid({ days, sessions, start, today, nowMin, onDay, onEdit, onAdd }: { days: number[]; sessions: Session[]; start: Date; today: number; nowMin: number; onDay: (d: number) => void; onEdit: (s: CustomSlot) => void; onAdd: (day: number, slot: number) => void }) {
+  const exams = sessions.filter(s => s.type === 'exam')
+  sessions = sessions.filter(s => s.type !== 'exam')
   const cols = `38px repeat(${days.length}, minmax(0, 1fr))`
   const lineY = today >= 0 && days.includes(today) ? nowY(nowMin) : null
   return (
     <div>
+      {exams.length > 0 && <div className="mb-4 flex flex-col gap-2" aria-label="This week's exams">{exams.map(s => <button key={`${s.plannerEventId}-${s.meeting.date}`} type="button" onClick={() => onDay(s.meeting.day)} className="press min-h-11 rounded-[14px] bg-sky px-3 py-2 text-left text-[13px] font-bold text-navy">Exam · {DAY_SHORT[s.meeting.day]} {s.meeting.start}–{s.meeting.end} · {s.cls.name}</button>)}</div>}
       <div className="grid gap-x-[5px]" style={{ gridTemplateColumns: cols }}>
         <div />
         {days.map((d) => {

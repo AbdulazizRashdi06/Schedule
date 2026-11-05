@@ -8,6 +8,7 @@ import { SLOTS, sessionType, slotOf, type ClassType } from '../lib/slots'
 import { Button, Confirm, ErrorText, Loading, Tag, cx } from '../components/ui'
 import { shortDate, seen } from './AdminLayout'
 import { SetupTag } from './Students'
+import BatchRepAccess from './BatchRepAccess'
 
 interface Detail {
   id: number
@@ -18,7 +19,7 @@ interface Detail {
   createdAt: string
   lastSeenAt: string | null
   setupCompletedAt: string | null
-  major: { code: string; name: string } | null
+  major: { id: number; code: string; name: string } | null
   step: string
   done: boolean
   semester: Semester | null
@@ -29,7 +30,7 @@ interface Detail {
 type Action = 'major' | 'picks' | 'remove' | 'owner' | null
 
 /** On a cream page lecture blocks are navy so they stay visible; labs are ice, tutorials sky. */
-const CELL: Record<ClassType, string> = { lecture: 'bg-navy text-cream', lab: 'bg-ice text-navy', tutorial: 'bg-sky text-navy', mine: 'bg-paper text-navy' }
+const CELL: Record<ClassType, string> = { lecture: 'bg-navy text-cream', lab: 'bg-ice text-navy', tutorial: 'bg-sky text-navy', mine: 'bg-paper text-navy', exam: 'bg-sky text-navy' }
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 /** "today at 09:52", "yesterday", "on 8 Oct". */
@@ -106,6 +107,7 @@ export default function StudentDetail() {
         </Button>
       </div>
       <div className="flex flex-wrap items-start gap-10">
+        <BatchRepAccess studentId={d.id} currentMajorId={d.major?.id} />
         <section className="flex flex-[1_1_300px] flex-col">
           <h2 className="mb-2.5 text-[24px] font-extrabold">Picks {d.semester && <span className="label text-[12px] text-muted">{d.semester.name}</span>}</h2>
           {d.picks.length === 0 && <p className="text-[15px] font-semibold text-muted">No courses picked{d.semester ? '' : ' (no semester published)'}.</p>}

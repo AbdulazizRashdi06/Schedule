@@ -430,7 +430,7 @@ export default function Lab() {
       const p = new URLSearchParams()
       const pin = params.get('now')
       if (pin) p.set('now', pin)
-      p.set('session', `${s.cls.courseId}.${isoDate(date)}.${s.meeting.start}`)
+      p.set('session', `${s.plannerEventId ? `p${s.plannerEventId}` : s.cls.courseId}.${isoDate(date)}.${s.meeting.start}`)
       return `/?${p}`
     },
     [now, params],
@@ -447,7 +447,7 @@ export default function Lab() {
     if (!id || !iso) return null
     const [y, m, d] = iso.split('-').map(Number)
     const date = new Date(y, m - 1, d)
-    const onDay = all.filter((s) => s.cls.courseId === Number(id) && onDate(s, date))
+    const onDay = all.filter((s) => (id.startsWith('p') ? s.plannerEventId === Number(id.slice(1)) : !s.plannerEventId && s.cls.courseId === Number(id)) && onDate(s, date))
     const s = onDay.find((x) => x.meeting.start === at) ?? onDay[0]
     return s ? { s, date } : null
   }, [params, all])
@@ -581,6 +581,7 @@ export default function Lab() {
 
 /** On a cream page lectures are navy so they stand out; labs, tutorials and your own slots keep their colours. */
 const BLOCK: Record<ClassType, string> = {
+  exam: 'bg-sky text-navy',
   lecture: 'bg-navy text-cream',
   lab: 'bg-ice text-navy',
   tutorial: 'bg-sky text-navy',
@@ -640,8 +641,10 @@ function WeekPage({
   const r6 = useTransform(arriving, [0.64, 1], [90, 0])
   const rise = [r0, r1, r2, r3, r4, r5, r6]
   const start = weekStart(now, offset)
-  const sessions = inWeek(all, start)
-  const days = weekDays(sessions)
+  const weekSessions = inWeek(all, start)
+  const sessions = weekSessions.filter(s => s.type !== 'exam')
+  const exams = weekSessions.filter(s => s.type === 'exam')
+  const days = weekDays(weekSessions)
   const today = offset === 0 ? now.getDay() : -1
   const nowMin = nowMinutes(now)
   const cols = `38px repeat(${days.length}, minmax(0, 1fr))`
@@ -669,6 +672,7 @@ function WeekPage({
         </button>
       </motion.header>
 
+      {exams.length > 0 && <div className="mt-5 flex flex-col gap-2" aria-label="This week's exams">{exams.map(s => <button key={`${s.plannerEventId}-${s.meeting.date}`} type="button" onClick={() => onOpen(s, new Date(`${s.meeting.date}T12:00`))} className="press flex min-h-11 items-center justify-between gap-3 rounded-[14px] bg-sky px-3 py-2 text-left text-[13px] font-bold"><span>Exam · {DAY_SHORT[s.meeting.day]} {s.meeting.start}–{s.meeting.end}<span className="block">{s.cls.name}</span></span><span>{s.meeting.room || 'Room TBA'}</span></button>)}</div>}
       <div className="mt-6 grid gap-x-[5px]" style={{ gridTemplateColumns: cols }}>
         <div />
         {days.map((d, c) => {

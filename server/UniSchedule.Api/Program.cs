@@ -12,6 +12,7 @@ using UniSchedule.Api.Schedule;
 using UniSchedule.Api.Students;
 using UniSchedule.Api.Analytics;
 using System.Diagnostics;
+using UniSchedule.Api.Planner;
 
 var builder = WebApplication.CreateBuilder(args.FirstOrDefault() == Cli.CreateAdmin ? [] : args);
 var config = builder.Configuration;
@@ -26,6 +27,8 @@ builder.Services.AddDataProtection()
     .SetApplicationName("UniSchedule");
 
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddHttpClient<PlannerAiClient>(c => c.Timeout = TimeSpan.FromSeconds(270));
+builder.Services.AddHostedService<PlannerAiWorker>();
 builder.Services.AddHostedService<UsageRetention>();
 // Outside APIs (timetable, student courses) that owners connect in the dashboard.
 builder.Services.AddHttpClient<IConnectionFetcher, HttpConnectionFetcher>(c => c.Timeout = TimeSpan.FromSeconds(30));
@@ -52,6 +55,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         o.Events.OnRedirectToAccessDenied = ctx => { ctx.Response.StatusCode = StatusCodes.Status403Forbidden; return Task.CompletedTask; };
     });
 builder.Services.AddAuthorizationBuilder()
+    .AddPolicy(Session.RepPolicy, p => p.RequireClaim(Session.RoleClaim, "owner", "batch-rep").RequireAssertion(c => !c.User.HasClaim(x => x.Type == Session.MustChangeClaim)))
     .AddPolicy(Session.StudentPolicy, p => p.RequireClaim(Session.KindClaim, "student"))
     // Staff with a temporary password may only change it.
     .AddPolicy(Session.StaffPolicy, p => p.RequireClaim(Session.RoleClaim, "owner", "rsa").RequireAssertion(c => !c.User.HasClaim(x => x.Type == Session.MustChangeClaim)))
@@ -132,6 +136,7 @@ api.MapConnections();
 api.MapGroups();
 api.MapPublicTimetable();
 api.MapUsageAnalytics();
+api.MapPlanner();
 api.Map("/{**rest}", () => Errors.NotFound());
 
 // Client-side routes (/, /setup, /admin/...) all load the app.

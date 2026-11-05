@@ -1,0 +1,34 @@
+name: Check planner AI
+on:
+  workflow_dispatch:
+concurrency:
+  group: planner-ai-smoke
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Set up SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/zarqa_vps && chmod 600 ~/.ssh/zarqa_vps
+          if [ -n "$DEPLOY_KNOWN_HOSTS" ]; then printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else ssh-keyscan -H 173.249.40.122 > ~/.ssh/known_hosts 2>/dev/null; fi
+      - name: Verify synthetic text and screenshot requests
+        run: |
+          verifier=$(base64 -w0 tools/planner/verify-gateway.cjs)
+          for mode in text image; do
+            node tools/planner/smoke-input.mjs "$mode" > "$RUNNER_TEMP/classy-smoke.json"
+            ssh -i ~/.ssh/zarqa_vps -o BatchMode=yes -o ConnectTimeout=15 deploy@173.249.40.122 "docker exec -i zarqa-codex-1 node -e 'eval(Buffer.from(\"$verifier\",\"base64\").toString())'" < "$RUNNER_TEMP/classy-smoke.json"
+          done
+      - name: Remove temporary files
+        if: always()
+        run: rm -f ~/.ssh/zarqa_vps "$RUNNER_TEMP/classy-smoke.json"

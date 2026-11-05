@@ -7,6 +7,7 @@ export interface Meeting {
   room: string
   /** "2026-09-21": a class on that date only (timetables that change week to week). Null = every week on `day`. */
   date: string | null
+  excludedDates?: string[] | null
 }
 
 export interface Section {
@@ -32,7 +33,8 @@ export interface Course {
 export interface SessionInfo {
   kind: 'student' | 'admin' | null
   name?: string
-  role?: 'owner' | 'rsa' | null
+  role?: 'owner' | 'rsa' | 'batch-rep' | null
+  batchRep?: { homeFamily: string } | null
   mustChangePassword?: boolean
 }
 
@@ -40,6 +42,8 @@ export interface Me {
   universityId: string
   email: string
   isOwner: boolean
+  batchRep?: { homeFamily: string } | null
+  plannerEnabled?: boolean
   major: { id: number; code: string; name: string } | null
   year: number | null
   predictedYear: number
@@ -103,11 +107,29 @@ export interface CustomSlot {
 }
 
 export interface Timetable {
+  plannerEvents?: StudentPlannerEvent[]
   semester: { id: number; name: string } | null
   classes: TimetableClass[]
   needsSection: { courseId: number; code: string; name: string; removed: boolean }[]
   clashes: [number, number][]
   slots?: CustomSlot[]
+}
+
+export interface StudentPlannerEvent {
+  id: number
+  version: number
+  kind: 'exam' | 'class'
+  title: string
+  date: string
+  start: string
+  end: string
+  room: string
+  notes: string | null
+  courseId: number
+  code: string
+  courseName: string
+  sectionId: number | null
+  updatedAt: string
 }
 
 export interface Semester {

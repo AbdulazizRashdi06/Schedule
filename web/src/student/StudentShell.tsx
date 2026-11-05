@@ -29,6 +29,9 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
         {me?.email && <span className="text-[14px] font-semibold break-all text-muted">{me.email}</span>}
       </div>
       <nav aria-label="Menu" className="flex flex-col">
+        {(session?.role === 'owner' || ((me?.batchRep || session?.batchRep) && me?.plannerEnabled)) && (
+          <Link to="/rep/planner" onClick={onClose} className={item}>Semester Planner<span aria-hidden="true" className="text-[18px]">→</span></Link>
+        )}
         {me?.setupDone && (
           <>
             <Link to="/edit" onClick={onClose} className={item}>

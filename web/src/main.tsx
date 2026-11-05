@@ -34,6 +34,7 @@ import Accounts from './admin/Accounts'
 import Feedback from './admin/Feedback'
 import Notes from './admin/Notes'
 import Connections from './admin/Connections'
+import Planner from './planner/Planner'
 
 function StudentOnly({ children }: { children: ReactNode }) {
   const { session } = useSession()
@@ -68,6 +69,7 @@ createRoot(document.getElementById('root')!).render(
           {/* Home: the days and the week as one page you swipe and scroll around in. */}
           <Route path="/" element={<StudentOnly><Lab /></StudentOnly>} />
           <Route path="/schedule" element={<StudentOnly><Schedule /></StudentOnly>} />
+          <Route path="/rep/planner" element={<Planner />} />
           {/* Where the new home was tried out; old links land on home. */}
           <Route path="/lab" element={<Navigate to="/" replace />} />
           <Route path="/course/:courseId" element={<StudentOnly><Course /></StudentOnly>} />

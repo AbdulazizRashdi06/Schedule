@@ -1,11 +1,19 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using UniSchedule.Api.Analytics;
+using UniSchedule.Api.Planner;
 
 namespace UniSchedule.Api.Data;
 
 public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
 {
+    public DbSet<BatchRepAssignment> BatchRepAssignments => Set<BatchRepAssignment>();
+    public DbSet<PlannerWorkspace> PlannerWorkspaces => Set<PlannerWorkspace>();
+    public DbSet<PlannerBatch> PlannerBatches => Set<PlannerBatch>();
+    public DbSet<PlannerEvent> PlannerEvents => Set<PlannerEvent>();
+    public DbSet<PlannerProposal> PlannerProposals => Set<PlannerProposal>();
+    public DbSet<PlannerActivity> PlannerActivities => Set<PlannerActivity>();
+    public DbSet<PlannerAiJob> PlannerAiJobs => Set<PlannerAiJob>();
     public DbSet<UsageDay> UsageDays => Set<UsageDay>();
     public DbSet<UsageHour> UsageHours => Set<UsageHour>();
     public DbSet<Student> Students => Set<Student>();
@@ -45,6 +53,38 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
 
     protected override void OnModelCreating(ModelBuilder m)
     {
+        m.Entity<BatchRepAssignment>(e => {
+            e.HasKey(x => x.StudentId);
+            e.HasOne<Student>().WithMany().HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Cascade);
+        });
+        m.Entity<PlannerWorkspace>(e => {
+            e.HasIndex(x => new { x.SemesterId, x.Family }).IsUnique();
+            e.Property(x => x.Version).IsConcurrencyToken();
+            e.HasOne<Semester>().WithMany().HasForeignKey(x => x.SemesterId).OnDelete(DeleteBehavior.Cascade);
+        });
+        m.Entity<PlannerBatch>(e => {
+            e.Property(x => x.Version).IsConcurrencyToken();
+            e.HasOne<PlannerWorkspace>().WithMany().HasForeignKey(x => x.WorkspaceId).OnDelete(DeleteBehavior.Cascade);
+        });
+        m.Entity<PlannerEvent>(e => {
+            e.Property(x => x.Version).IsConcurrencyToken();
+            e.HasIndex(x => x.SemesterId);
+            e.HasOne<Semester>().WithMany().HasForeignKey(x => x.SemesterId).OnDelete(DeleteBehavior.Cascade);
+        });
+        m.Entity<PlannerProposal>(e => {
+            e.Property(x => x.Version).IsConcurrencyToken();
+            e.HasIndex(x => new { x.WorkspaceId, x.Status });
+            e.HasOne<PlannerWorkspace>().WithMany().HasForeignKey(x => x.WorkspaceId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<PlannerEvent>().WithMany().HasForeignKey(x => x.EventId).OnDelete(DeleteBehavior.SetNull);
+        });
+        m.Entity<PlannerActivity>(e => {
+            e.HasIndex(x => new { x.WorkspaceId, x.At });
+            e.HasOne<PlannerWorkspace>().WithMany().HasForeignKey(x => x.WorkspaceId).OnDelete(DeleteBehavior.Cascade);
+        });
+        m.Entity<PlannerAiJob>(e => {
+            e.HasIndex(x => new { x.Status, x.CreatedAt });
+            e.HasOne<PlannerWorkspace>().WithMany().HasForeignKey(x => x.WorkspaceId).OnDelete(DeleteBehavior.Cascade);
+        });
         m.Entity<UsageDay>().HasKey(x => x.Day);
         m.Entity<UsageDay>().Property(x => x.Day).ValueGeneratedNever();
         m.Entity<UsageHour>().HasKey(x => new { x.Hour, x.Route, x.Method, x.Audience, x.Status });

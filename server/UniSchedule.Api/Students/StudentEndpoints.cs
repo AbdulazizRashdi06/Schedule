@@ -138,6 +138,8 @@ public static class StudentEndpoints
                 s.UniversityId,
                 s.Email,
                 s.IsOwner,
+                batchRep = await UniSchedule.Api.Planner.PlannerEndpoints.RepInfo(db, s.Id, ct),
+                plannerEnabled = await UniSchedule.Api.Planner.PlannerEngine.Enabled(db, http.RequestServices.GetRequiredService<IConfiguration>(), ct),
                 major = s.Major is null ? null : new { s.Major.Id, s.Major.Code, s.Major.Name },
                 s.Year,
                 predictedYear = StudentIds.PredictYear(s.UniversityId, AcademicStartYear(current, clock.GetUtcNow())),
@@ -303,6 +305,12 @@ public static class StudentEndpoints
                 .Include(p => p.Section).ThenInclude(s => s!.Meetings)
                 .AsSplitQuery().ToListAsync(ct);
             var withSection = picks.Where(p => p.Section is not null).OrderBy(p => p.Course.Code).ToList();
+            var planner = await UniSchedule.Api.Planner.PlannerEngine.Enabled(db, http.RequestServices.GetRequiredService<IConfiguration>(), ct)
+                ? await UniSchedule.Api.Planner.PlannerEngine.StudentView(db, current.Id, picks, ct)
+                : (Events: new List<object>(), Excluded: new Dictionary<string, List<string>>());
+            SectionDto EffectiveSection(Section section) => Dto.Of(section) with {
+                Meetings = section.Meetings.Select(m => Dto.Of(m) with { ExcludedDates = planner.Excluded.GetValueOrDefault(UniSchedule.Api.Planner.PlannerEngine.Fingerprint(section, m)) }).ToList()
+            };
             var slots = await db.CustomSlots.Where(s => s.StudentId == id && s.SemesterId == current.Id).ToListAsync(ct);
             // Note counts per course, so blocks can show a dot: whole-course notes, and per session date.
             var notes = await PersonalEndpoints.VisibleNotes(db, id, picks.Select(p => p.CourseId).ToList(), ct);
@@ -315,6 +323,7 @@ public static class StudentEndpoints
             return Results.Ok(new
             {
                 semester = new { current.Id, current.Name },
+                plannerEvents = planner.Events,
                 slots = slots.OrderBy(s => s.Date).ThenBy(s => s.Day).ThenBy(s => s.Start).Select(PersonalEndpoints.Of),
                 classes = withSection.Select(p => new
                 {
@@ -323,7 +332,7 @@ public static class StudentEndpoints
                     p.Course.Name,
                     type = p.Course.Type.ToString(),
                     p.Course.Credits,
-                    section = Dto.Of(p.Section!),
+                    section = EffectiveSection(p.Section!),
                     changed = p.Section!.ChangedAt is not null && (p.SeenAt is null || p.SeenAt < p.Section.ChangedAt),
                     notes = NoteCounts(p.CourseId),
                 }),

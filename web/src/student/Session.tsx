@@ -89,6 +89,7 @@ export default function SessionPage({
         )}
 
         <section className="mx-3 mt-[18px] mb-2 flex flex-1 flex-col gap-[18px] rounded-[32px] bg-navy p-5 text-cream">
+          {s.plannerNotes && <p className="rounded-[14px] bg-navy-800 p-3 text-[14px] font-semibold whitespace-pre-wrap">{s.plannerNotes}</p>}
           <div className="flex flex-col gap-2">
             <h2 className="text-[18px] font-extrabold">This session</h2>
             <Row s={s} date={date} live={live} badge={live ? '● Now' : when(date, now)} />

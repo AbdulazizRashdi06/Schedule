@@ -20,6 +20,7 @@ public static class Session
     /// <summary>Owners and RSA (dashboard access).</summary>
     public const string StaffPolicy = "staff";
     public const string OwnerPolicy = "owner";
+    public const string RepPolicy = "batch-rep";
 
     public static Task SignInStudentAsync(HttpContext http, Student s) => SignIn(http, "student", s.Id);
     public static Task SignInAdminAsync(HttpContext http, AdminUser a) => SignIn(http, "admin", a.Id);
@@ -55,9 +56,10 @@ public static class Session
         var identity = (ClaimsIdentity)principal.Identity!;
         if (principal.Kind() == "student")
         {
-            var s = await db.Students.Where(x => x.Id == id).Select(x => new { x.IsOwner, x.LastSeenAt }).FirstOrDefaultAsync();
+            var s = await db.Students.Where(x => x.Id == id).Select(x => new { x.IsOwner, x.LastSeenAt, Rep = db.BatchRepAssignments.Any(r => r.StudentId == x.Id) }).FirstOrDefaultAsync();
             if (s is null) { await Reject(ctx); return; }
             if (s.IsOwner) identity.AddClaim(new Claim(RoleClaim, "owner"));
+            else if (s.Rep) identity.AddClaim(new Claim(RoleClaim, "batch-rep"));
             if (s.LastSeenAt is null || s.LastSeenAt < stale)
                 await db.Students.Where(x => x.Id == id).ExecuteUpdateAsync(u => u.SetProperty(x => x.LastSeenAt, now));
         }

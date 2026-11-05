@@ -12,9 +12,11 @@ export const SLOTS = [
 ] as const
 
 /** `mine` is a student's own slot. */
-export type ClassType = 'lecture' | 'lab' | 'tutorial' | 'mine'
+export type ClassType = 'lecture' | 'lab' | 'tutorial' | 'mine' | 'exam'
 
 export interface Session {
+  plannerEventId?: number
+  plannerNotes?: string | null
   cls: TimetableClass
   meeting: Meeting
   type: ClassType
@@ -44,9 +46,9 @@ export function sessionType(room: string): ClassType {
   return 'lecture'
 }
 
-export const TYPE_NAME: Record<ClassType, string> = { lecture: 'Lecture', lab: 'Lab', tutorial: 'Tutorial', mine: 'My slot' }
+export const TYPE_NAME: Record<ClassType, string> = { lecture: 'Lecture', lab: 'Lab', tutorial: 'Tutorial', mine: 'My slot', exam: 'Exam' }
 /** Block colours: lecture cream, lab ice, tutorial sky. Text on every block is navy. */
-export const TYPE_BG: Record<ClassType, string> = { lecture: 'bg-cream', lab: 'bg-ice', tutorial: 'bg-sky', mine: 'bg-paper outline-2 outline-dashed -outline-offset-2 outline-navy/50' }
+export const TYPE_BG: Record<ClassType, string> = { lecture: 'bg-cream', lab: 'bg-ice', tutorial: 'bg-sky', mine: 'bg-paper outline-2 outline-dashed -outline-offset-2 outline-navy/50', exam: 'bg-sky outline-2 -outline-offset-2 outline-navy' }
 
 /** The slot a meeting belongs to: the one it overlaps most, or the nearest one for times outside the day. */
 export function slotOf(start: number, end: number) {
@@ -101,6 +103,14 @@ export function buildSessions(tt: Timetable): Session[] {
     const { slot, span } = slotSpan(start, end)
     out.push({ cls, meeting, type: 'mine', slot, span, start, end, clash: false, mine, notes: mine.note ? 1 : 0, noteDates: {} })
   }
+  for (const event of tt.plannerEvents ?? []) {
+    const original = tt.classes.find(c => c.courseId === event.courseId)
+    const meeting: Meeting = { day: new Date(`${event.date}T12:00`).getDay(), start: event.start, end: event.end, room: event.room, date: event.date }
+    const cls: TimetableClass = { courseId: event.courseId, code: event.code, name: `${event.title} · ${event.courseName}`, type: original?.type ?? 'Core', credits: original?.credits ?? null, changed: false,
+      section: { id: event.sectionId ?? 0, number: original?.section.number ?? '', instructor: original?.section.instructor ?? '', meetings: [meeting], changedAt: event.updatedAt, changeSummary: 'Published by a batch representative' } }
+    const start = minutes(event.start), end = minutes(event.end)
+    out.push({ cls, meeting, type: event.kind === 'exam' ? 'exam' : sessionType(event.room), ...slotSpan(start, end), start, end, clash: false, notes: 0, noteDates: {}, plannerEventId: event.id, plannerNotes: event.notes })
+  }
   for (const a of out)
     a.clash = out.some(
       (b) =>
@@ -134,13 +144,13 @@ export const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMo
 export const isoDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 /** Whether a session happens on a date: a dated class only on its date, a weekly one on its weekday. */
-export const onDate = (s: Session, d: Date) => (s.meeting.date ? s.meeting.date === isoDate(d) : s.meeting.day === d.getDay())
+export const onDate = (s: Session, d: Date) => !s.meeting.excludedDates?.includes(isoDate(d)) && (s.meeting.date ? s.meeting.date === isoDate(d) : s.meeting.day === d.getDay())
 
 /** The sessions of the seven days from `start`: weekly classes, plus dated classes that fall in those days. */
 export function inWeek(sessions: Session[], start: Date) {
   const from = isoDate(start)
   const to = isoDate(addDays(start, 6))
-  return sessions.filter((s) => !s.meeting.date || (s.meeting.date >= from && s.meeting.date <= to))
+  return sessions.filter((s) => s.meeting.date ? s.meeting.date >= from && s.meeting.date <= to : !s.meeting.excludedDates?.includes(isoDate(addDays(start, (s.meeting.day - start.getDay() + 7) % 7))))
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']

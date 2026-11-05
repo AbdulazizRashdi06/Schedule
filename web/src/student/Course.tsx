@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
 import { DAY_SHORT } from '../lib/time'
-import { TYPE_NAME, inWeek, initials, nowMinutes, onDate, type Session } from '../lib/slots'
+import { TYPE_NAME, inWeek, initials, isoDate, nowMinutes, onDate, type Session } from '../lib/slots'
 import { ErrorText, Sk, cx } from '../components/ui'
 import ClassNotes from './ClassNotes'
 import NotFound from './NotFound'
@@ -89,6 +89,7 @@ export default function Course() {
             )}
 
             <section className="mx-3 mt-[18px] mb-2 flex flex-1 flex-col gap-[18px] rounded-[32px] bg-navy p-5 text-cream">
+              {all.some(s => s.type === 'exam' && s.meeting.date! >= isoDate(now)) && <div className="flex flex-col gap-2" aria-label="Course exams"><h2 className="text-[18px] font-extrabold">Upcoming exams</h2>{all.filter(s => s.type === 'exam' && s.meeting.date! >= isoDate(now)).sort((a, b) => a.meeting.date!.localeCompare(b.meeting.date!)).map(s => <div key={`${s.plannerEventId}-${s.meeting.date}`} className="rounded-[14px] bg-sky p-3 text-[14px] font-bold text-navy"><p>{s.cls.name}</p><p>{s.meeting.date} · {s.meeting.start}–{s.meeting.end}</p><p>{s.meeting.room || 'Location not set'}</p>{s.plannerNotes && <p className="mt-1 font-semibold whitespace-pre-wrap">{s.plannerNotes}</p>}</div>)}</div>}
               <div className="flex flex-col gap-2">
                 <h2 className="text-[18px] font-extrabold">When &amp; where</h2>
                 <ul className="flex flex-col gap-2">
@@ -165,5 +166,6 @@ function until(s: Session, now: Date) {
   }
   let days = (s.meeting.day - now.getDay() + 7) % 7
   if (days === 0 && s.start <= nowMin) days = 7
+  while (s.meeting.excludedDates?.includes(new Date(now.getFullYear(), now.getMonth(), now.getDate() + days, 12).toLocaleDateString('en-CA'))) days += 7
   return days * 1440 + s.start - nowMin
 }
