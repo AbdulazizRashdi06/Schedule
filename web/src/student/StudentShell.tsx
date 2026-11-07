@@ -6,6 +6,7 @@ import { yearName } from '../lib/year'
 import { Sheet, Tag, cx } from '../components/ui'
 import LogoutConfirm from '../components/LogoutConfirm'
 import ChangeYear from './ChangeYear'
+import CalendarSheet from './CalendarSheet'
 
 /** Menu / profile sheet: who you are, where to go, colours, log out. */
 export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () => void; me: Me | null }) {
@@ -14,6 +15,7 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
   const staff = session?.role === 'owner'
   const [confirmOut, setConfirmOut] = useState(false)
   const [changingYear, setChangingYear] = useState(false)
+  const [calendar, setCalendar] = useState(false)
   const item = 'tint flex h-14 items-center justify-between rounded-[12px] text-[22px] font-extrabold'
   return (
     <>
@@ -30,7 +32,12 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
       </div>
       <nav aria-label="Menu" className="flex flex-col">
         {(session?.role === 'owner' || ((me?.batchRep || session?.batchRep) && me?.plannerEnabled)) && (
-          <Link to="/rep/planner" onClick={onClose} className={item}>Semester Planner<span aria-hidden="true" className="text-[18px]">→</span></Link>
+          <Link to="/rep/planner" onClick={onClose} className={item}>
+            <span className="flex items-center gap-2.5">
+              <Tag>Reps only</Tag> Semester Planner
+            </span>
+            <span aria-hidden="true" className="text-[18px]">→</span>
+          </Link>
         )}
         {me?.setupDone && (
           <>
@@ -40,6 +47,16 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
             <Link to="/groups" onClick={onClose} className={item}>
               Groups<span aria-hidden="true" className="text-[18px]">→</span>
             </Link>
+            <button
+              type="button"
+              onClick={() => {
+                onClose()
+                setCalendar(true)
+              }}
+              className={cx(item, 'text-left')}
+            >
+              Add to my calendar<span aria-hidden="true" className="text-[18px]">→</span>
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -82,6 +99,7 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
       </button>
       </Sheet>
       {me && <ChangeYear key={String(changingYear)} open={changingYear} onClose={() => setChangingYear(false)} current={me.year} />}
+      <CalendarSheet open={calendar} onClose={() => setCalendar(false)} />
       <LogoutConfirm
         open={confirmOut}
         onClose={() => setConfirmOut(false)}

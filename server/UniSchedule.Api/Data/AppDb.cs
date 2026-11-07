@@ -91,6 +91,7 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
         m.Entity<Student>(e =>
         {
             e.HasIndex(x => x.UniversityId).IsUnique();
+            e.HasIndex(x => x.CalendarToken).IsUnique();
             e.HasOne(x => x.Major).WithMany().HasForeignKey(x => x.MajorId).OnDelete(DeleteBehavior.SetNull);
             e.HasOne<Semester>().WithMany().HasForeignKey(x => x.SetupSemesterId).OnDelete(DeleteBehavior.SetNull);
         });

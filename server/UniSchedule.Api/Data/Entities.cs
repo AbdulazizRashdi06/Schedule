@@ -27,6 +27,8 @@ public class Student
 
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? LastSeenAt { get; set; }
+    /// <summary>Secret in the student's calendar feed link (calendar apps can't sign in). Null until they first ask for the link.</summary>
+    public string? CalendarToken { get; set; }
     public List<Pick> Picks { get; set; } = [];
 }
 

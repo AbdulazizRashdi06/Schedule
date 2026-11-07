@@ -3,7 +3,7 @@ import { Link, NavLink, Outlet, useNavigate, useOutletContext } from 'react-rout
 import { api, store } from '../lib/api'
 import { useSession } from '../lib/session'
 import type { Semester } from '../lib/types'
-import { cx } from '../components/ui'
+import { Tag, cx } from '../components/ui'
 import LogoutConfirm from '../components/LogoutConfirm'
 
 export interface AdminCtx {
@@ -67,7 +67,11 @@ export default function AdminLayout() {
           </label>
         )}
         <nav aria-label="Dashboard" className="flex min-w-0 flex-col gap-0.5 max-[799px]:flex-row max-[799px]:overflow-x-auto max-[799px]:pb-2">
-          {isOwner && <NavLink to="/rep/planner" className={link}>Semester Planner</NavLink>}
+          {isOwner && (
+            <NavLink to="/rep/planner" className={(s) => cx(link(s), 'gap-2')}>
+              <Tag>Reps only</Tag> Semester Planner
+            </NavLink>
+          )}
           <NavLink to="/admin" end className={link}>
             Home
           </NavLink>
