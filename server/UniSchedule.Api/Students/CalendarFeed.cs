@@ -70,8 +70,10 @@ public static partial class CalendarFeed
 
         // The same timetable as plain text, for an AI assistant the student told to open this link when they ask about
         // their classes. Two weeks from today by default; ?from=YYYY-MM-DD&days=N for other dates.
-        api.MapGet("/calendar/{token}.txt", async (string token, string? from, int? days, HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) =>
+        api.MapGet("/calendar/{token}.txt", async (string token, string? from, int? days, HttpContext http, AppDb db, TimeProvider clock, ILoggerFactory logs, CancellationToken ct) =>
         {
+            // Which app reads it (ChatGPT's fetcher, a browser), to see whether assistants fetch it themselves. No token or student.
+            logs.CreateLogger("CalendarText").LogInformation("Timetable text read by {Agent}", http.Request.Headers.UserAgent.ToString());
             const string text = "text/plain; charset=utf-8";
             var s = token.Length >= 40 ? await db.Students.FirstOrDefaultAsync(x => x.CalendarToken == token, ct) : null;
             if (s is null)

@@ -14,8 +14,9 @@ interface Links {
 
 /** What the student pastes into ChatGPT: asks it to remember the link and read it for any question about classes. */
 const aiPrompt = (link: string) =>
-  `Please save this to your memory: whenever I ask about my classes, timetable, class times, rooms or what I have on a day, open ${link} and answer from it. ` +
-  'It is my live university timetable from Classy, so open it again each time instead of relying on an old copy. ' +
+  `Please save this to your memory: whenever I ask about my classes, timetable, class times, rooms or what I have on a day, read ${link} and answer from it. ` +
+  'Fetch it yourself with your web browsing tool (it is a plain-text page). Do not open it in my browser or ask me to open it. ' +
+  'It is my live university timetable from Classy, so read it again each time instead of relying on an old copy. ' +
   'It lists the time now and each day; add ?from=YYYY-MM-DD&days=N to it for other dates. It is private, so never show or share the link.'
 
 export default function CalendarSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
