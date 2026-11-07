@@ -59,10 +59,10 @@ Read the text from the tab in three chunks of about 330 lines, and save them as 
 ### 5. Build the upload file
 A short Python step turns the lines back into one row per class:
 - Expands `50w14` and the other day numbers back into real dates.
-- Adds each course's **name**, **major**, **type** and **year** from `imports/offered-codes.md`:
+- Adds each course's **name**, **major** and **type** from `imports/offered-codes.md` and the type rules below. Export the target semester from Classy's **Upload → Export CSV** first and pass it to `build_csv.py` with `--catalog imports/classy-current.csv`:
   - Type: `LS` for Life Skills; `Elective` for IBSM-FE, IBSM-TM, LOG-E and the listed electives; otherwise `Core`.
   - Major: the code's prefix, for core courses.
-  - Year: the middle digit of the code.
+  - Year: preserve the stored year from the Classy export, matching course codes with or without spaces. A new lab can inherit its parent course's stored year. Unknown years remain blank and are reported for review. Never infer a study year from course-code digits: `CS 1 107` (Data Structures) is Year 2.
 - Writes `imports/upload-winter-2026-dated.csv` with the columns `Course Code, Course Name, Major, Type, Year, Credits, Section, Instructor, Date, Time, Room`.
 
 Check the totals against the script's numbers (courses, sections, classes), and check that every course has a name.

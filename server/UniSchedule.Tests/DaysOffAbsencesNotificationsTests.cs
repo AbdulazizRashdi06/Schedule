@@ -24,6 +24,32 @@ public class DaysOffAbsencesNotificationsTests(ApiFactory factory) : IClassFixtu
         return (c, id);
     }
 
+    static string B64Url(byte[] b) => Convert.ToBase64String(b).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    /// <summary>Keys like a browser's: a P-256 public point and a 16-byte secret.</summary>
+    static (string P256dh, string Auth) DeviceKeys()
+    {
+        using var ec = System.Security.Cryptography.ECDiffieHellman.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+        var q = ec.ExportParameters(false).Q;
+        return (B64Url([0x04, .. q.X!, .. q.Y!]), B64Url(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16)));
+    }
+
+    [Fact]
+    public async Task A_device_with_unusable_keys_is_dropped_without_failing_the_send()
+    {
+        var (_, _, studentId, _, _, _) = await Setup();
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+        var me = await db.Students.Where(x => x.UniversityId == studentId).Select(x => x.Id).FirstAsync();
+        // Saved before keys were checked on the way in.
+        db.PushSubscriptions.Add(new PushSubscription { StudentId = me, Endpoint = "https://push.example.com/broken", P256dh = "x", Auth = "y", CreatedAt = DateTimeOffset.UtcNow });
+        await db.SaveChangesAsync();
+
+        var push = factory.Services.GetRequiredService<PushSender>();
+        Assert.Equal(0, await push.SendAsync(db, [me], new Note("t", "b", "/", "test", 60), default));
+        Assert.False(await db.PushSubscriptions.AnyAsync(x => x.Endpoint == "https://push.example.com/broken"));
+    }
+
     static int setups;
 
     /// <summary>
@@ -81,6 +107,12 @@ public class DaysOffAbsencesNotificationsTests(ApiFactory factory) : IClassFixtu
         // The Sunday after, it's an ordinary day: R1 has the class.
         Assert.DoesNotContain((await Json(await s.GetAsync("/api/rooms/free?date=2026-10-25&at=08:30"))).GetProperty("rooms").EnumerateArray(), r => r.GetProperty("room").GetString() == "R1");
 
+        // Group free time: the whole of that Sunday is free; the Sunday after, not until the class ends.
+        var group = (await Json(await s.PostAsJsonAsync("/api/me/groups", new { name = "Study", kind = "friends", displayName = "Me" }))).GetProperty("id").GetInt32();
+        string FirstFree(JsonElement week, string date) => week.GetProperty("days").EnumerateArray().Single(d => d.GetProperty("date").GetString() == date).GetProperty("free")[0].GetProperty("start").GetString()!;
+        Assert.Equal("08:00", FirstFree(await Json(await s.GetAsync($"/api/me/groups/{group}/week?start=2026-10-18")), "2026-10-18"));
+        Assert.Equal("09:30", FirstFree(await Json(await s.GetAsync($"/api/me/groups/{group}/week?start=2026-10-25")), "2026-10-25"));
+
         // Removing it brings the class back.
         var id = days[0].GetProperty("id").GetInt32();
         Assert.Equal(HttpStatusCode.NoContent, (await owner.DeleteAsync($"/api/admin/semesters/{sem}/days-off/{id}")).StatusCode);
@@ -130,7 +162,10 @@ public class DaysOffAbsencesNotificationsTests(ApiFactory factory) : IClassFixtu
 
         // A device, then settings.
         Assert.Equal(HttpStatusCode.BadRequest, (await s.PostAsJsonAsync("/api/me/push", new { endpoint = "http://not-https.example/x", keys = new { p256dh = "k", auth = "a" } })).StatusCode);
-        Assert.Equal(HttpStatusCode.NoContent, (await s.PostAsJsonAsync("/api/me/push", new { endpoint = "https://push.example.com/device-1", keys = new { p256dh = "BKey", auth = "Auth" } })).StatusCode);
+        // Keys that can't be encrypted to are refused: they'd fail on every send.
+        Assert.Equal(HttpStatusCode.BadRequest, (await s.PostAsJsonAsync("/api/me/push", new { endpoint = "https://push.example.com/device-1", keys = new { p256dh = "BKey", auth = "Auth" } })).StatusCode);
+        var (p256dh, auth) = DeviceKeys();
+        Assert.Equal(HttpStatusCode.NoContent, (await s.PostAsJsonAsync("/api/me/push", new { endpoint = "https://push.example.com/device-1", keys = new { p256dh, auth } })).StatusCode);
         var settings = await Json(await s.GetAsync("/api/me/notifications"));
         Assert.Equal(1, settings.GetProperty("devices").GetInt32());
         Assert.True(settings.GetProperty("remindMinutes").ValueKind == JsonValueKind.Null);

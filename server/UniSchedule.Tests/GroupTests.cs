@@ -41,6 +41,8 @@ public class GroupTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var sem = (await Json(await owner.PostAsJsonAsync("/api/admin/semesters", new { term = "Fall", year }))).GetProperty("id").GetInt32();
         using var file = new MultipartFormDataContent { { new ByteArrayContent(System.Text.Encoding.UTF8.GetBytes(csv)), "file", "g.csv" } };
         Assert.Equal(HttpStatusCode.OK, (await owner.PostAsync($"/api/admin/semesters/{sem}/upload/apply", file)).StatusCode);
+        // The name's year only keeps test semesters apart; the classes are in autumn 2026, so say when its weeks are.
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/semesters/{sem}/weeks", new { week1Start = "2026-09-06", lastWeek = 15 })).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await owner.PostAsync($"/api/admin/semesters/{sem}/publish", null)).StatusCode);
         var major = (await Json(await owner.GetAsync("/api/admin/majors"))).EnumerateArray().First(m => m.GetProperty("code").GetString() == "GAM").GetProperty("id").GetInt32();
         var courses = new Dictionary<string, (int, int)>();
@@ -178,10 +180,13 @@ public class GroupTests(ApiFactory factory) : IClassFixture<ApiFactory>
             .First(d => d.GetProperty("date").GetString() == "2026-10-18").GetProperty("ride").GetProperty("riders").EnumerateArray()
             .ToDictionary(r => r.GetProperty("name").GetString()!);
         Assert.Equal(325, shown["Bader"].GetProperty("morningWait").GetInt32());
-        // Ali would wait seven hours, so a second ride home after his class is suggested.
-        var second = ride.GetProperty("secondRide");
+        // Ali would wait seven hours, so a second ride home after his class is suggested, to him: it says when his last
+        // class ends, which he doesn't show the group.
+        var second = (await Json(await ali.GetAsync($"/api/me/groups/{id}/rides?start=2026-10-18"))).GetProperty("days").EnumerateArray()
+            .First(d => d.GetProperty("date").GetString() == "2026-10-18").GetProperty("ride").GetProperty("secondRide");
         Assert.Equal("09:30", second.GetProperty("leaveUni").GetString());
         Assert.Equal(["Ali"], second.GetProperty("riders").EnumerateArray().Select(x => x.GetString()));
+        Assert.Equal(JsonValueKind.Null, ride.GetProperty("secondRide").ValueKind);
         // Nobody has class on Tuesday: no ride.
         var tuesday = week.GetProperty("days").EnumerateArray().First(d => d.GetProperty("date").GetString() == "2026-10-20");
         Assert.Equal(JsonValueKind.Null, tuesday.GetProperty("ride").ValueKind);

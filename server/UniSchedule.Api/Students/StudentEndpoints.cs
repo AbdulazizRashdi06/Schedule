@@ -307,7 +307,7 @@ public static class StudentEndpoints
             var withSection = picks.Where(p => p.Section is not null).OrderBy(p => p.Course.Code).ToList();
             var planner = await UniSchedule.Api.Planner.PlannerEngine.Enabled(db, http.RequestServices.GetRequiredService<IConfiguration>(), ct)
                 ? await UniSchedule.Api.Planner.PlannerEngine.StudentView(db, current.Id, picks, ct)
-                : (Events: new List<object>(), Excluded: new Dictionary<string, List<string>>());
+                : (Events: new List<UniSchedule.Api.Planner.PlannerOccurrence>(), Excluded: new Dictionary<string, List<string>>());
             // Weekly classes skip the planner's cancellations and the semester's days off; dated ones keep their date.
             var daysOff = await DaysOff.ForAsync(db, current.Id, ct);
             List<string>? Skipped(Section section, Meeting m)

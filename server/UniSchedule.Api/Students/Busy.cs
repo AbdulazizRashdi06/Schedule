@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using UniSchedule.Api.Data;
+using UniSchedule.Api.Schedule;
 
 namespace UniSchedule.Api.Students;
 
@@ -14,28 +15,23 @@ public static class Busy
 
     static int Min(TimeOnly t) => t.Hour * 60 + t.Minute;
 
-    /// <summary>Student id → date → busy blocks, sorted by start. Dates with nothing are left out.</summary>
-    public static async Task<Dictionary<int, Dictionary<DateOnly, List<Block>>>> ForAsync(AppDb db, IReadOnlyCollection<int> studentIds, int semesterId,
-        DateOnly from, DateOnly to, bool classesOnly, CancellationToken ct)
+    /// <summary>
+    /// Student id → date → busy blocks, sorted by start. Dates with nothing are left out. Same as their timetables:
+    /// days off, the semester's weeks and (with <paramref name="planner"/>) the batch reps' changes apply.
+    /// </summary>
+    public static async Task<Dictionary<int, Dictionary<DateOnly, List<Block>>>> ForAsync(AppDb db, IReadOnlyCollection<int> studentIds, Semester semester,
+        DateOnly from, DateOnly to, bool classesOnly, bool planner, CancellationToken ct)
     {
-        var picks = await db.Picks.Where(p => studentIds.Contains(p.StudentId) && p.Course.SemesterId == semesterId && p.SectionId != null)
-            .Select(p => new { p.StudentId, p.Course.Code, Meetings = p.Section!.Meetings.Select(m => new { m.Day, m.Start, m.End, m.Room, m.Date }).ToList() })
-            .ToListAsync(ct);
-        var slots = classesOnly ? [] : await db.CustomSlots.Where(s => studentIds.Contains(s.StudentId) && s.SemesterId == semesterId).ToListAsync(ct);
+        var span = await SemesterSpan.ForAsync(db, semester, ct);
+        var items = await StudentSchedule.ForAsync(db, semester.Id, studentIds, slots: !classesOnly, planner, ct);
 
         var result = studentIds.Distinct().ToDictionary(id => id, _ => new Dictionary<DateOnly, List<Block>>());
         void Add(int student, DateOnly date, Block b) =>
             (result[student].TryGetValue(date, out var list) ? list : result[student][date] = []).Add(b);
 
         for (var d = from; d <= to; d = d.AddDays(1))
-        {
-            var weekday = (int)d.DayOfWeek;
-            foreach (var p in picks)
-            foreach (var m in p.Meetings.Where(m => m.Date == d || (m.Date is null && m.Day == weekday)))
-                Add(p.StudentId, d, new Block(Min(m.Start), Min(m.End), p.Code, m.Room, true));
-            foreach (var s in slots.Where(s => s.Date == d || (s.Date is null && s.Day == weekday)))
-                Add(s.StudentId, d, new Block(Min(s.Start), Min(s.End), s.Title, s.Place, false));
-        }
+            foreach (var i in items.Where(i => span.Happens(i, d)))
+                Add(i.StudentId, d, new Block(Min(i.Start), Min(i.End), i.IsClass ? i.Code : i.Name, i.Room, i.IsClass));
         foreach (var days in result.Values)
         foreach (var list in days.Values)
             list.Sort((a, b) => a.Start.CompareTo(b.Start));

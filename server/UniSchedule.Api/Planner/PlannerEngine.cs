@@ -71,9 +71,8 @@ public static class PlannerEngine
     public static async Task<List<CalendarEntry>> Calendar(AppDb db, int semesterId, DateOnly from, DateOnly to, int? workspaceId, CancellationToken ct, int? excludeProposal = null, int? excludeEvent = null)
     {
         var semester = await db.Semesters.FirstAsync(s => s.Id == semesterId, ct);
-        var weeks = await SemesterWeeks.ForAsync(db, semester, ct);
-        var semesterStart = Date(weeks.Week1Start, out var start) ? start : new DateOnly(semester.Year, semester.Term == "Fall" ? 9 : semester.Term == "Summer" ? 6 : 2, 1);
-        var semesterEnd = semesterStart.AddDays((weeks.LastWeek ?? 18) * 7 - 1);
+        // The same weeks and days off students' timetables use.
+        var span = await SemesterSpan.ForAsync(db, semester, ct);
         var sections = await db.Sections.Include(s => s.Course).Include(s => s.Meetings).Where(s => s.Course.SemesterId == semesterId).ToListAsync(ct);
         var fingerprints = sections.SelectMany(s => s.Meetings.Select(m => Fingerprint(s, m))).ToHashSet();
         var output = new List<CalendarEntry>();
@@ -81,7 +80,7 @@ public static class PlannerEngine
         foreach (var m in s.Meetings)
         for (var d = from; d <= to; d = d.AddDays(1))
         {
-            if (!(m.Date == d || (m.Date is null && m.Day == (int)d.DayOfWeek && d >= semesterStart && d <= semesterEnd))) continue;
+            if (!(m.Date == d || (m.Date is null && span.Weekly(m.Day, d, true)))) continue;
             var fingerprint = Fingerprint(s, m);
             var source = new PlannerSource(s.CourseId, s.Id, fingerprint, Iso(d), Timeslots.Format(m.Start), Timeslots.Format(m.End));
             output.Add(new($"import:{fingerprint}:{Iso(d)}", null, null, 0, "class", s.Course.Name, Iso(d), source.Start, source.End, m.Room, [new(s.CourseId, [s.Id])], "university", source));
@@ -151,29 +150,54 @@ public static class PlannerEngine
         return new(token, conflicts, coverage.Distinct().ToList());
     }
 
-    public static async Task<(List<object> Events, Dictionary<string, List<string>> Excluded)> StudentView(AppDb db, int semester, List<Pick> picks, CancellationToken ct)
+    /// <summary>The published events of a semester that still match the timetable, loaded once for any number of students.</summary>
+    public static async Task<PublishedPlan> PublishedAsync(AppDb db, int semester, CancellationToken ct)
     {
-        var output = new List<object>();
-        var excluded = new Dictionary<string, List<string>>();
         var published = await db.PlannerEvents.Where(e => e.SemesterId == semester && !e.Withdrawn).ToListAsync(ct);
+        if (published.Count == 0) return new([]);
         var sections = await db.Sections.Include(s => s.Meetings).Where(s => s.Course.SemesterId == semester).ToListAsync(ct);
         var fingerprints = sections.SelectMany(s => s.Meetings.Select(m => Fingerprint(s, m))).ToHashSet();
-        foreach (var e in published)
+        return new(published.Select(e => (e, PlannerJson.Read<EventSpec>(e.PayloadJson)))
+            .Where(x => x.Item2.Source is not { } source || fingerprints.Contains(source.Fingerprint)).ToList());
+    }
+
+    /// <summary>Published events and cancelled or moved university classes, as one student sees them.</summary>
+    public static async Task<(List<PlannerOccurrence> Events, Dictionary<string, List<string>> Excluded)> StudentView(AppDb db, int semester, List<Pick> picks, CancellationToken ct) =>
+        (await PublishedAsync(db, semester, ct)).For(picks);
+}
+
+/// <summary>One date of a published planner event, for a student who takes one of its courses.</summary>
+public record PlannerOccurrence(int Id, int Version, string Kind, string Title, string Date, string Start, string End, string Room,
+    string? Notes, int CourseId, string Code, string CourseName, int? SectionId, DateTimeOffset UpdatedAt);
+
+public sealed class PublishedPlan(List<(PlannerEvent Event, EventSpec Spec)> events)
+{
+    static DateOnly Day(string iso) => DateOnly.ParseExact(iso, "yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// For one student's picks (with their courses loaded): the events they get, and the dates each university class
+    /// (by fingerprint) doesn't happen because an event cancelled or moved it.
+    /// </summary>
+    public (List<PlannerOccurrence> Events, Dictionary<string, List<string>> Excluded) For(IReadOnlyList<Pick> picks)
+    {
+        var output = new List<PlannerOccurrence>();
+        var excluded = new Dictionary<string, List<string>>();
+        foreach (var (e, spec) in events)
         {
-            var spec = PlannerJson.Read<EventSpec>(e.PayloadJson);
-            if (spec.Source is { } source && !fingerprints.Contains(source.Fingerprint)) continue;
             var matching = picks.Where(p => spec.Targets.Any(t => t.CourseId == p.CourseId && (t.SectionIds.Length == 0 || (p.SectionId is int sid && t.SectionIds.Contains(sid))))).ToList();
-            foreach (var d in Dates(spec))
+            if (matching.Count == 0) continue;
+            foreach (var d in PlannerEngine.Dates(spec))
             {
-                if (matching.Count > 0 && spec.Source is { } original)
+                if (spec.Source is { } original)
                 {
                     var key = original.Fingerprint;
                     if (!excluded.ContainsKey(key)) excluded[key] = [];
-                    excluded[key].Add(Iso(DateOnly.Parse(original.Date).AddDays(d.DayNumber - DateOnly.Parse(spec.Date).DayNumber)));
+                    excluded[key].Add(PlannerEngine.Iso(Day(original.Date).AddDays(d.DayNumber - Day(spec.Date).DayNumber)));
                 }
-                if (spec.Action == "cancel" || matching.Count == 0) continue;
+                if (spec.Action == "cancel") continue;
                 var pick = matching[0]; // One shared event, even when a student takes more than one target course.
-                output.Add(new { e.Id, e.Version, spec.Kind, spec.Title, date = Iso(d), spec.Start, spec.End, spec.Room, spec.Notes, courseId = pick.CourseId, code = pick.Course.Code, courseName = pick.Course.Name, sectionId = pick.SectionId, updatedAt = e.UpdatedAt });
+                output.Add(new(e.Id, e.Version, spec.Kind, spec.Title, PlannerEngine.Iso(d), spec.Start, spec.End, spec.Room, spec.Notes,
+                    pick.CourseId, pick.Course.Code, pick.Course.Name, pick.SectionId, e.UpdatedAt));
             }
         }
         return (output, excluded);

@@ -65,7 +65,8 @@ public static partial class SyncEndpoints
 
     /// <summary>
     /// Turns what EduWave sent into upload rows. Names, majors, types, years and credits come from the courses
-    /// already in the semester; new codes get the usual rules. Courses that failed keep their current classes.
+    /// already in the semester. New codes without a known parent have no year; code digits are not study years.
+    /// Courses that failed keep their current classes.
     /// </summary>
     public static async Task<List<ScheduleRow>> BuildRows(AppDb db, int semesterId, List<SyncRow> rows, IEnumerable<string> failed, CancellationToken ct)
     {
@@ -95,7 +96,7 @@ public static partial class SyncEndpoints
                 name = r.Name?.Trim() is { Length: > 0 } n ? n : key;
                 majors = kind == "Core" ? prefix : "";
                 type = kind;
-                year = kind == "Core" && m.Success ? m.Groups[2].Value[..1] : "";
+                year = "";
                 credits = "";
             }
             output.Add(new ScheduleRow(output.Count + 2, code, name, majors, type, year, credits,

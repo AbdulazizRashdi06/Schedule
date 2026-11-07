@@ -34,6 +34,14 @@ public static class PlannerEndpoints
         return await db.BatchRepAssignments.AnyAsync(r => r.StudentId == student && r.HomeFamily == w.Family, ct) ? w : null;
     }
 
+    /// <summary>
+    /// Whether this workspace may change a published event: the one it was first published from. Owners may change any.
+    /// Reps can still target other majors' courses, but can't edit or withdraw another family's events.
+    /// </summary>
+    static async Task<bool> OwnsEvent(HttpContext http, AppDb db, PlannerWorkspace w, int eventId, CancellationToken ct) =>
+        http.User.IsOwner() || await db.PlannerActivities.Where(a => a.EventId == eventId && a.Action == "published")
+            .OrderBy(a => a.Id).Select(a => (int?)a.WorkspaceId).FirstOrDefaultAsync(ct) == w.Id;
+
     static async Task Activity(AppDb db, HttpContext http, PlannerWorkspace w, string action, string snapshot, TimeProvider clock, CancellationToken ct, int? eventId = null, int? proposalId = null, string explanation = "")
     {
         db.PlannerActivities.Add(new() { WorkspaceId = w.Id, Action = action, Actor = await OwnerEndpoints.ActorName(http, db, ct), SnapshotJson = snapshot, At = clock.GetUtcNow(), EventId = eventId, ProposalId = proposalId, Explanation = explanation });
@@ -152,6 +160,7 @@ public static class PlannerEndpoints
             if (await PlannerEngine.Validate(db, w.SemesterId, body.Spec, ct) is { } problem) return Errors.BadRequest(problem);
             var published = body.EventId is null ? null : await db.PlannerEvents.FirstOrDefaultAsync(e => e.Id == body.EventId && e.SemesterId == w.SemesterId, ct);
             if (body.EventId is not null && (published is null || published.Version != body.BaseEventVersion)) return Errors.Conflict("The published event changed. Refresh it first.");
+            if (published is not null && !await OwnsEvent(http, db, w, published.Id, ct)) return Errors.Forbidden("Another family published this event. Ask their rep to change it.");
             var p = new PlannerProposal { WorkspaceId = w.Id, EventId = body.EventId, BaseEventVersion = published?.Version ?? 0, PayloadJson = PlannerJson.Write(body.Spec), UpdatedBy = await OwnerEndpoints.ActorName(http, db, ct), UpdatedAt = clock.GetUtcNow() };
             db.PlannerProposals.Add(p); await db.SaveChangesAsync(ct); return Results.Ok(Proposal(p));
         });
@@ -187,6 +196,7 @@ public static class PlannerEndpoints
             if (body.Explanation?.Length > 1000) return Errors.BadRequest("Keep the explanation under 1,000 characters.");
             var e = p.EventId is int eid ? await db.PlannerEvents.FindAsync([eid], ct) : null;
             if (p.EventId is not null && (e is null || e.Version != p.BaseEventVersion)) return Errors.Conflict("Another rep published a change to this event. Refresh first.");
+            if (e is not null && !await OwnsEvent(http, db, w, e.Id, ct)) return Errors.Forbidden("Another family published this event. Ask their rep to change it.");
             if (spec.Source is { } source) {
                 var sourceDates = PlannerEngine.Dates(spec).Select(d => DateOnly.Parse(source.Date).AddDays(d.DayNumber - DateOnly.Parse(spec.Date).DayNumber)).ToHashSet();
                 var active = await db.PlannerEvents.Where(x => x.SemesterId == w.SemesterId && !x.Withdrawn && x.Id != p.EventId).ToListAsync(ct);
@@ -211,6 +221,7 @@ public static class PlannerEndpoints
         work.MapPost("/events/{id:int}/withdraw", async (int workspaceId, int id, WithdrawBody body, HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) => {
             var w = await Workspace(http, db, workspaceId, ct); if (w is null) return Errors.NotFound();
             var e = await db.PlannerEvents.FirstOrDefaultAsync(e => e.Id == id && e.SemesterId == w.SemesterId, ct); if (e is null) return Errors.NotFound();
+            if (!await OwnsEvent(http, db, w, e.Id, ct)) return Errors.Forbidden("Another family published this event. Ask their rep to withdraw it.");
             if (e.Version != body.Version) return Errors.Conflict("This event changed. Refresh first.");
             if (string.IsNullOrWhiteSpace(body.Explanation) || body.Explanation.Length > 1000) return Errors.BadRequest("Explain the withdrawal (up to 1,000 characters).");
             e.Withdrawn = true; e.Version++; e.UpdatedAt = clock.GetUtcNow();

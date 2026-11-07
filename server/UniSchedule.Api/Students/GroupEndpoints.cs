@@ -128,7 +128,8 @@ public static class GroupEndpoints
             var sunday = WeekOf(start, clock);
             var members = g.Members.ToList();
             var busy = semester is null ? members.ToDictionary(m => m.StudentId, _ => new Dictionary<DateOnly, List<Busy.Block>>())
-                : await Busy.ForAsync(db, members.Select(m => m.StudentId).ToList(), semester.Id, sunday, sunday.AddDays(6), false, ct);
+                : await Busy.ForAsync(db, members.Select(m => m.StudentId).ToList(), semester, sunday, sunday.AddDays(6), false,
+                    await Planner.PlannerEngine.Enabled(db, http.RequestServices.GetRequiredService<IConfiguration>(), ct), ct);
             var names = members.ToDictionary(m => m.StudentId, m => m.DisplayName);
             var showing = members.Where(m => m.ShowClasses).Select(m => m.StudentId).ToHashSet();
 
@@ -179,7 +180,8 @@ public static class GroupEndpoints
             var members = g.Members.OrderBy(m => m.JoinedAt).ToList();
             // Classes only: own slots can be off campus.
             var busy = semester is null ? members.ToDictionary(m => m.StudentId, _ => new Dictionary<DateOnly, List<Busy.Block>>())
-                : await Busy.ForAsync(db, members.Select(m => m.StudentId).ToList(), semester.Id, sunday, sunday.AddDays(6), true, ct);
+                : await Busy.ForAsync(db, members.Select(m => m.StudentId).ToList(), semester, sunday, sunday.AddDays(6), true,
+                    await Planner.PlannerEngine.Enabled(db, http.RequestServices.GetRequiredService<IConfiguration>(), ct), ct);
 
             var days = Enumerable.Range(0, 7).Select(i => sunday.AddDays(i))
                 .Where(d => (int)d.DayOfWeek <= 4 || busy.Values.Any(x => x.ContainsKey(d)))
@@ -188,7 +190,7 @@ public static class GroupEndpoints
                     // A rider's own times are only shown to others if they chose to show their classes.
                     var riders = members.Where(m => busy[m.StudentId].ContainsKey(d))
                         .Select(m => (m.DisplayName, First: busy[m.StudentId][d].Min(b => b.Start), Last: busy[m.StudentId][d].Max(b => b.End),
-                            Shown: m.StudentId == me || m.ShowClasses)).ToList();
+                            Shown: m.StudentId == me || m.ShowClasses, Me: m.StudentId == me)).ToList();
                     var notComing = members.Where(m => !busy[m.StudentId].ContainsKey(d)).Select(m => m.DisplayName).ToList();
                     if (riders.Count == 0)
                         return new { date = d.ToString("yyyy-MM-dd"), day = (int)d.DayOfWeek, ride = (object?)null, notComing };
@@ -196,6 +198,8 @@ public static class GroupEndpoints
                     var leaveUni = riders.Max(r => r.Last);
                     // Riders who'd wait over three hours could go home earlier together, when the last of them is done.
                     var early = riders.Where(r => leaveUni - r.Last > LongWait).ToList();
+                    // It names riders and says when their last class ends, so only they see it, unless they all show their classes.
+                    var seesSecond = early.Any(r => r.Me) || early.All(r => r.Shown);
                     return new
                     {
                         date = d.ToString("yyyy-MM-dd"), day = (int)d.DayOfWeek,
@@ -211,7 +215,7 @@ public static class GroupEndpoints
                                 morningWait = r.Shown ? r.First - arrive : (int?)null,
                                 afternoonWait = r.Shown ? leaveUni - r.Last : (int?)null,
                             }),
-                            secondRide = early.Count == 0 ? null : new { leaveUni = Clock(early.Max(r => r.Last)), riders = early.Select(r => r.DisplayName) },
+                            secondRide = early.Count == 0 || !seesSecond ? null : new { leaveUni = Clock(early.Max(r => r.Last)), riders = early.Select(r => r.DisplayName) },
                         },
                         notComing,
                     };

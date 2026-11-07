@@ -105,8 +105,12 @@ self.addEventListener('notificationclick', (event) => {
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((open) => {
       // Reuse an open Classy window when there is one.
       const win = open.find((c) => new URL(c.url).origin === self.location.origin)
-      if (win) return win.navigate(target).then((c) => (c ?? win).focus())
-      return self.clients.openWindow(target)
+      if (!win) return self.clients.openWindow(target)
+      // navigate() only works on a window this worker controls (not one opened before it took over): open a new one then.
+      return win
+        .navigate(target)
+        .then((c) => (c ?? win).focus())
+        .catch(() => self.clients.openWindow(target))
     }),
   )
 })

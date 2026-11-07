@@ -145,6 +145,46 @@ public class PlannerTests
     }
 
     [Fact]
+    public async Task A_moved_class_moves_in_the_calendar_feed_reminders_and_group_free_time() {
+        using var w = new World(); await w.Init();
+        var calendar = await Json(await w.Rep.GetAsync($"{w.Base}/calendar?from=2026-11-08&to=2026-11-14"));
+        var source = calendar.EnumerateArray().First(e => e.GetProperty("source").GetProperty("sectionId").GetInt32() == w.Section)
+            .GetProperty("source").Deserialize<PlannerSource>(PlannerJson.Options)!;
+        // Sunday 8 Nov 08:00 moves to Monday 9 Nov 13:00.
+        var e = await w.Publish(await w.Draft(new EventSpec("class", "replace", "Replacement lecture", "2026-11-09", "13:00", "14:30", "B200", [new(w.Course, [w.Section])], null, source)));
+        var eventId = e.GetProperty("id").GetInt32();
+
+        // Calendar feed: that Sunday is left out and the Monday is added.
+        var links = await Json(await w.Student.GetAsync("/api/me/calendar"));
+        var ics = await (await w.Factory.Client().GetAsync(new Uri(links.GetProperty("url").GetString()!).PathAndQuery)).Content.ReadAsStringAsync();
+        Assert.Contains("EXDATE;TZID=Asia/Muscat:20261108T080000\r\n", ics);
+        Assert.Contains($"UID:planner-{eventId}-20261109@classy", ics);
+        var text = await (await w.Factory.Client().GetAsync(new Uri(links.GetProperty("textUrl").GetString()!).PathAndQuery + "?from=2026-11-08&days=2")).Content.ReadAsStringAsync();
+        Assert.Contains("Sun 8 Nov 2026 · week 8\n- No classes", text.Replace("\r\n", "\n"));
+        Assert.Contains("13:00–14:30  LOG201 Replacement lecture", text);
+
+        // Reminders: none for the moved Sunday class, one before the Monday one.
+        using (var scope = w.Factory.Services.CreateScope()) {
+            var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+            await db.Students.Where(s => s.Id == w.StudentId).ExecuteUpdateAsync(u => u.SetProperty(s => s.RemindMinutes, 15));
+            db.PushSubscriptions.Add(new PushSubscription { StudentId = w.StudentId, Endpoint = "https://push.example.com/moved", P256dh = "k", Auth = "a", CreatedAt = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync();
+            DateTimeOffset At(int day, int h, int m, int sec = 0) => new(2026, 11, day, h, m, sec, TimeSpan.FromHours(4));
+            Assert.DoesNotContain(await UniSchedule.Api.Students.Notifications.DueReminders(db, At(8, 7, 44, 50), At(8, 7, 45, 20), default, planner: true), d => d.StudentId == w.StudentId);
+            var due = Assert.Single(await UniSchedule.Api.Students.Notifications.DueReminders(db, At(9, 12, 44, 50), At(9, 12, 45, 20), default, planner: true), d => d.StudentId == w.StudentId);
+            Assert.Equal("LOG201 in 15 min", due.Note.Title);
+        }
+
+        // Group free time: free that Sunday morning, busy on the Monday afternoon.
+        var group = (await Json(await w.Student.PostAsJsonAsync("/api/me/groups", new { name = "Study", kind = "friends", displayName = "Me" }))).GetProperty("id").GetInt32();
+        var week = (await Json(await w.Student.GetAsync($"/api/me/groups/{group}/week?start=2026-11-08"))).GetProperty("days");
+        var sunday = week.EnumerateArray().Single(d => d.GetProperty("date").GetString() == "2026-11-08");
+        Assert.Equal("08:00", sunday.GetProperty("free")[0].GetProperty("start").GetString());
+        var monday = week.EnumerateArray().Single(d => d.GetProperty("date").GetString() == "2026-11-09");
+        Assert.DoesNotContain(monday.GetProperty("free").EnumerateArray(), f => string.CompareOrdinal(f.GetProperty("start").GetString(), "13:00") <= 0 && string.CompareOrdinal(f.GetProperty("end").GetString(), "14:30") >= 0);
+    }
+
+    [Fact]
     public async Task Slot_finder_checks_every_recurring_occurrence_and_reports_missing_sections() {
         using var w = new World(); await w.Init();
         await w.Publish(await w.Draft(w.Exam("2026-11-15", "10:00", "11:30")));
@@ -155,6 +195,21 @@ public class PlannerTests
         using (var scope = w.Factory.Services.CreateScope()) { var db = scope.ServiceProvider.GetRequiredService<AppDb>(); await db.Meetings.Where(m => m.SectionId == w.Section).ExecuteDeleteAsync(); }
         var analysis = await w.Analysis(await w.Draft(w.Exam(sectionOnly: true)));
         Assert.NotEmpty(analysis.GetProperty("coverageWarnings").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Another_familys_rep_cannot_edit_or_withdraw_a_published_event() {
+        using var w = new World(); await w.Init();
+        var e = await w.Publish(await w.Draft(w.Exam()));
+        var eventId = e.GetProperty("id").GetInt32();
+        // A Business-family rep, in their own workspace.
+        Assert.Equal(HttpStatusCode.OK, (await w.Owner.PutAsJsonAsync($"/api/admin/students/{w.StudentId}/batch-rep", new { homeMajorId = w.OtherMajor })).StatusCode);
+        var bus = (await Json(await w.Student.PostAsJsonAsync("/api/rep/workspaces/open", new { semesterId = w.Semester }))).GetProperty("id").GetInt32();
+        Assert.NotEqual(w.Workspace, bus);
+        Assert.Equal(HttpStatusCode.Forbidden, (await w.Student.PostAsJsonAsync($"/api/rep/workspaces/{bus}/events/{eventId}/withdraw", new { version = 1, explanation = "Not ours" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await w.Student.PostAsJsonAsync($"/api/rep/workspaces/{bus}/proposals", new { spec = w.Exam("2026-11-09"), eventId, baseEventVersion = 1 })).StatusCode);
+        // The family that published it still can.
+        Assert.Equal(HttpStatusCode.NoContent, (await w.Rep.PostAsJsonAsync($"{w.Base}/events/{eventId}/withdraw", new { version = 1, explanation = "Moved by lecturer" })).StatusCode);
     }
 
     [Fact]

@@ -22,6 +22,11 @@ const publish = (r: Reply) => {
   listeners.forEach((l) => l(r))
 }
 
+/** Forgets the signed-out student's list, so whoever signs in next doesn't see it while theirs loads. */
+export function resetAbsences() {
+  shared = null
+}
+
 /** The student's missed classes and the attendance limit (if the university set one), kept in step across pages. */
 export function useAbsences() {
   const [reply, setReply] = useState<Reply | null>(shared)

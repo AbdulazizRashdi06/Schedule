@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using UniSchedule.Api.Admin;
 using UniSchedule.Api.Data;
 
@@ -37,6 +38,27 @@ public class SyncTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Sync:ExtraCodes"] = "CS1102-L, LOG2201-L" }).Build();
         Assert.Equal(["CS1102-L", "LOG2201-L"], SyncEndpoints.ExtraCodes(config));
         Assert.Equal("CS 1 102-L", SyncEndpoints.EduWaveCode(SyncEndpoints.ExtraCodes(config)[0]));
+    }
+
+    [Fact]
+    public async Task Sync_preserves_stored_years_and_does_not_guess_unknown_years()
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+        var semester = new Semester { Name = "Year preservation", Term = "Fall", Year = 2072 };
+        db.Semesters.Add(semester);
+        await db.SaveChangesAsync();
+        db.Courses.AddRange(
+            new Course { SemesterId = semester.Id, Code = "CS1107", Name = "Data Structures", Type = CourseType.Core, Year = 2 },
+            new Course { SemesterId = semester.Id, Code = "CS2114", Name = "Unassigned year", Type = CourseType.Core });
+        await db.SaveChangesAsync();
+
+        var codes = new[] { "CS 1 107", "CS 1 107-L", "CS 2 114", "CS 4 999" };
+        var rows = await SyncEndpoints.BuildRows(db, semester.Id,
+            codes.Select(code => new SyncEndpoints.SyncRow(code, null, "1", "Teacher", "2026-10-12", "08:00", "09:30", "R1")).ToList(),
+            [], CancellationToken.None);
+
+        Assert.Equal(["2", "2", "", ""], rows.Select(r => r.Year));
     }
 
     [Fact]

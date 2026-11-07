@@ -12,6 +12,7 @@ Classy's timetable comes from EduWave, where every class has its own date, time 
 - **Read only.** The only request sent is the one EduWave's own "Sections" button sends (`GetCourseSections`). Never submit anything else on EduWave.
 - **One course a second.** About 4–5 minutes for ~220 courses.
 - `imports/` holds real university data and stays out of git (it's in `.gitignore`).
+- **Never infer course study years from course codes.** Preserve Classy's stored years; `CS 1 107` (Data Structures) is Year 2. EduWave's section scrape does not supply study years.
 - Nothing reaches students until an admin checks and applies it in the dashboard (Upload).
 
 ## Way 1: the Classy Sync extension (preferred)
@@ -33,11 +34,11 @@ Load the `anthropic-skills:built-in-browser` skill before the first browser step
    - Report the changes in plain words, per course: moved room, new time, added or removed class dates, new teacher, new or removed section. To see what a changed line replaced, compare it with the same course's lines in the previous `imports/ew-dated-*.txt`.
 6. **Copy the lines out.** `ewLines().length` gives the count. Read them in chunks of ~300 with `ewChunk(0, 300)`, `ewChunk(300, 600)` and so on, and save them in order to `imports/ew-dated-YYYYMMDD.txt` (today's date), one line each. Check the saved line count matches.
    - The browser pane blocks pages from sending to localhost, so copying out through the tool is the way.
-7. **Build the upload file.**
+7. **Build the upload file.** Export the target semester's current CSV from Classy's **Upload → Export CSV** and save it as `imports/classy-current.csv`. This is the source of stored course years:
    ```
-   python tools/eduwave/build_csv.py imports/ew-dated-YYYYMMDD.txt --out imports/upload-<semester>-dated.csv
+   python tools/eduwave/build_csv.py imports/ew-dated-YYYYMMDD.txt --catalog imports/classy-current.csv --out imports/upload-<semester>-dated.csv
    ```
-   It prints courses, sections and classes, and lists any code without a name. Ask the user for missing names and add them to `imports/offered-codes.md`. It also writes `imports/ew-dated-YYYYMMDD-hashes.txt`. Copy that over `imports/ew-old-hashes.txt`, so the next run diffs against this one.
+   Existing courses keep their stored year, including blank years. New labs can inherit their parent course's stored year. Other unknown years remain blank and are listed for review; do not fill them from code digits. It prints courses, sections and classes, and lists any code without a name. Ask the user for missing names and add them to `imports/offered-codes.md`. It also writes `imports/ew-dated-YYYYMMDD-hashes.txt`. Copy that over `imports/ew-old-hashes.txt`, so the next run diffs against this one.
 8. **Upload.** The user uploads the CSV in the dashboard: **Upload → pick the semester → upload the CSV → check the preview → Apply**. Tell them the file path, and the changes from step 5, so they know what the preview should show.
 
 ## Data format

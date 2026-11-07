@@ -257,7 +257,11 @@ function MeCard({ group, onSaved }: { group: GroupInfo; onSaved: (g: GroupInfo) 
       <h2 className="text-[20px] font-extrabold">You in this group</h2>
       <TextField label="Your name" value={name} maxLength={30} onChange={(e) => setName(e.target.value)} />
       <Checkbox checked={show} onChange={setShow} label="Show my classes to the group" />
-      <p className="text-[13px] font-semibold text-muted">Off: they only see when you’re busy. Your own slots always show as “Busy”.</p>
+      <p className="text-[13px] font-semibold text-muted">
+        {group.kind === 'car'
+          ? 'Off: they don’t see your class times. The car’s times still follow everyone’s first and last class, so they can show when yours start or end.'
+          : 'Off: they only see when you’re busy. Your own slots always show as “Busy”.'}
+      </p>
       <ErrorText>{error}</ErrorText>
       {changed && (
         <Button

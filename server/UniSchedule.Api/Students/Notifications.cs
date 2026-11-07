@@ -53,6 +53,37 @@ public static class Notifications
         }
     }
 
+    static byte[]? FromBase64Url(string s)
+    {
+        var b64 = s.Replace('-', '+').Replace('_', '/');
+        b64 = b64.PadRight(b64.Length + (4 - b64.Length % 4) % 4, '=');
+        try { return Convert.FromBase64String(b64); }
+        catch (FormatException) { return null; }
+    }
+
+    /// <summary>
+    /// A browser's keys as Web Push defines them: a P-256 public key (65 bytes, uncompressed, on the curve) and a 16-byte
+    /// secret. Anything else can't be encrypted to, and is refused here rather than failing on every send.
+    /// </summary>
+    public static bool ValidKeys(string p256dh, string auth)
+    {
+        if (FromBase64Url(auth) is not { Length: 16 }) return false;
+        if (FromBase64Url(p256dh) is not { Length: 65 } point || point[0] != 0x04) return false;
+        try
+        {
+            using var ecdh = System.Security.Cryptography.ECDiffieHellman.Create(new System.Security.Cryptography.ECParameters
+            {
+                Curve = System.Security.Cryptography.ECCurve.NamedCurves.nistP256,
+                Q = new System.Security.Cryptography.ECPoint { X = point[1..33], Y = point[33..] },
+            });
+            return true;
+        }
+        catch (System.Security.Cryptography.CryptographicException)
+        {
+            return false;
+        }
+    }
+
     public static void MapNotifications(this RouteGroupBuilder api)
     {
         // The public half of the signing key, which the browser needs to subscribe.
@@ -82,7 +113,8 @@ public static class Notifications
         me.MapPost("/push", async (SubscribeBody body, HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) =>
         {
             if (body.Endpoint is not { Length: > 0 and < 1000 } endpoint || !Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) || uri.Scheme != "https"
-                || body.Keys?.P256dh is not { Length: > 0 and < 200 } p256dh || body.Keys.Auth is not { Length: > 0 and < 100 } auth)
+                || body.Keys?.P256dh is not { Length: > 0 and < 200 } p256dh || body.Keys.Auth is not { Length: > 0 and < 100 } auth
+                || !ValidKeys(p256dh, auth))
                 return Errors.BadRequest("This browser sent an incomplete subscription. Try again.");
             var id = http.User.Id();
             var sub = await db.PushSubscriptions.FirstOrDefaultAsync(x => x.Endpoint == endpoint, ct);
@@ -110,53 +142,44 @@ public static class Notifications
     }
 
     /// <summary>
-    /// The reminders due in a window of time: every class (and own slot) starting <c>RemindMinutes</c> after a moment in
-    /// (from, to], for students who turned reminders on and have a device. Days off and the semester's weeks apply.
+    /// The reminders due in a window of time: every class, own slot and batch rep's event starting <c>RemindMinutes</c>
+    /// after a moment in (from, to], for students who turned reminders on and have a device. Days off, the semester's
+    /// weeks and (with <paramref name="planner"/>) classes the batch reps cancelled or moved apply, as on the timetable.
     /// </summary>
-    public static async Task<List<(int StudentId, Note Note)>> DueReminders(AppDb db, DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
+    public static async Task<List<(int StudentId, Note Note)>> DueReminders(AppDb db, DateTimeOffset from, DateTimeOffset to, CancellationToken ct, bool planner = false)
     {
         var semester = await StudentEndpoints.CurrentSemester(db, ct);
         if (semester is null || to <= from) return [];
         var students = await db.Students.Where(s => s.RemindMinutes != null && db.PushSubscriptions.Any(p => p.StudentId == s.Id))
             .Select(s => new { s.Id, Minutes = s.RemindMinutes!.Value }).ToListAsync(ct);
         if (students.Count == 0) return [];
-        var ids = students.Select(s => s.Id).ToList();
-        var picks = await db.Picks.Where(p => ids.Contains(p.StudentId) && p.Course.SemesterId == semester.Id && p.SectionId != null)
-            .Include(p => p.Course).Include(p => p.Section).ThenInclude(x => x!.Meetings).AsSplitQuery().ToListAsync(ct);
-        var slots = await db.CustomSlots.Where(x => ids.Contains(x.StudentId) && x.SemesterId == semester.Id).ToListAsync(ct);
-        var daysOff = await DaysOff.ForAsync(db, semester.Id, ct);
-        var first = SemesterWeeks.Sunday(semester.Week1Start ?? DateOnly.FromDateTime((semester.PublishedAt ?? from).ToOffset(Oman).DateTime));
-        var last = first.AddDays((semester.Week1Start is not null && semester.LastWeek is int weeks ? weeks : 16) * 7 - 1);
+        var span = await SemesterSpan.ForAsync(db, semester, ct);
+        var items = (await StudentSchedule.ForAsync(db, semester.Id, students.Select(s => s.Id).ToList(), slots: true, planner, ct)).ToLookup(i => i.StudentId);
 
         var due = new List<(int, Note)>();
         foreach (var s in students)
         {
-            // Classes starting in this window, shifted by how early the student wants to know.
+            // Things starting in this window, shifted by how early the student wants to know.
             var lo = from.AddMinutes(s.Minutes).ToOffset(Oman);
             var hi = to.AddMinutes(s.Minutes).ToOffset(Oman);
-            bool Starts(DateOnly? date, int day, TimeOnly start, bool isClass, out DateOnly on)
-            {
-                for (on = DateOnly.FromDateTime(lo.DateTime); on <= DateOnly.FromDateTime(hi.DateTime); on = on.AddDays(1))
-                {
-                    var happens = date == on || (date is null && day == (int)on.DayOfWeek && on >= first && on <= last && !(isClass && daysOff.ContainsKey(on)));
-                    var at = new DateTimeOffset(on.ToDateTime(start), Oman);
-                    if (happens && at > lo && at <= hi) return true;
-                }
-                return false;
-            }
             var ttl = s.Minutes * 60;
-            foreach (var p in picks.Where(p => p.StudentId == s.Id))
-            foreach (var m in p.Section!.Meetings)
-                if (Starts(m.Date, m.Day, m.Start, true, out var on))
+            foreach (var i in items[s.Id])
+            for (var on = DateOnly.FromDateTime(lo.DateTime); on <= DateOnly.FromDateTime(hi.DateTime); on = on.AddDays(1))
+            {
+                var at = new DateTimeOffset(on.ToDateTime(i.Start), Oman);
+                if (at <= lo || at > hi || !span.Happens(i, on)) continue;
+                var time = Timeslots.Format(i.Start);
+                var where = string.IsNullOrWhiteSpace(i.Room) ? "room to be announced" : i.Room;
+                due.Add((s.Id, i.From switch
                 {
-                    var where = string.IsNullOrWhiteSpace(m.Room) ? "room to be announced" : m.Room;
-                    due.Add((s.Id, new Note($"{p.Course.Code} in {s.Minutes} min", $"{p.Course.Name} · {Timeslots.Format(m.Start)} · {where}",
-                        $"/?session={p.CourseId}.{on:yyyy-MM-dd}.{Timeslots.Format(m.Start)}", $"class-{p.CourseId}-{on:yyyy-MM-dd}-{m.Start:HHmm}", ttl)));
-                }
-            foreach (var slot in slots.Where(x => x.StudentId == s.Id))
-                if (Starts(slot.Date, slot.Day, slot.Start, false, out var on))
-                    due.Add((s.Id, new Note($"{slot.Title} in {s.Minutes} min", string.Join(" · ", new[] { Timeslots.Format(slot.Start), slot.Place }.Where(x => !string.IsNullOrWhiteSpace(x))),
-                        "/", $"slot-{slot.Id}-{on:yyyy-MM-dd}", ttl)));
+                    StudentSchedule.Source.Slot => new Note($"{i.Name} in {s.Minutes} min", string.Join(" · ", new[] { time, i.Room }.Where(x => !string.IsNullOrWhiteSpace(x))),
+                        "/", $"slot-{i.SlotId}-{on:yyyy-MM-dd}", ttl),
+                    StudentSchedule.Source.Planner => new Note($"{i.Code} {(i.EventKind == "exam" ? "exam " : "")}in {s.Minutes} min", $"{i.Name} · {time} · {where}",
+                        $"/?session={i.CourseId}.{on:yyyy-MM-dd}.{time}", $"event-{i.EventId}-{on:yyyy-MM-dd}", ttl),
+                    _ => new Note($"{i.Code} in {s.Minutes} min", $"{i.Name} · {time} · {where}",
+                        $"/?session={i.CourseId}.{on:yyyy-MM-dd}.{time}", $"class-{i.CourseId}-{on:yyyy-MM-dd}-{i.Start:HHmm}", ttl),
+                }));
+            }
         }
         return due;
     }
@@ -169,10 +192,11 @@ public static class Notifications
     {
         var semester = await StudentEndpoints.CurrentSemester(db, ct);
         if (semester is null) return [];
-        var changed = await db.Sections.Where(s => s.Course.SemesterId == semester.Id && s.ChangedAt != null)
-            .Select(s => new { s.Id, s.CourseId, s.Course.Code, s.Course.Name, s.ChangedAt, s.ChangeSummary }).ToListAsync(ct);
-        // SQLite can't compare these stored times in a query, so the time filter runs here.
-        changed = changed.Where(s => s.ChangedAt > since && s.ChangedAt <= until).ToList();
+        // Times are stored as numbers (AppDb), so the database compares them: only this window's changes are read. The
+        // stored number includes the offset, and every stored time is UTC, so compare in UTC too.
+        (since, until) = (since.ToUniversalTime(), until.ToUniversalTime());
+        var changed = await db.Sections.Where(s => s.Course.SemesterId == semester.Id && s.ChangedAt != null && s.ChangedAt > since && s.ChangedAt <= until)
+            .Select(s => new { s.Id, s.CourseId, s.Course.Code, s.Course.Name, s.ChangeSummary }).ToListAsync(ct);
         if (changed.Count == 0) return [];
         var sectionIds = changed.Select(s => s.Id).ToList();
         var who = await db.Picks.Where(p => p.SectionId != null && sectionIds.Contains(p.SectionId.Value) && !p.Student.MuteChanges
@@ -201,6 +225,13 @@ public sealed class PushSender(IHttpClientFactory http, IConfiguration config, I
         var sent = 0;
         foreach (var sub in subs)
         {
+            // Keys nothing can be encrypted to (saved before keys were checked) would fail on every send: forget them.
+            if (!Notifications.ValidKeys(sub.P256dh, sub.Auth))
+            {
+                log.LogWarning("Dropped a device with unusable push keys");
+                db.PushSubscriptions.Remove(sub);
+                continue;
+            }
             try
             {
                 await client.SendNotificationAsync(new WebPush.PushSubscription(sub.Endpoint, sub.P256dh, sub.Auth), payload,
@@ -212,8 +243,9 @@ public sealed class PushSender(IHttpClientFactory http, IConfiguration config, I
                 // The device unsubscribed or the app was removed: stop sending there.
                 db.PushSubscriptions.Remove(sub);
             }
-            catch (Exception e) when (e is WebPushException or HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+            catch (Exception e) when (!ct.IsCancellationRequested)
             {
+                // One device failing never stops the others.
                 log.LogWarning("A notification didn't go out: {Error}", e.Message);
             }
         }
@@ -236,7 +268,8 @@ public sealed class NotificationWorker(IServiceScopeFactory scopes, PushSender p
             {
                 using var scope = scopes.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<AppDb>();
-                foreach (var (student, note) in await Notifications.DueReminders(db, last, now, stop))
+                var planner = await Planner.PlannerEngine.Enabled(db, scope.ServiceProvider.GetRequiredService<IConfiguration>(), stop);
+                foreach (var (student, note) in await Notifications.DueReminders(db, last, now, stop, planner))
                     await push.SendAsync(db, [student], note, stop);
 
                 // Changes since the last announced moment; the first run starts from now rather than announcing history.

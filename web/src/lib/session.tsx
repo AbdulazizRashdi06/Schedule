@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { ApiError, api, store } from './api'
+import { resetAbsences } from './absences'
+import { disableDevice, resetNotifySettings } from './push'
 import type { SessionInfo } from './types'
 
 interface SessionCtx {
@@ -29,9 +31,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, [])
   const logout = useCallback(async () => {
+    // First, while still signed in: this device stops getting this student's reminders, so the next person to use it
+    // doesn't see them.
+    await disableDevice().catch(() => {})
     await api.post('/auth/logout').catch(() => {})
     store.remove(SAVED)
     store.remove('timetable')
+    resetAbsences()
+    resetNotifySettings()
     setSession({ kind: null })
   }, [])
   useEffect(() => {

@@ -51,7 +51,9 @@ export async function enableDevice(): Promise<EnableResult> {
 /** Stops notifications on this device. */
 export async function disableDevice() {
   if (!pushSupported()) return
-  const sub = await (await registration()).pushManager.getSubscription()
+  // No worker registered means no subscription; don't register one (or wait for it) just to find that out.
+  const reg = await navigator.serviceWorker.getRegistration('/')
+  const sub = await reg?.pushManager.getSubscription()
   if (!sub) return
   await api.post('/me/push/remove', { endpoint: sub.endpoint }).catch(() => {})
   await sub.unsubscribe()
@@ -70,6 +72,11 @@ const listeners = new Set<(s: NotifySettings) => void>()
 const publish = (s: NotifySettings) => {
   shared = s
   listeners.forEach((l) => l(s))
+}
+
+/** Forgets the signed-out student's settings, so whoever signs in next doesn't see them while theirs load. */
+export function resetNotifySettings() {
+  shared = null
 }
 
 export function useNotifySettings() {
