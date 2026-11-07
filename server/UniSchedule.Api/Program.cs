@@ -31,6 +31,10 @@ builder.Services.AddHttpClient<PlannerAiClient>(c => c.Timeout = TimeSpan.FromSe
 builder.Services.AddHostedService<PlannerAiWorker>();
 builder.Services.AddSingleton<UsageBuffer>();
 builder.Services.AddHostedService<UsageRetention>();
+// Notifications: reminders before class and alerts when a class changes.
+builder.Services.AddHttpClient("push", c => c.Timeout = TimeSpan.FromSeconds(15));
+builder.Services.AddSingleton<PushSender>();
+if (!builder.Environment.IsEnvironment("Testing")) builder.Services.AddHostedService<NotificationWorker>();
 // Outside APIs (timetable, student courses) that owners connect in the dashboard.
 builder.Services.AddHttpClient<IConnectionFetcher, HttpConnectionFetcher>(c => c.Timeout = TimeSpan.FromSeconds(30));
 if (!builder.Environment.IsEnvironment("Testing")) builder.Services.AddHostedService<ConnectionScheduler>();
@@ -140,6 +144,9 @@ api.MapPublicTimetable();
 api.MapUsageAnalytics();
 api.MapCalendar();
 api.MapFreeRooms();
+api.MapDaysOff();
+api.MapAbsences();
+api.MapNotifications();
 api.MapPlanner();
 api.Map("/{**rest}", () => Errors.NotFound());
 

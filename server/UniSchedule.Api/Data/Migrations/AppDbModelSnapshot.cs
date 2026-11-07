@@ -73,6 +73,37 @@ namespace UniSchedule.Api.Data.Migrations
                     b.ToTable("UsageHours");
                 });
 
+            modelBuilder.Entity("UniSchedule.Api.Data.Absence", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("CourseId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("TEXT");
+
+                    b.Property<TimeOnly>("Start")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("StudentId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CourseId");
+
+                    b.HasIndex("StudentId", "CourseId", "Date", "Start")
+                        .IsUnique();
+
+                    b.ToTable("Absences");
+                });
+
             modelBuilder.Entity("UniSchedule.Api.Data.AdminUser", b =>
                 {
                     b.Property<int>("Id")
@@ -372,6 +403,37 @@ namespace UniSchedule.Api.Data.Migrations
                     b.HasIndex("StudentId", "SemesterId");
 
                     b.ToTable("CustomSlots");
+                });
+
+            modelBuilder.Entity("UniSchedule.Api.Data.DayOff", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SemesterId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SemesterId", "Date")
+                        .IsUnique();
+
+                    b.ToTable("DaysOff");
                 });
 
             modelBuilder.Entity("UniSchedule.Api.Data.Enrollment", b =>
@@ -692,6 +754,40 @@ namespace UniSchedule.Api.Data.Migrations
                     b.ToTable("Picks");
                 });
 
+            modelBuilder.Entity("UniSchedule.Api.Data.PushSubscription", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Auth")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Endpoint")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("P256dh")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("StudentId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Endpoint")
+                        .IsUnique();
+
+                    b.HasIndex("StudentId");
+
+                    b.ToTable("PushSubscriptions");
+                });
+
             modelBuilder.Entity("UniSchedule.Api.Data.Section", b =>
                 {
                     b.Property<int>("Id")
@@ -783,6 +879,12 @@ namespace UniSchedule.Api.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<int?>("MajorId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("MuteChanges")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("RemindMinutes")
                         .HasColumnType("INTEGER");
 
                     b.Property<long?>("SetupCompletedAt")
@@ -1168,6 +1270,21 @@ namespace UniSchedule.Api.Data.Migrations
                     b.ToTable("PlannerWorkspaces");
                 });
 
+            modelBuilder.Entity("UniSchedule.Api.Data.Absence", b =>
+                {
+                    b.HasOne("UniSchedule.Api.Data.Course", null)
+                        .WithMany()
+                        .HasForeignKey("CourseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("UniSchedule.Api.Data.Student", null)
+                        .WithMany()
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("UniSchedule.Api.Data.ClassNote", b =>
                 {
                     b.HasOne("UniSchedule.Api.Data.Course", "Course")
@@ -1257,6 +1374,15 @@ namespace UniSchedule.Api.Data.Migrations
                     b.HasOne("UniSchedule.Api.Data.Student", null)
                         .WithMany()
                         .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("UniSchedule.Api.Data.DayOff", b =>
+                {
+                    b.HasOne("UniSchedule.Api.Data.Semester", null)
+                        .WithMany()
+                        .HasForeignKey("SemesterId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -1370,6 +1496,15 @@ namespace UniSchedule.Api.Data.Migrations
                     b.Navigation("Section");
 
                     b.Navigation("Student");
+                });
+
+            modelBuilder.Entity("UniSchedule.Api.Data.PushSubscription", b =>
+                {
+                    b.HasOne("UniSchedule.Api.Data.Student", null)
+                        .WithMany()
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("UniSchedule.Api.Data.Section", b =>

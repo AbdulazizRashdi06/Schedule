@@ -60,6 +60,10 @@ applyAccent(loadAccent())
 applyBackground(loadBackground())
 setUpNative()
 
+// Keeps the app itself on the device, so the installed app opens offline (with the timetable it saved), and shows
+// notifications. Production only: in development it would serve stale files.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) void navigator.serviceWorker.register('/sw.js').catch(() => {})
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <SessionProvider>

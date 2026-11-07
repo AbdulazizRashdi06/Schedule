@@ -51,7 +51,9 @@ public static partial class FreeRooms
             var rooms = meetings.Select(m => m.Room.Trim()).Where(r => r.Length > 0 && !NotARoom().IsMatch(r))
                 .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             var weekday = (int)day.Value.DayOfWeek;
-            var thatDay = meetings.Where(m => m.Date == day || (m.Date is null && m.Day == weekday))
+            // On a day off weekly classes don't meet; a class set for that date still does.
+            var dayOff = semester is null ? null : await db.DaysOff.Where(d => d.SemesterId == semester.Id && d.Date == day).Select(d => d.Name).FirstOrDefaultAsync(ct);
+            var thatDay = meetings.Where(m => m.Date == day || (m.Date is null && m.Day == weekday && dayOff is null))
                 .ToLookup(m => m.Room.Trim(), StringComparer.OrdinalIgnoreCase);
 
             var free = new List<(string Room, string Building, string? Until)>();
@@ -71,6 +73,7 @@ public static partial class FreeRooms
                 at = Timeslots.Format(time),
                 // On a day with no classes at all (a weekend), every room shows as free: the page says so.
                 classesThatDay = thatDay.Count > 0,
+                dayOff,
                 busy,
                 rooms = free.OrderBy(r => r.Building).ThenBy(r => r.Room, StringComparer.OrdinalIgnoreCase)
                     .Select(r => new { room = r.Room, building = r.Building, freeUntil = r.Until }),

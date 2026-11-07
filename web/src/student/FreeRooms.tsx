@@ -9,6 +9,8 @@ interface FreeRoomsReply {
   date: string
   at: string
   classesThatDay: boolean
+  /** The holiday's name when the day is a day off. */
+  dayOff: string | null
   busy: number
   rooms: { room: string; building: string; freeUntil: string | null }[]
 }
@@ -87,7 +89,9 @@ export default function FreeRooms() {
                 {reply.rooms.length} free · {reply.busy} in class · at {reply.at}
               </p>
               {!reply.classesThatDay && (
-                <p className="mt-2 text-[15px] font-semibold text-muted">No classes on this day, so every room shows as free. Check the building is open.</p>
+                <p className="mt-2 text-[15px] font-semibold text-muted">
+                  {reply.dayOff ? `${reply.dayOff} is a day off, so every room shows as free.` : 'No classes on this day, so every room shows as free.'} Check the building is open.
+                </p>
               )}
               {reply.rooms.length === 0 && reply.classesThatDay && (
                 <p className="mt-6 text-[17px] font-semibold">Every room has a class right now. Try the next slot.</p>

@@ -7,6 +7,7 @@ import { Sheet, Tag, cx } from '../components/ui'
 import LogoutConfirm from '../components/LogoutConfirm'
 import ChangeYear from './ChangeYear'
 import CalendarSheet from './CalendarSheet'
+import NotificationsSheet from './NotificationsSheet'
 
 /** Menu / profile sheet: who you are, where to go, colours, log out. */
 export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () => void; me: Me | null }) {
@@ -16,6 +17,7 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
   const [confirmOut, setConfirmOut] = useState(false)
   const [changingYear, setChangingYear] = useState(false)
   const [calendar, setCalendar] = useState(false)
+  const [notify, setNotify] = useState(false)
   const item = 'tint flex h-14 items-center justify-between rounded-[12px] text-[22px] font-extrabold'
   return (
     <>
@@ -64,6 +66,16 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
               type="button"
               onClick={() => {
                 onClose()
+                setNotify(true)
+              }}
+              className={cx(item, 'text-left')}
+            >
+              Notifications<span aria-hidden="true" className="text-[18px]">→</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onClose()
                 setChangingYear(true)
               }}
               className={cx(item, 'text-left')}
@@ -103,6 +115,7 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
       </Sheet>
       {me && <ChangeYear key={String(changingYear)} open={changingYear} onClose={() => setChangingYear(false)} current={me.year} />}
       <CalendarSheet open={calendar} onClose={() => setCalendar(false)} />
+      <NotificationsSheet open={notify} onClose={() => setNotify(false)} />
       <LogoutConfirm
         open={confirmOut}
         onClose={() => setConfirmOut(false)}

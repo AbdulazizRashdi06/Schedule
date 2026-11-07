@@ -114,6 +114,7 @@ public static partial class CalendarFeed
         var first = SemesterWeeks.Sunday(semester.Week1Start ?? DateOnly.FromDateTime((semester.PublishedAt ?? now).ToOffset(Oman).DateTime));
         var last = first.AddDays((semester.Week1Start is not null && semester.LastWeek is int weeks ? weeks : DefaultWeeks) * 7 - 1);
         string? Week(DateOnly d) => semester.Week1Start is null || d < first || d > last ? null : $"week {(d.DayNumber - first.DayNumber) / 7 + 1}";
+        var daysOff = await DaysOff.ForAsync(db, semester.Id, ct);
 
         var items = new List<Item>();
         var picks = await db.Picks.Where(p => p.StudentId == studentId && p.Course.SemesterId == semester.Id && p.SectionId != null)
@@ -132,9 +133,10 @@ public static partial class CalendarFeed
             items.Add(new(slot.Date, slot.Day, slot.Start, slot.End, string.Join(" · ", parts.Where(x => !string.IsNullOrWhiteSpace(x))), false));
         }
 
-        // Weekly ones run from the semester's first week to its last; dated ones on their date only.
+        // Weekly ones run from the semester's first week to its last, except weekly classes on a day off; dated ones on
+        // their date only.
         List<Item> On(DateOnly d) => items
-            .Where(i => i.Date == d || (i.Date is null && i.Day == (int)d.DayOfWeek && d >= first && d <= last))
+            .Where(i => i.Date == d || (i.Date is null && i.Day == (int)d.DayOfWeek && d >= first && d <= last && !(i.IsClass && daysOff.ContainsKey(d))))
             .OrderBy(i => i.Start).ThenBy(i => i.End).ToList();
         string When(Item i) => $"{Timeslots.Format(i.Start)}–{Timeslots.Format(i.End)}";
 
@@ -157,7 +159,7 @@ public static partial class CalendarFeed
         for (var d = start; d < start.AddDays(days); d = d.AddDays(1))
         {
             t.AppendLine();
-            t.AppendLine($"{d.ToString("ddd d MMM yyyy", inv)}{(Week(d) is string wk ? $" · {wk}" : "")}{(d == today ? " · today" : "")}");
+            t.AppendLine($"{d.ToString("ddd d MMM yyyy", inv)}{(Week(d) is string wk ? $" · {wk}" : "")}{(d == today ? " · today" : "")}{(daysOff.TryGetValue(d, out var off) ? $" · day off: {off}" : "")}");
             var list = On(d);
             if (list.Count == 0) t.AppendLine("- No classes");
             foreach (var i in list) t.AppendLine($"- {When(i)}  {i.Line}");
@@ -190,6 +192,7 @@ public static partial class CalendarFeed
                 ?? DateOnly.FromDateTime((semester.PublishedAt ?? now).ToOffset(Oman).DateTime));
             var last = first.AddDays((semester.Week1Start is not null && semester.LastWeek is int weeks ? weeks : DefaultWeeks) * 7 - 1);
             var stamp = now.UtcDateTime.ToString("yyyyMMdd'T'HHmmss'Z'");
+            var daysOff = await DaysOff.ForAsync(db, semester.Id, ct);
 
             var picks = await db.Picks.Where(p => p.StudentId == studentId && p.Course.SemesterId == semester.Id && p.SectionId != null)
                 .Include(p => p.Course).Include(p => p.Section).ThenInclude(x => x!.Meetings)
@@ -199,7 +202,7 @@ public static partial class CalendarFeed
             {
                 var details = string.Join(" · ", new[] { p.Course.Code, $"Section {p.Section.Number}", p.Section.Instructor }.Where(x => !string.IsNullOrWhiteSpace(x)));
                 Event(ics, $"class-{p.Section.Id}-{m.Id}@classy", stamp, $"{p.Course.Name} · {Kind(m.Room)}", m.Room, details,
-                    m.Date, m.Day, m.Start, m.End, first, last);
+                    m.Date, m.Day, m.Start, m.End, first, last, daysOff.Keys);
             }
 
             var slots = await db.CustomSlots.Where(x => x.StudentId == studentId && x.SemesterId == semester.Id).ToListAsync(ct);
@@ -213,7 +216,7 @@ public static partial class CalendarFeed
 
     /// <summary>One event: on its date, or weekly on its weekday from the semester's first week to its last.</summary>
     static void Event(Ics ics, string uid, string stamp, string summary, string location, string description,
-        DateOnly? date, int day, TimeOnly start, TimeOnly end, DateOnly first, DateOnly last)
+        DateOnly? date, int day, TimeOnly start, TimeOnly end, DateOnly first, DateOnly last, IEnumerable<DateOnly>? daysOff = null)
     {
         var on = date ?? first.AddDays(day);
         if (date is null && on > last) return;
@@ -227,6 +230,9 @@ public static partial class CalendarFeed
             // UNTIL is in UTC: the end of the last day in Oman.
             var until = new DateTimeOffset(last.ToDateTime(new TimeOnly(23, 59, 59)), Oman).UtcDateTime;
             ics.Line($"RRULE:FREQ=WEEKLY;UNTIL={until:yyyyMMdd'T'HHmmss'Z'}");
+            // Days off: that week's class doesn't happen.
+            foreach (var off in (daysOff ?? []).Where(d => (int)d.DayOfWeek == day && d >= on && d <= last).Order())
+                ics.Line($"EXDATE;TZID=Asia/Muscat:{off:yyyyMMdd}T{start:HHmmss}");
         }
         ics.Line($"SUMMARY:{Ics.Escape(summary)}");
         if (!string.IsNullOrWhiteSpace(location)) ics.Line($"LOCATION:{Ics.Escape(location)}");

@@ -5,6 +5,8 @@ import type { Semester } from '../lib/types'
 import { Button, Confirm, ErrorText, Notice, Select, TextField, cx } from '../components/ui'
 import { PageTitle, useAdmin } from './AdminLayout'
 import WeeksEditor from './WeeksEditor'
+import DaysOffEditor from './DaysOffEditor'
+import AttendanceLimit from './AttendanceLimit'
 import EduWaveSync from './EduWaveSync'
 import ExportButton from './ExportButton'
 
@@ -105,6 +107,8 @@ export default function Upload() {
             <Choice on={pick === 'new'} onClick={() => setPick('new')} name="New semester" meta="Create" />
           </div>
           {target && <WeeksEditor key={target.id} semesterId={target.id} name={target.name} />}
+          {target && <DaysOffEditor key={`off-${target.id}`} semesterId={target.id} name={target.name} />}
+          <AttendanceLimit />
           {target && !target.isCurrent && (
             <div>
               <Button variant="danger" size="sm" onClick={() => setDeleting(true)}>

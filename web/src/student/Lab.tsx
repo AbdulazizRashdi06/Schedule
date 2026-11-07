@@ -336,6 +336,8 @@ export default function Lab() {
   const shareStart = weekStart(now, week)
   const shareSessions = inWeek(all, shareStart)
   const ready = Boolean(tt)
+  // Holidays and breaks by date: weekly classes already skip them; the pages name them.
+  const daysOff = useMemo(() => Object.fromEntries((tt?.daysOff ?? []).map((d) => [d.date, d.name])), [tt])
 
   useMouseDrag(page, 'y', ready)
   useMouseDrag(daysStrip, 'x', ready)
@@ -600,7 +602,7 @@ export default function Lab() {
                     <Far key={isoDate(d)} />
                   ) : (
                     <Slide key={isoDate(d)} strip={daysStrip} active={i === dayIndex}>
-                      {i === todayIndex ? <Today /> : <DayHome date={d} offset={Math.round((d.getTime() - midnight.getTime()) / DAY_MS)} sessions={all} />}
+                      {i === todayIndex ? <Today /> : <DayHome date={d} offset={Math.round((d.getTime() - midnight.getTime()) / DAY_MS)} sessions={all} dayOff={daysOff[isoDate(d)]} />}
                     </Slide>
                   ),
                 )}
@@ -645,6 +647,7 @@ export default function Lab() {
                     onEdit={setEditing}
                     onShare={() => setSharing(true)}
                     arriving={arriving}
+                    daysOff={daysOff}
                   />
                 </Slide>
                 ),
@@ -672,7 +675,7 @@ export default function Lab() {
             transition={{ type: 'spring', visualDuration: 0.35, bounce: 0 }}
             className="fixed inset-0 z-40 overflow-y-auto overscroll-contain bg-sky shadow-[-24px_0_48px_-24px_rgb(11_25_87/0.5)]"
           >
-            <SessionPage s={open.s} date={open.date} now={now} all={all} me={me?.universityId ?? ''} link={sessionLink} onBack={closeSession} onChanged={() => void retry()} />
+            <SessionPage s={open.s} date={open.date} now={now} all={all} me={me?.universityId ?? ''} link={sessionLink} onBack={closeSession} onChanged={() => void retry()} weeks={me?.semester?.weeks} />
           </motion.div>
         )}
       </AnimatePresence>
@@ -734,6 +737,7 @@ function WeekPage({
   onEdit,
   onShare,
   arriving,
+  daysOff,
 }: {
   offset: number
   now: Date
@@ -746,6 +750,7 @@ function WeekPage({
   onEdit: (slot: CustomSlot) => void
   onShare: () => void
   arriving: MotionValue<number>
+  daysOff: Record<string, string>
 }) {
   // As the week scrolls up into view its headline rises, then the days come up one after another.
   const headY = useTransform(arriving, [0.2, 0.8], [70, 0])
@@ -822,9 +827,22 @@ function WeekPage({
             <span className="text-muted">{e}</span>
           </div>
         ))}
-        {days.map((d, c) => (
-          <motion.div key={d} className={cx('rounded-[14px]', d === today ? 'bg-navy/[0.06]' : 'bg-navy/[0.025]')} style={{ gridColumn: c + 2, gridRow: `1 / ${SLOTS.length + 1}`, y: rise[c] }} />
-        ))}
+        {days.map((d, c) => {
+          const off = daysOff[isoDate(addDays(start, d))]
+          return (
+            <motion.div
+              key={d}
+              className={cx(
+                'grid place-items-center overflow-hidden rounded-[14px]',
+                // A day off is hatched and named down its column, so an empty day reads as a holiday, not a gap.
+                off ? 'bg-[repeating-linear-gradient(135deg,rgb(11_25_87/0.07)_0_6px,transparent_6px_12px)]' : d === today ? 'bg-navy/[0.06]' : 'bg-navy/[0.025]',
+              )}
+              style={{ gridColumn: c + 2, gridRow: `1 / ${SLOTS.length + 1}`, y: rise[c] }}
+            >
+              {off && <span className="label rotate-180 text-[10px] tracking-[0.12em] whitespace-nowrap text-navy/60 [writing-mode:vertical-rl]">Day off · {off}</span>}
+            </motion.div>
+          )
+        })}
         {SLOTS.slice(1).map((_, i) => (
           <div key={i} className="pointer-events-none absolute right-0 left-[43px] h-px bg-navy/10" style={{ top: (i + 1) * (ROW + GAP) - GAP / 2 }} />
         ))}

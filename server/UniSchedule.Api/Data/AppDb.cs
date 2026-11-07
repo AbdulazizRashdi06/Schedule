@@ -41,6 +41,9 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
     public DbSet<Enrollment> Enrollments => Set<Enrollment>();
     public DbSet<PendingSync> PendingSyncs => Set<PendingSync>();
     public DbSet<FeedbackResponse> FeedbackResponses => Set<FeedbackResponse>();
+    public DbSet<DayOff> DaysOff => Set<DayOff>();
+    public DbSet<Absence> Absences => Set<Absence>();
+    public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder b)
     {
@@ -138,6 +141,23 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
             e.HasOne(x => x.Student).WithMany(x => x.Picks).HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Course).WithMany().HasForeignKey(x => x.CourseId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Section).WithMany().HasForeignKey(x => x.SectionId).OnDelete(DeleteBehavior.SetNull);
+        });
+        m.Entity<DayOff>(e =>
+        {
+            e.HasIndex(x => new { x.SemesterId, x.Date }).IsUnique();
+            e.HasOne<Semester>().WithMany().HasForeignKey(x => x.SemesterId).OnDelete(DeleteBehavior.Cascade);
+        });
+        m.Entity<Absence>(e =>
+        {
+            e.HasIndex(x => new { x.StudentId, x.CourseId, x.Date, x.Start }).IsUnique();
+            e.HasOne<Student>().WithMany().HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Course>().WithMany().HasForeignKey(x => x.CourseId).OnDelete(DeleteBehavior.Cascade);
+        });
+        m.Entity<PushSubscription>(e =>
+        {
+            e.HasIndex(x => x.Endpoint).IsUnique();
+            e.HasIndex(x => x.StudentId);
+            e.HasOne<Student>().WithMany().HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Cascade);
         });
         m.Entity<CustomSlot>(e =>
         {

@@ -1,8 +1,11 @@
 import { useState } from 'react'
+import { ENABLE_MESSAGE, enableDevice, useNotifySettings } from '../lib/push'
 import { Link } from 'react-router-dom'
 import { DAY_LONG, DAY_SHORT } from '../lib/time'
 import { TYPE_NAME, addDays, fmtDate, initials, isoDate, nowMinutes, onDate, type Session } from '../lib/slots'
 import { cx } from '../components/ui'
+import { counts, heldSoFar, useAbsences } from '../lib/absences'
+import type { Weeks } from '../lib/types'
 import ClassNotes from './ClassNotes'
 import { Icon, RoundButton } from './timetable'
 
@@ -43,6 +46,7 @@ export default function SessionPage({
   link,
   onBack,
   onChanged,
+  weeks,
 }: {
   s: Session
   date: Date
@@ -52,8 +56,9 @@ export default function SessionPage({
   link: (s: Session, date: Date) => string
   onBack: () => void
   onChanged: () => void
+  /** The semester's teaching weeks, to count classes held so far. */
+  weeks?: Weeks
 }) {
-  const [soon, setSoon] = useState(false)
   const cls = s.cls
   const nowMin = nowMinutes(now)
   const live = isoDate(date) === isoDate(now) && s.start <= nowMin && nowMin < s.end
@@ -93,6 +98,7 @@ export default function SessionPage({
           <div className="flex flex-col gap-2">
             <h2 className="text-[18px] font-extrabold">This session</h2>
             <Row s={s} date={date} live={live} badge={live ? '● Now' : when(date, now)} />
+            {counts(s) && <Attendance s={s} date={date} now={now} all={all} weeks={weeks} />}
           </div>
 
           {next && (
@@ -116,22 +122,121 @@ export default function SessionPage({
 
           <ClassNotes key={isoDate(date)} courseId={cls.courseId} section={cls.section} me={me} onChanged={onChanged} session={isoDate(date)} />
 
-          {/* Reminders aren't built yet: the button is in place and says so when tapped. */}
-          <div className="mt-auto flex flex-col gap-2">
-            <button
-              type="button"
-              onClick={() => setSoon(true)}
-              className="press flex h-14 w-full shrink-0 items-center justify-center gap-2.5 rounded-full bg-cream text-[17px] font-extrabold text-navy"
-            >
-              <Icon name="bell" />
-              Remind me 15 min before
-            </button>
-            <p className="label min-h-4 text-center text-[10px] text-ice" role="status">
-              {soon && <span className="msg inline-block">Reminders are coming soon</span>}
-            </p>
-          </div>
+          <RemindButton />
         </section>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Your own absence count for the class, and "I missed this" for a session that's on or over. Against the university's
+ * attendance limit when one is set, warning as you get close.
+ */
+function Attendance({ s, date, now, all, weeks }: { s: Session; date: Date; now: Date; all: Session[]; weeks?: Weeks }) {
+  const { limit, absences, ready, mark } = useAbsences()
+  const [error, setError] = useState('')
+  const iso = isoDate(date)
+  const started = iso < isoDate(now) || (iso === isoDate(now) && s.start <= nowMinutes(now))
+  const course = absences.filter((a) => a.courseId === s.cls.courseId)
+  const missed = course.some((a) => a.date === iso && a.start === s.meeting.start)
+  const held = heldSoFar(s.cls.courseId, all, weeks, now)
+  const pct = held ? Math.round((course.length / held) * 100) : null
+  const close = limit !== null && pct !== null && pct >= limit - 5
+  if (!ready) return null
+  return (
+    <div className={cx('flex items-center justify-between gap-3 rounded-[18px] px-3.5 py-3', close ? 'bg-alert-bg text-alert-ink' : 'bg-navy-800')}>
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-[16px] leading-tight font-extrabold">
+          {course.length === 0 ? (
+            'No classes missed'
+          ) : (
+            <>
+              Missed <span key={course.length} className="pop tabular-nums">{course.length}</span>
+              {held !== null && ` of ${held}`}
+            </>
+          )}
+        </span>
+        <span className={cx('text-[13px] font-semibold', !close && 'text-ice')} role="status">
+          {error ||
+            (limit !== null && pct !== null
+              ? close
+                ? `${pct}%, close to the ${limit}% limit`
+                : `${pct}% so far · limit ${limit}%`
+              : 'Your own count. Only you see it.')}
+        </span>
+      </span>
+      {started && (
+        <button
+          type="button"
+          aria-pressed={missed}
+          onClick={() => {
+            setError('')
+            mark(s.cls.courseId, date, s.meeting.start, !missed).catch(() => setError('Didn’t save. Try again.'))
+          }}
+          className={cx(
+            'press label flex h-10 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-[11px]',
+            missed ? 'bg-cream text-navy' : close ? 'shadow-[inset_0_0_0_2px_currentColor]' : 'text-cream shadow-[inset_0_0_0_2px_rgb(255_253_248/0.35)]',
+          )}
+        >
+          {missed && <Icon name="check" className="pop size-3.5" strokeWidth={3} />}
+          {missed ? 'Missed' : 'I missed this'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+/**
+ * "Remind me 15 min before": turns on notifications for this device and reminders for every class. Once on, it says so
+ * and turns reminders off again; how early is chosen under Menu, Notifications.
+ */
+function RemindButton() {
+  const { settings, save, reload } = useNotifySettings()
+  const [busy, setBusy] = useState(false)
+  const [status, setStatus] = useState('')
+  const on = settings?.remindMinutes != null && settings.devices > 0
+  const toggle = async () => {
+    if (!settings || busy) return
+    setBusy(true)
+    setStatus('')
+    try {
+      if (on) {
+        await save({ remindMinutes: null, changes: settings.changes })
+        setStatus('Reminders off')
+      } else {
+        const r = await enableDevice()
+        if (r !== 'on') return setStatus(ENABLE_MESSAGE[r])
+        await save({ remindMinutes: settings.remindMinutes ?? 15, changes: settings.changes })
+        await reload()
+        setStatus('You’ll get a reminder before every class')
+      }
+    } catch {
+      setStatus('That didn’t work. Try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="mt-auto flex flex-col gap-2">
+      <button
+        type="button"
+        aria-pressed={on}
+        disabled={!settings}
+        onClick={toggle}
+        className={cx(
+          'press flex h-14 w-full shrink-0 items-center justify-center gap-2.5 rounded-full text-[17px] font-extrabold transition-colors duration-200',
+          on ? 'bg-navy-800 text-cream shadow-[inset_0_0_0_2px_rgb(255_253_248/0.3)]' : 'bg-cream text-navy',
+        )}
+      >
+        <Icon name="bell" />
+        <span key={String(on)} className="pop">
+          {on ? `Reminding you ${settings?.remindMinutes} min before` : `Remind me ${settings?.remindMinutes ?? 15} min before`}
+        </span>
+      </button>
+      <p className="min-h-4 text-center text-[12px] font-semibold text-ice" role="status">
+        {status && <span className="msg inline-block">{status}</span>}
+      </p>
     </div>
   )
 }

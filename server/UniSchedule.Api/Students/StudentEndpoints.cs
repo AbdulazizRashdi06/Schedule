@@ -308,8 +308,16 @@ public static class StudentEndpoints
             var planner = await UniSchedule.Api.Planner.PlannerEngine.Enabled(db, http.RequestServices.GetRequiredService<IConfiguration>(), ct)
                 ? await UniSchedule.Api.Planner.PlannerEngine.StudentView(db, current.Id, picks, ct)
                 : (Events: new List<object>(), Excluded: new Dictionary<string, List<string>>());
+            // Weekly classes skip the planner's cancellations and the semester's days off; dated ones keep their date.
+            var daysOff = await DaysOff.ForAsync(db, current.Id, ct);
+            List<string>? Skipped(Section section, Meeting m)
+            {
+                var skipped = (planner.Excluded.GetValueOrDefault(UniSchedule.Api.Planner.PlannerEngine.Fingerprint(section, m)) ?? [])
+                    .Concat(m.Date is null ? DaysOff.Skipped(daysOff, m.Day) : []).Distinct().Order().ToList();
+                return skipped.Count == 0 ? null : skipped;
+            }
             SectionDto EffectiveSection(Section section) => Dto.Of(section) with {
-                Meetings = section.Meetings.Select(m => Dto.Of(m) with { ExcludedDates = planner.Excluded.GetValueOrDefault(UniSchedule.Api.Planner.PlannerEngine.Fingerprint(section, m)) }).ToList()
+                Meetings = section.Meetings.Select(m => Dto.Of(m) with { ExcludedDates = Skipped(section, m) }).ToList()
             };
             var slots = await db.CustomSlots.Where(s => s.StudentId == id && s.SemesterId == current.Id).ToListAsync(ct);
             // Note counts per course, so blocks can show a dot: whole-course notes, and per session date.
@@ -323,6 +331,7 @@ public static class StudentEndpoints
             return Results.Ok(new
             {
                 semester = new { current.Id, current.Name },
+                daysOff = daysOff.OrderBy(d => d.Key).Select(d => new { date = d.Key.ToString("yyyy-MM-dd"), name = d.Value }),
                 plannerEvents = planner.Events,
                 slots = slots.OrderBy(s => s.Date).ThenBy(s => s.Day).ThenBy(s => s.Start).Select(PersonalEndpoints.Of),
                 classes = withSection.Select(p => new

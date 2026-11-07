@@ -29,7 +29,45 @@ public class Student
     public DateTimeOffset? LastSeenAt { get; set; }
     /// <summary>Secret in the student's calendar feed link (calendar apps can't sign in). Null until they first ask for the link.</summary>
     public string? CalendarToken { get; set; }
+    /// <summary>Minutes before each class to send a reminder; null = no reminders.</summary>
+    public int? RemindMinutes { get; set; }
+    /// <summary>No notification when one of their classes changes (on by default once notifications are allowed).</summary>
+    public bool MuteChanges { get; set; }
     public List<Pick> Picks { get; set; } = [];
+}
+
+/// <summary>A day with no classes in a semester (a public holiday, a break): weekly classes skip it everywhere.</summary>
+public class DayOff
+{
+    public int Id { get; set; }
+    public int SemesterId { get; set; }
+    public DateOnly Date { get; set; }
+    /// <summary>"National Day".</summary>
+    public string Name { get; set; } = "";
+    public string CreatedBy { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>A class session a student marked as missed, for their own absence count. Private to them.</summary>
+public class Absence
+{
+    public int Id { get; set; }
+    public int StudentId { get; set; }
+    public int CourseId { get; set; }
+    public DateOnly Date { get; set; }
+    public TimeOnly Start { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>A browser or installed app that accepts the student's notifications (Web Push).</summary>
+public class PushSubscription
+{
+    public int Id { get; set; }
+    public int StudentId { get; set; }
+    public string Endpoint { get; set; } = "";
+    public string P256dh { get; set; } = "";
+    public string Auth { get; set; } = "";
+    public DateTimeOffset CreatedAt { get; set; }
 }
 
 /// <summary>Dashboard account with a username and password (RSA staff, or an owner without a student ID).</summary>

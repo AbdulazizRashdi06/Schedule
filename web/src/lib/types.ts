@@ -108,6 +108,8 @@ export interface CustomSlot {
 
 export interface Timetable {
   plannerEvents?: StudentPlannerEvent[]
+  /** Days with no classes this semester (holidays, breaks): weekly classes already skip them. */
+  daysOff?: { date: string; name: string }[]
   semester: { id: number; name: string } | null
   classes: TimetableClass[]
   needsSection: { courseId: number; code: string; name: string; removed: boolean }[]

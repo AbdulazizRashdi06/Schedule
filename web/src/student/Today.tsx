@@ -1,7 +1,7 @@
 import { useContext, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { DAY_LONG, DAY_SHORT } from '../lib/time'
-import { TYPE_NAME, addDays, clock, fmtDate, fmtDuration, nowMinutes, onDate, sessionHref, type Session } from '../lib/slots'
+import { TYPE_NAME, addDays, clock, fmtDate, fmtDuration, isoDate, nowMinutes, onDate, sessionHref, type Session } from '../lib/slots'
 import { Button, ErrorText, Sk, cx } from '../components/ui'
 import { MenuSheet } from './StudentShell'
 import { Icon, NeedsSection, useNow, useTimetable } from './timetable'
@@ -126,9 +126,7 @@ export default function Today() {
                 </>
               ) : (
                 <>
-                  <Card tone="sky" title="Free day." size={80}>
-                    No classes on {DAY_LONG[now.getDay()]}. Sleep in, catch up, or don’t.
-                  </Card>
+                  <FreeDay date={now} dayOff={tt.daysOff?.find((d) => d.date === isoDate(now))?.name} />
                   {nextDate && (
                     <List title={`Back on ${DAY_LONG[nextDate.getDay()]}`} sessions={nextDay} date={nextDate} />
                   )}
@@ -148,7 +146,7 @@ export default function Today() {
  * Any other day in the home screen's design: swiping sideways on Today lands here. The day's first class is the big
  * card and the rest are listed under it, the way Today shows what's next.
  */
-export function DayHome({ date, offset, sessions }: { date: Date; offset: number; sessions: Session[] }) {
+export function DayHome({ date, offset, sessions, dayOff }: { date: Date; offset: number; sessions: Session[]; dayOff?: string }) {
   const lab = useContext(LabNav)
   const list = sessions.filter((s) => onDate(s, date))
   const [first, ...rest] = list
@@ -179,13 +177,24 @@ export function DayHome({ date, offset, sessions }: { date: Date; offset: number
             {rest.length > 0 ? <List title="Later" sessions={rest} date={date} /> : <LastOne>Only class that day</LastOne>}
           </>
         ) : (
-          <Card tone="sky" title="Free day." size={80}>
-            No classes on {DAY_LONG[date.getDay()]}. Sleep in, catch up, or don’t.
-          </Card>
+          <FreeDay date={date} dayOff={dayOff} />
         )}
         <DayActions date={date} />
       </div>
     </div>
+  )
+}
+
+/** A day with nothing on: a holiday by name when it's a day off, otherwise just free. */
+function FreeDay({ date, dayOff }: { date: Date; dayOff?: string }) {
+  return dayOff ? (
+    <Card tone="navy" title="Day off." size={80}>
+      {dayOff}: no classes on {DAY_LONG[date.getDay()]}. Enjoy it.
+    </Card>
+  ) : (
+    <Card tone="sky" title="Free day." size={80}>
+      No classes on {DAY_LONG[date.getDay()]}. Sleep in, catch up, or don’t.
+    </Card>
   )
 }
 
