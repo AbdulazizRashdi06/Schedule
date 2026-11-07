@@ -74,7 +74,7 @@ function Screen({ children }: { children: React.ReactNode }) {
 
 const delay = (ms: number): CSSProperties => ({ animationDelay: `${ms}ms` })
 
-/** The coloured blocks above "Classy.": a timetable falling into place. */
+/** The coloured blocks above the logo: a timetable falling into place. */
 function Decor() {
   const cols: { pt: number; blocks: [string, number][] }[] = [
     { pt: 60, blocks: [['bg-navy', 1], ['bg-ice', 6]] },
@@ -84,7 +84,7 @@ function Decor() {
     { pt: 140, blocks: [['bg-navy', 9]] },
   ]
   return (
-    <div aria-hidden="true" className="mx-6 mt-10 grid h-[250px] grid-cols-5 gap-2">
+    <div aria-hidden="true" className="mx-6 mt-6 grid h-[250px] grid-cols-5 gap-2">
       {cols.map((c, i) => (
         <div key={i} className="flex flex-col gap-2" style={{ paddingTop: c.pt }}>
           {c.blocks.map(([bg, d], j) => (
@@ -140,8 +140,8 @@ function IdStep({ id, setId, onSent }: { id: string; setId: (v: string) => void;
     <Screen>
       <Decor />
       <form onSubmit={send} noValidate className="flex flex-1 flex-col">
-        <h1 className="display rise px-6 pt-7 text-[84px] leading-[0.82] tracking-[-0.06em]" style={delay(180)}>
-          Classy.
+        <h1 className="rise px-6 pt-7" style={delay(180)}>
+          <img src="/logo.png" alt="Classy" width={210} height={142} className="h-auto w-[210px]" />
         </h1>
         <div className="rise flex flex-col gap-2.5 px-6 pt-[26px]" style={delay(300)}>
           <label htmlFor="uid" className="label text-[12px] tracking-[0.14em] text-muted">
