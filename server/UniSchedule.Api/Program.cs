@@ -139,6 +139,7 @@ api.MapGroups();
 api.MapPublicTimetable();
 api.MapUsageAnalytics();
 api.MapCalendar();
+api.MapFreeRooms();
 api.MapPlanner();
 api.Map("/{**rest}", () => Errors.NotFound());
 

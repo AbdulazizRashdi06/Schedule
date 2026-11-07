@@ -39,6 +39,9 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
             <span aria-hidden="true" className="text-[18px]">→</span>
           </Link>
         )}
+        <Link to="/rooms" onClick={onClose} className={item}>
+          Free rooms<span aria-hidden="true" className="text-[18px]">→</span>
+        </Link>
         {me?.setupDone && (
           <>
             <Link to="/edit" onClick={onClose} className={item}>

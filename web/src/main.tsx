@@ -6,6 +6,7 @@ import { applyAccent, applyBackground, loadAccent, loadBackground } from './lib/
 import { setUpNative } from './lib/native'
 import Colours from './student/Colours'
 import Groups from './student/Groups'
+import FreeRooms from './student/FreeRooms'
 import Group from './student/Group'
 import Join from './student/Join'
 import { SessionProvider, useSession } from './lib/session'
@@ -77,6 +78,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/edit" element={<StudentOnly><EditCourses /></StudentOnly>} />
           <Route path="/colours" element={<StudentOnly><Colours /></StudentOnly>} />
           <Route path="/groups" element={<StudentOnly><Groups /></StudentOnly>} />
+          <Route path="/rooms" element={<StudentOnly><FreeRooms /></StudentOnly>} />
           <Route path="/groups/:id" element={<StudentOnly><Group /></StudentOnly>} />
           <Route path="/join/:code" element={<Join />} />
           <Route path="/admin/login" element={<AdminLogin />} />
