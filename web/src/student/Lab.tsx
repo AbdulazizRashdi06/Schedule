@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
-import { AnimatePresence, animate, motion, useScroll, useTransform, type MotionValue } from 'motion/react'
+import { flushSync } from 'react-dom'
+import { AnimatePresence, animate, motion, useReducedMotion, useScroll, useTransform, type MotionValue } from 'motion/react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import SessionPage from './Session'
 import { DAY_LONG, DAY_SHORT, minutes } from '../lib/time'
@@ -214,6 +215,60 @@ function Tick({ i, pos, label, length, onPick }: { i: number; pos: MotionValue<n
   )
 }
 
+/** Strong ease-out: arrivals that start fast and settle softly. */
+const EASE_OUT = [0.23, 1, 0.32, 1] as const
+
+/**
+ * "Back to today" / "Back to this week": a navy pill that floats up once you've settled somewhere else. It belongs to
+ * today, so it arrives from the side today lies on, its arrow points there, and when you go back it leaves the same way,
+ * as if it had gone home ahead of you.
+ */
+function BackPill({ show, label, dir, onBack }: { show: boolean; label: string; dir: number; onBack: () => void }) {
+  const reduce = useReducedMotion()
+  // The side today is on, kept while the pill leaves (by then you're back on today and there's no side).
+  const side = useRef(1)
+  if (dir) side.current = dir
+  const s = side.current
+  const settle = { type: 'spring', visualDuration: 0.36, bounce: 0.18 } as const
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.75rem))] z-30 flex justify-center">
+      <AnimatePresence initial={false} mode="popLayout">
+        {show && (
+          <motion.button
+            key={label}
+            type="button"
+            onClick={onBack}
+            initial={reduce ? { opacity: 0 } : { opacity: 0, x: s * 32, y: 14, scale: 0.9, filter: 'blur(6px)' }}
+            animate={{ opacity: 1, x: 0, y: 0, scale: 1, filter: 'blur(0px)' }}
+            // Leaving is quicker than arriving, toward today.
+            exit={
+              reduce
+                ? { opacity: 0, transition: { duration: 0.15 } }
+                : { opacity: 0, x: s * 44, scale: 0.94, filter: 'blur(4px)', transition: { duration: 0.2, ease: EASE_OUT } }
+            }
+            // Position springs (a touch of give on landing); fades and blur ease, so they never overshoot.
+            transition={{ default: settle, opacity: { duration: 0.22, ease: EASE_OUT }, filter: { duration: 0.32, ease: EASE_OUT } }}
+            whileTap={{ scale: 0.95 }}
+            className="label pointer-events-auto flex h-12 items-center gap-2.5 rounded-full bg-navy pr-5 pl-4 text-[12px] text-cream shadow-[0_14px_30px_-12px_rgb(11_25_87/0.6)] focus-visible:outline-offset-4"
+          >
+            {/* Points at today; if you jump to its other side while the pill is up, it swings round. */}
+            <motion.span
+              aria-hidden="true"
+              className="grid place-items-center"
+              initial={false}
+              animate={{ rotate: s < 0 ? 180 : 0 }}
+              transition={reduce ? { duration: 0 } : { type: 'spring', visualDuration: 0.32, bounce: 0.25 }}
+            >
+              <Icon name="arrow" className="size-[18px]" strokeWidth={2.6} />
+            </motion.span>
+            {label}
+          </motion.button>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
 /** Calls `fn` once a strip has come to rest. */
 function onSettle(fn: () => void) {
   let t: ReturnType<typeof setTimeout> | undefined
@@ -275,6 +330,8 @@ export default function Lab() {
 
   const [dayIndex, setDayIndex] = useState(todayIndex)
   const [week, setWeek] = useState(0)
+  // Whether the week fills most of the screen (scrolled down) rather than the days.
+  const [onWeek, setOnWeek] = useState(false)
   // Share sends the week you're looking at.
   const shareStart = weekStart(now, week)
   const shareSessions = inWeek(all, shareStart)
@@ -410,11 +467,45 @@ export default function Lab() {
     const boundary = (weekSection.current?.offsetTop ?? Infinity) - 1
     const enteredWeek = lastPageTop.current < boundary && top >= boundary
     lastPageTop.current = top
+    // The back pill speaks for whichever half fills most of the screen.
+    setOnWeek(top > boundary / 2)
     if (!enteredWeek || !ready || shownIso.current === todayIso) return
     shownIso.current = todayIso
     setDayIndex(todayIndex)
     showDay(todayIndex, 'instant')
   }
+
+  /**
+   * Back to today, or to this week. Close by, it's one ordinary glide. From far off, the strip first lands on the page
+   * beside today under a brief blur, then glides that last page, so it arrives with a real slide instead of flicking
+   * past pages that aren't drawn.
+   */
+  const reduceMotion = useReducedMotion()
+  const goBack = useCallback(
+    (which: 'day' | 'week') => {
+      const strip = which === 'day' ? daysStrip.current : weeksStrip.current
+      if (!strip) return
+      const target = which === 'day' ? todayIndex : WEEKS.indexOf(0)
+      const glide = () => (which === 'day' ? showDay(target, reduceMotion ? 'instant' : 'smooth') : showWeek(0, reduceMotion ? 'instant' : 'smooth'))
+      tick('impact')
+      const at = Math.round(strip.scrollLeft / pageWidth(strip))
+      if (reduceMotion || Math.abs(at - target) <= 1) return glide()
+      const near = target + Math.sign(at - target)
+      // Drawn first (synchronously), so the jump never shows an empty page.
+      flushSync(() => {
+        if (which === 'day') land(near, null)
+        else {
+          shownWeek.current = WEEKS[near]
+          setWeek(WEEKS[near])
+        }
+      })
+      if (which === 'day') showDay(near, 'instant')
+      else showWeek(WEEKS[near], 'instant')
+      strip.animate([{ filter: 'blur(6px)', opacity: 0.55 }, { filter: 'blur(0px)', opacity: 1 }], { duration: 320, easing: `cubic-bezier(${EASE_OUT.join(',')})` })
+      requestAnimationFrame(glide)
+    },
+    [todayIndex, WEEKS, showDay, showWeek, land, reduceMotion],
+  )
 
   const toWeek = useCallback(() => {
     const el = weekSection.current
@@ -562,6 +653,14 @@ export default function Lab() {
           )}
         </section>
       </div>
+      {ready && (
+        <BackPill
+          show={!open && (onWeek ? week !== 0 : dayIndex !== todayIndex)}
+          label={onWeek ? 'Back to this week' : 'Back to today'}
+          dir={onWeek ? Math.sign(WEEKS.indexOf(0) - WEEKS.indexOf(week)) : Math.sign(todayIndex - dayIndex)}
+          onBack={() => goBack(onWeek ? 'week' : 'day')}
+        />
+      )}
       {/* A session slides in from the side over the page, and back out, so where you were on the page is kept. */}
       <AnimatePresence>
         {open && (
