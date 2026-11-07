@@ -124,8 +124,8 @@ export function buildSessions(tt: Timetable): Session[] {
   return out.sort((a, b) => a.meeting.day - b.meeting.day || a.start - b.start)
 }
 
-/** Where tapping a session goes: its course page, or the day view for the student's own slot. */
-export const sessionHref = (s: Session) => (s.mine ? `/schedule?view=day&day=${s.meeting.day}` : `/course/${s.cls.courseId}`)
+/** Where tapping a session goes outside home: its course page, or home for the student's own slot. */
+export const sessionHref = (s: Session) => (s.mine ? '/' : `/course/${s.cls.courseId}`)
 
 /** Sunday to Thursday, plus Friday or Saturday only when a class meets then. */
 export const weekDays = (sessions: Session[]) => [0, 1, 2, 3, 4, 5, 6].filter((d) => d <= 4 || sessions.some((s) => s.meeting.day === d))

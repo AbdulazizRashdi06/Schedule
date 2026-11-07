@@ -29,6 +29,7 @@ builder.Services.AddDataProtection()
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddHttpClient<PlannerAiClient>(c => c.Timeout = TimeSpan.FromSeconds(270));
 builder.Services.AddHostedService<PlannerAiWorker>();
+builder.Services.AddSingleton<UsageBuffer>();
 builder.Services.AddHostedService<UsageRetention>();
 // Outside APIs (timetable, student courses) that owners connect in the dashboard.
 builder.Services.AddHttpClient<IConnectionFetcher, HttpConnectionFetcher>(c => c.Timeout = TimeSpan.FromSeconds(30));
@@ -112,11 +113,12 @@ app.Use(async (http, next) =>
     var started = Stopwatch.GetTimestamp();
     var failed = false;
     try { await next(http); }
-    catch { failed = true; throw; }
+    catch when (!http.RequestAborted.IsCancellationRequested) { failed = true; throw; }
     finally
     {
-        try { await UsageAnalytics.Record(http, started, failed); }
-        catch (Exception ex) { app.Logger.LogWarning(ex, "Could not record aggregate usage analytics"); }
+        // Counted in memory only (written once a minute). A request the client walked away from isn't the server
+        // failing, so it's left out rather than counted as an error.
+        if (!http.RequestAborted.IsCancellationRequested) UsageAnalytics.Record(http, started, failed);
     }
 });
 app.UseAuthentication();

@@ -11,7 +11,6 @@ import Join from './student/Join'
 import { SessionProvider, useSession } from './lib/session'
 import Login from './student/Login'
 import { TodaySkeleton } from './student/Today'
-import Schedule from './student/Schedule'
 import Lab from './student/Lab'
 import Course from './student/Course'
 import Setup from './student/Setup'
@@ -68,7 +67,8 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/login" element={<Login />} />
           {/* Home: the days and the week as one page you swipe and scroll around in. */}
           <Route path="/" element={<StudentOnly><Lab /></StudentOnly>} />
-          <Route path="/schedule" element={<StudentOnly><Schedule /></StudentOnly>} />
+          {/* The old separate week screen: the week is part of home now, so old links and bookmarks land there. */}
+          <Route path="/schedule" element={<Navigate to="/" replace />} />
           <Route path="/rep/planner" element={<Planner />} />
           {/* Where the new home was tried out; old links land on home. */}
           <Route path="/lab" element={<Navigate to="/" replace />} />

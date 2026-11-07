@@ -1,7 +1,7 @@
 import { useContext, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { DAY_LONG, DAY_SHORT } from '../lib/time'
-import { TYPE_NAME, addDays, clock, fmtDate, fmtDuration, nowMinutes, onDate, sessionHref, weekStart, type Session } from '../lib/slots'
+import { TYPE_NAME, addDays, clock, fmtDate, fmtDuration, nowMinutes, onDate, sessionHref, type Session } from '../lib/slots'
 import { Button, ErrorText, Sk, cx } from '../components/ui'
 import { MenuSheet } from './StudentShell'
 import { Icon, NeedsSection, useNow, useTimetable } from './timetable'
@@ -64,8 +64,6 @@ export default function Today() {
   // The next day with classes, for when today is over or free.
   const nextDate = Array.from({ length: 21 }, (_, i) => addDays(now, i + 1)).find((d) => sessions.some((s) => onDate(s, d)))
   const nextDay = nextDate ? sessions.filter((s) => onDate(s, nextDate)) : []
-  const nextWeek = nextDate ? Math.round((weekStart(nextDate).getTime() - weekStart(now).getTime()) / (7 * 86_400_000)) : 0
-  const nextDayLink = nextDate && `/schedule?view=day&day=${nextDate.getDay()}${nextWeek ? `&w=${nextWeek}` : ''}`
   const tomorrow = nextDate && addDays(now, 1).toDateString() === nextDate.toDateString()
 
   return (
@@ -120,7 +118,7 @@ export default function Today() {
                   </Card>
                   {nextDate && (
                     <List title={tomorrow ? 'Tomorrow' : DAY_LONG[nextDate.getDay()]} sessions={nextDay} date={nextDate}>
-                      <MoreLink to={nextDayLink!} onLab={() => lab?.day(nextDate)}>
+                      <MoreLink to="/" onLab={() => lab?.day(nextDate)}>
                         See all of {DAY_LONG[nextDate.getDay()]}
                       </MoreLink>
                     </List>
@@ -361,7 +359,7 @@ function LastOne({ children }: { children: ReactNode }) {
   )
 }
 
-/** "Full week →": a link to /schedule, or on the home page a scroll down to the week. */
+/** "Full week →": on the home page a scroll down to the week; elsewhere, a link home. */
 function WeekLink() {
   const lab = useContext(LabNav)
   const cls = 'label ml-auto flex min-h-11 items-center py-3 text-[12px] link-hover'
@@ -370,7 +368,7 @@ function WeekLink() {
       Full week →
     </button>
   ) : (
-    <Link to="/schedule" className={cls}>
+    <Link to="/" className={cls}>
       Full week →
     </Link>
   )

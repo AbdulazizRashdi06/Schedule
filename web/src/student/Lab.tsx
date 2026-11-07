@@ -23,6 +23,12 @@ const ROW = 86
 const GAP = 8
 const NUDGE = 'lab-swipe-nudge'
 
+/**
+ * One page's width in a strip, unrounded. clientWidth rounds to whole pixels, and on a 392.7px-wide phone that error
+ * grows with every page (11px by day 42), enough to put a settled strip "between" pages.
+ */
+const pageWidth = (el: HTMLElement) => el.scrollWidth / Math.max(1, el.childElementCount)
+
 /** Hides a strip's own scrollbar: the page itself is the position indicator. */
 const noBar = '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
 
@@ -105,12 +111,12 @@ function useMouseDrag(ref: RefObject<HTMLElement | null>, axis: 'x' | 'y', ready
       el.addEventListener('scrollend', restore)
       setTimeout(restore, 1000)
     }
-    const step = () => (axis === 'x' ? el.clientWidth : el.clientHeight)
+    const step = () => (axis === 'x' ? pageWidth(el) : el.clientHeight)
     /** Where a drag from `start` lands: the page it started on, or the next one in the direction it went. */
     const snapPoint = (start: number, dir: number, commit: boolean) => {
       if (axis === 'x') {
-        const i = Math.round(start / el.clientWidth) + (commit ? dir : 0)
-        return Math.max(0, Math.min(el.scrollWidth - el.clientWidth, i * el.clientWidth))
+        const i = Math.round(start / pageWidth(el)) + (commit ? dir : 0)
+        return Math.max(0, Math.min(el.scrollWidth - el.clientWidth, i * pageWidth(el)))
       }
       // Down the page the stops are the day and the top of the week; inside a long week it just carries on.
       const stops = [...el.querySelectorAll<HTMLElement>(':scope > section')].map((s) => s.offsetTop)
@@ -176,7 +182,7 @@ const BAR_GAP = 5
  */
 function Bars({ strip, labels, mark, onPick, label }: { strip: RefObject<HTMLDivElement | null>; labels: string[]; mark: number; onPick: (i: number) => void; label: string }) {
   const { scrollX } = useScroll({ container: strip })
-  const pos = useTransform(scrollX, (v) => v / (strip.current?.clientWidth || 1))
+  const pos = useTransform(scrollX, (v) => v / (strip.current ? pageWidth(strip.current) : 1))
   const tick = (i: number) => <Tick key={labels[i]} i={i} pos={pos} label={labels[i]} length={barLength(Math.abs(i - mark))} onPick={() => onPick(i)} />
   // Only as many bars as can show: past about 18 steps the stubs are off the faded ends anyway.
   const before = labels.map((_, i) => i).filter((i) => i < mark && mark - i <= 18)
@@ -316,11 +322,11 @@ export default function Lab() {
 
   const showDay = useCallback((i: number, behavior: ScrollBehavior) => {
     const strip = daysStrip.current
-    if (strip) strip.scrollTo({ left: i * strip.clientWidth, behavior })
+    if (strip) strip.scrollTo({ left: i * pageWidth(strip), behavior })
   }, [])
   const showWeek = useCallback((o: number, behavior: ScrollBehavior) => {
     const strip = weeksStrip.current
-    if (strip) strip.scrollTo({ left: WEEKS.indexOf(o) * strip.clientWidth, behavior })
+    if (strip) strip.scrollTo({ left: WEEKS.indexOf(o) * pageWidth(strip), behavior })
   }, [WEEKS])
 
   // The date and week on screen, by value: the strips are lined up from these, and the settle handlers compare with
@@ -360,9 +366,9 @@ export default function Lab() {
     () =>
       onSettle(() => {
         const strip = daysStrip.current
-        const i = strip ? Math.round(strip.scrollLeft / strip.clientWidth) : -1
+        const i = strip ? Math.round(strip.scrollLeft / pageWidth(strip)) : -1
         // A pause during a touch isn't a settled page. Changing inert pages mid-swipe can interrupt native snapping.
-        if (strip && Math.abs(strip.scrollLeft - i * strip.clientWidth) > 1) return
+        if (strip && Math.abs(strip.scrollLeft - i * pageWidth(strip)) > 2) return
         if (!strip || !dates[i] || isoDate(dates[i]) === shownIso.current) return
         tick('select')
         land(i, null)
@@ -373,8 +379,8 @@ export default function Lab() {
     () =>
       onSettle(() => {
         const strip = weeksStrip.current
-        const i = strip ? Math.round(strip.scrollLeft / strip.clientWidth) : -1
-        if (strip && Math.abs(strip.scrollLeft - i * strip.clientWidth) > 1) return
+        const i = strip ? Math.round(strip.scrollLeft / pageWidth(strip)) : -1
+        if (strip && Math.abs(strip.scrollLeft - i * pageWidth(strip)) > 2) return
         const o = WEEKS[i]
         if (o === undefined || o === shownWeek.current) return
         tick('select')

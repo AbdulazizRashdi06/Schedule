@@ -6,14 +6,13 @@ import { PageTitle, Th } from './AdminLayout'
 interface Day {
   day: number; activeUsers: number; peakUsers: number; peakAt: number; firstSample: number; lastSample: number
 }
-interface Hour {
-  hour: number; route: string; method: string; audience: string; status: number; requests: number; totalMs: number; maxMs: number
-}
 interface Report {
   enabled: boolean; retentionDays: number; since: string; firstSample: string | null
   busiestDay: Day | null; peak: Day | null; requests: number; serverErrors: number; clientErrors: number
   averageResponseMs: number; maxResponseMs: number; registrations: number; studentsRegistered: number
-  setup: { step: string; students: number }[]; daily: Day[]; hourly: Hour[]
+  setup: { step: string; students: number }[]; daily: Day[]
+  /** Requests by hour of day (Oman), and per route, already added up on the server. */
+  hours: { hour: number; requests: number }[]; routes: { route: string; requests: number }[]
 }
 interface Live { activeNow: number; activeToday: number }
 const count = (n: number) => n.toLocaleString('en-GB')
@@ -71,10 +70,9 @@ export default function Analytics() {
   }) : []
   const selectedDay = daily.find(x => x.day === selected) ?? daily[daily.length - 1]
   const dayMax = Math.max(1, ...daily.map(x => Math.max(x.sample?.activeUsers ?? 0, x.sample?.peakUsers ?? 0)))
-  const hours = Array.from({ length: 24 }, (_, hour) => ({ hour, requests: 0 }))
+  const hours = report?.hours ?? []
   const features = new Map<string, number>()
-  for (const row of report?.hourly ?? []) {
-    hours[(new Date(row.hour * 1000).getUTCHours() + 4) % 24].requests += row.requests
+  for (const row of report?.routes ?? []) {
     const name = feature(row.route)
     features.set(name, (features.get(name) ?? 0) + row.requests)
   }
@@ -165,7 +163,7 @@ export default function Analytics() {
           <div className="flex justify-between gap-3"><dt className="font-semibold">Registered accounts · current</dt><dd className="font-extrabold tabular-nums">{count(report.studentsRegistered)}</dd></div>
           <div className="flex justify-between gap-3"><dt className="font-semibold">Registered in this date range</dt><dd className="font-extrabold tabular-nums">{count(report.registrations)}</dd></div>
           <div className="flex justify-between gap-3"><dt className="font-semibold">Client errors · this date range</dt><dd className="font-extrabold tabular-nums">{count(report.clientErrors)}</dd></div>
-        </dl><h3 className="mt-5 text-[15px] font-bold">Current setup progress</h3><p className="mt-1 text-[13px] font-semibold text-muted">Current account state, across all semesters.</p><dl className="mt-3 space-y-2">{report.setup.map(x => <div key={x.step} className="flex justify-between gap-3 text-[14px]"><dt className="font-semibold">{({ done: 'Setup complete', core: 'Choosing core courses', ls: 'Choosing language courses', electives: 'Choosing electives', major: 'Choosing a major', year: 'Choosing a year', waiting: 'Waiting for a semester', 'not-started': 'Not started' } as Record<string, string>)[x.step] ?? x.step}</dt><dd className="font-bold tabular-nums">{count(x.students)}</dd></div>)}</dl></section>
+        </dl><h3 className="mt-5 text-[15px] font-bold">Current setup progress</h3><p className="mt-1 text-[13px] font-semibold text-muted">Current account state, across all semesters.</p><dl className="mt-3 space-y-2">{report.setup.map(x => <div key={x.step} className="flex justify-between gap-3 text-[14px]"><dt className="font-semibold">{({ done: 'Setup complete', core: 'Choosing core courses', ls: 'Choosing Life Skills courses', electives: 'Choosing electives', major: 'Choosing a major', year: 'Choosing a year', waiting: 'Waiting for a semester', 'not-started': 'Not started' } as Record<string, string>)[x.step] ?? x.step}</dt><dd className="font-bold tabular-nums">{count(x.students)}</dd></div>)}</dl></section>
       </div>
       <p className="border-t border-navy/15 pt-4 text-[13px] leading-relaxed font-semibold text-muted">{report.firstSample ? `First student activity sample in this range: ${date(Date.parse(report.firstSample) / 1000, true)} at ${time(Date.parse(report.firstSample) / 1000)}. ` : ''}History is retained for {report.retentionDays} days. Peaks are observed estimates; partial days and outages can leave gaps. This dashboard uses aggregate records, without student analytics prompts or personal session tracking.</p>
     </>}
