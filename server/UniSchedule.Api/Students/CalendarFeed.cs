@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -20,7 +21,10 @@ public static partial class CalendarFeed
 
     static string NewToken() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
 
-    static string Link(HttpRequest req, string token) => $"{req.Scheme}://{req.Host}/api/calendar/{token}.ics";
+    static string Link(HttpRequest req, string token, string ext = "ics") => $"{req.Scheme}://{req.Host}/api/calendar/{token}.{ext}";
+
+    /// <summary>The feed link, and the same link as plain text for AI assistants such as ChatGPT.</summary>
+    static object Links(HttpRequest req, string token) => new { url = Link(req, token), textUrl = Link(req, token, "txt") };
 
     [GeneratedRegex(@"\blab", RegexOptions.IgnoreCase)]
     private static partial Regex LabRoom();
@@ -43,7 +47,7 @@ public static partial class CalendarFeed
                 s.CalendarToken = NewToken();
                 await db.SaveChangesAsync(ct);
             }
-            return Results.Ok(new { url = Link(http.Request, s.CalendarToken) });
+            return Results.Ok(Links(http.Request, s.CalendarToken));
         });
 
         // A new link; calendars subscribed with the old one stop updating.
@@ -52,7 +56,7 @@ public static partial class CalendarFeed
             var s = await db.Students.FirstAsync(x => x.Id == http.User.Id(), ct);
             s.CalendarToken = NewToken();
             await db.SaveChangesAsync(ct);
-            return Results.Ok(new { url = Link(http.Request, s.CalendarToken) });
+            return Results.Ok(Links(http.Request, s.CalendarToken));
         });
 
         // The feed itself, fetched by calendar apps with the secret in the link.
@@ -63,6 +67,102 @@ public static partial class CalendarFeed
             var semester = await StudentEndpoints.CurrentSemester(db, ct);
             return Results.Text(await Build(db, s.Id, semester, clock.GetUtcNow(), ct), "text/calendar; charset=utf-8");
         }).RequireRateLimiting(PublicTimetableEndpoints.Limit);
+
+        // The same timetable as plain text, for an AI assistant the student told to open this link when they ask about
+        // their classes. Two weeks from today by default; ?from=YYYY-MM-DD&days=N for other dates.
+        api.MapGet("/calendar/{token}.txt", async (string token, string? from, int? days, HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) =>
+        {
+            const string text = "text/plain; charset=utf-8";
+            var s = token.Length >= 40 ? await db.Students.FirstOrDefaultAsync(x => x.CalendarToken == token, ct) : null;
+            if (s is null)
+                return Results.Text("This Classy link was reset or doesn't exist. Get the new one in Classy: Menu, then Add to my calendar.", text, statusCode: StatusCodes.Status404NotFound);
+            DateOnly? start = null;
+            if (from is not null && (start = ScheduleImport.ParseDate(from)) is null)
+                return Results.Text("Use ?from=YYYY-MM-DD, for example ?from=2026-11-15.", text, statusCode: StatusCodes.Status400BadRequest);
+            // Always fresh, and kept out of search engines: the link is private.
+            http.Response.Headers.CacheControl = "no-store";
+            http.Response.Headers["X-Robots-Tag"] = "noindex, nofollow";
+            var semester = await StudentEndpoints.CurrentSemester(db, ct);
+            return Results.Text(await Text(db, s.Id, semester, clock.GetUtcNow(), start, Math.Clamp(days ?? 14, 1, MaxTextDays), ct), text);
+        }).RequireRateLimiting(PublicTimetableEndpoints.Limit);
+    }
+
+    const int MaxTextDays = 62;
+
+    /// <summary>One class or own slot: on its date, or weekly on its weekday.</summary>
+    sealed record Item(DateOnly? Date, int Day, TimeOnly Start, TimeOnly End, string Line, bool IsClass);
+
+    /// <summary>
+    /// The timetable written for an AI assistant to read: the time now, the next class, then each day from
+    /// <paramref name="from"/> (default today) with its classes and own slots, all in Oman time.
+    /// </summary>
+    public static async Task<string> Text(AppDb db, int studentId, Semester? semester, DateTimeOffset now, DateOnly? from, int days, CancellationToken ct)
+    {
+        var inv = CultureInfo.InvariantCulture;
+        var local = now.ToOffset(Oman);
+        var today = DateOnly.FromDateTime(local.DateTime);
+        var time = TimeOnly.FromDateTime(local.DateTime);
+        var t = new StringBuilder();
+        t.AppendLine("Classy timetable. This link is private: don't share it or show it to anyone.");
+        t.AppendLine($"Now: {local.ToString("dddd d MMMM yyyy, HH:mm", inv)}, Oman time (UTC+4). Times below are 24-hour Oman time.");
+        if (semester is null)
+        {
+            t.AppendLine("No timetable is published in Classy yet.");
+            return t.ToString();
+        }
+
+        var first = SemesterWeeks.Sunday(semester.Week1Start ?? DateOnly.FromDateTime((semester.PublishedAt ?? now).ToOffset(Oman).DateTime));
+        var last = first.AddDays((semester.Week1Start is not null && semester.LastWeek is int weeks ? weeks : DefaultWeeks) * 7 - 1);
+        string? Week(DateOnly d) => semester.Week1Start is null || d < first || d > last ? null : $"week {(d.DayNumber - first.DayNumber) / 7 + 1}";
+
+        var items = new List<Item>();
+        var picks = await db.Picks.Where(p => p.StudentId == studentId && p.Course.SemesterId == semester.Id && p.SectionId != null)
+            .Include(p => p.Course).Include(p => p.Section).ThenInclude(x => x!.Meetings)
+            .AsSplitQuery().ToListAsync(ct);
+        foreach (var p in picks)
+        foreach (var m in p.Section!.Meetings)
+        {
+            var parts = new[] { $"{p.Course.Code} {p.Course.Name}", Kind(m.Room), string.IsNullOrWhiteSpace(m.Room) ? null : $"Room {m.Room}", $"Section {p.Section.Number}", p.Section.Instructor };
+            items.Add(new(m.Date, m.Day, m.Start, m.End, string.Join(" · ", parts.Where(x => !string.IsNullOrWhiteSpace(x))), true));
+        }
+        var slots = await db.CustomSlots.Where(x => x.StudentId == studentId && x.SemesterId == semester.Id).ToListAsync(ct);
+        foreach (var slot in slots)
+        {
+            var parts = new[] { slot.Title, "own slot, not a class", slot.Place, slot.Note };
+            items.Add(new(slot.Date, slot.Day, slot.Start, slot.End, string.Join(" · ", parts.Where(x => !string.IsNullOrWhiteSpace(x))), false));
+        }
+
+        // Weekly ones run from the semester's first week to its last; dated ones on their date only.
+        List<Item> On(DateOnly d) => items
+            .Where(i => i.Date == d || (i.Date is null && i.Day == (int)d.DayOfWeek && d >= first && d <= last))
+            .OrderBy(i => i.Start).ThenBy(i => i.End).ToList();
+        string When(Item i) => $"{Timeslots.Format(i.Start)}–{Timeslots.Format(i.End)}";
+
+        t.AppendLine($"Semester: {semester.Name}{(Week(today) is string w ? $", teaching {w}{(semester.LastWeek is int lw ? $" of {lw}" : "")}" : "")}.");
+        if (picks.Count == 0) t.AppendLine("The student hasn't picked their classes in Classy yet.");
+
+        var current = On(today).FirstOrDefault(i => i.IsClass && i.Start <= time && time < i.End);
+        if (current is not null) t.AppendLine($"In class right now, until {Timeslots.Format(current.End)}: {current.Line}");
+        for (var d = today; d <= today.AddDays(MaxTextDays); d = d.AddDays(1))
+        {
+            var next = On(d).FirstOrDefault(i => i.IsClass && (d > today || i.Start > time));
+            if (next is null) continue;
+            var day = d == today ? "today" : d == today.AddDays(1) ? "tomorrow" : d.ToString("dddd d MMMM", inv);
+            t.AppendLine($"Next class: {day}, {When(next)}: {next.Line}");
+            break;
+        }
+        t.AppendLine($"Other dates: add ?from=YYYY-MM-DD&days=N (N up to {MaxTextDays}) to this link.");
+
+        var start = from ?? today;
+        for (var d = start; d < start.AddDays(days); d = d.AddDays(1))
+        {
+            t.AppendLine();
+            t.AppendLine($"{d.ToString("ddd d MMM yyyy", inv)}{(Week(d) is string wk ? $" · {wk}" : "")}{(d == today ? " · today" : "")}");
+            var list = On(d);
+            if (list.Count == 0) t.AppendLine("- No classes");
+            foreach (var i in list) t.AppendLine($"- {When(i)}  {i.Line}");
+        }
+        return t.ToString();
     }
 
     /// <summary>The iCalendar text: the student's classes and own slots in the current semester, in Oman time.</summary>

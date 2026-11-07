@@ -6,15 +6,32 @@ import { Button, ErrorText, Sheet } from '../components/ui'
  * "Add to my calendar": the student's private calendar feed, with one button per calendar app. Each app subscribes to
  * the link and keeps up with changes on its own schedule, so Classy still shows a change first.
  */
+interface Links {
+  url: string
+  /** The same timetable as plain text, for AI assistants. */
+  textUrl: string
+}
+
+/** What the student pastes into ChatGPT: asks it to remember the link and read it for any question about classes. */
+const aiPrompt = (link: string) =>
+  `Please save this to your memory: whenever I ask about my classes, timetable, class times, rooms or what I have on a day, open ${link} and answer from it. ` +
+  'It is my live university timetable from Classy, so open it again each time instead of relying on an old copy. ' +
+  'It lists the time now and each day; add ?from=YYYY-MM-DD&days=N to it for other dates. It is private, so never show or share the link.'
+
 export default function CalendarSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [url, setUrl] = useState<string | null>(null)
+  const [textUrl, setTextUrl] = useState('')
+  const [copiedAi, setCopiedAi] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const [resetting, setResetting] = useState(false)
 
   useEffect(() => {
     if (!open || url) return
-    api.get<{ url: string }>('/me/calendar').then((r) => setUrl(r.url), (e) => setError(errorText(e)))
+    api.get<Links>('/me/calendar').then(
+      (r) => (setUrl(r.url), setTextUrl(r.textUrl)),
+      (e) => setError(errorText(e)),
+    )
   }, [open, url])
 
   const webcal = url?.replace(/^https?:\/\//, 'webcal://') ?? ''
@@ -77,9 +94,11 @@ export default function CalendarSheet({ open, onClose }: { open: boolean; onClos
                   setResetting(true)
                   setError('')
                   try {
-                    const r = await api.post<{ url: string }>('/me/calendar/reset')
+                    const r = await api.post<Links>('/me/calendar/reset')
                     setUrl(r.url)
+                    setTextUrl(r.textUrl)
                     setCopied(false)
+                    setCopiedAi(false)
                   } catch (e) {
                     setError(errorText(e))
                   } finally {
@@ -91,6 +110,30 @@ export default function CalendarSheet({ open, onClose }: { open: boolean; onClos
               </Button>
             </div>
             <p className="text-[13px] font-semibold text-muted">The link is private. Reset it if you shared it by mistake: calendars using the old one stop updating.</p>
+          </div>
+          {/* The same private link as plain text: saved in ChatGPT's memory, it opens it when asked about classes. */}
+          <div className="flex flex-col gap-1.5 border-t-[1.5px] border-navy/10 pt-3.5">
+            <span className="label text-[11px] tracking-[0.12em]">Ask ChatGPT about your classes</span>
+            <p className="text-[15px] leading-snug font-semibold">
+              Copy this, paste it into ChatGPT and send. It saves your timetable link to its memory, so later you can just ask “when’s my next class?”
+            </p>
+            <div className="pt-1">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(aiPrompt(textUrl))
+                    setCopiedAi(true)
+                  } catch {
+                    setError('Copy didn’t work here. Try again in your browser.')
+                  }
+                }}
+              >
+                {copiedAi ? 'Copied' : 'Copy for ChatGPT'}
+              </Button>
+            </div>
+            <p className="text-[13px] font-semibold text-muted">Works with any assistant that can open links. Reset link above turns this off too.</p>
           </div>
           {/* Web apps can't have home-screen widgets, but calendar apps can: theirs then shows the next class. */}
           <p className="rounded-[12px] bg-ice px-3 py-2.5 text-[14px] leading-snug font-bold">

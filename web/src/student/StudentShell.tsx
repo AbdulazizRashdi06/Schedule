@@ -58,7 +58,7 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
               }}
               className={cx(item, 'text-left')}
             >
-              Add to my calendar<span aria-hidden="true" className="text-[18px]">→</span>
+              Calendar &amp; ChatGPT<span aria-hidden="true" className="text-[18px]">→</span>
             </button>
             <button
               type="button"

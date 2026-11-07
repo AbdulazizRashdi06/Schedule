@@ -79,10 +79,30 @@ public class CalendarTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Contains("DTSTART;TZID=Asia/Muscat:20260907T170000\r\n", ics);
         Assert.EndsWith("END:VCALENDAR\r\n", ics);
 
+        // The same link as plain text, for ChatGPT and other assistants: the time now, then day by day.
+        var textUrl = (await Json(await s.GetAsync("/api/me/calendar"))).GetProperty("textUrl").GetString()!;
+        Assert.Equal(url[..^4] + ".txt", textUrl);
+        var plain = await app.GetAsync(new Uri(textUrl).PathAndQuery + "?from=2026-10-18&days=2");
+        Assert.Equal(HttpStatusCode.OK, plain.StatusCode);
+        Assert.Equal("text/plain", plain.Content.Headers.ContentType?.MediaType);
+        Assert.Contains("no-store", plain.Headers.CacheControl?.ToString());
+        var text = (await plain.Content.ReadAsStringAsync()).ReplaceLineEndings("\n");
+        Assert.Contains("Oman time (UTC+4)", text);
+        Assert.Contains("Sun 18 Oct 2026 · week 7\n- 08:00–09:30  CF101 Weekly Things · Lecture · Room R1 · Section 1 · Dr. A\n", text);
+        Assert.Contains("Mon 19 Oct 2026 · week 7\n" +
+            "- 11:30–13:00  CF102 Dated Thing · Lab · Room Lab L2 · Section 1 · Dr. B\n" +
+            "- 17:00–18:00  Gym, then lunch · own slot, not a class · Sports hall\n", text);
+        Assert.DoesNotContain("Tue 20 Oct", text);
+        // After the last teaching week (week 15 ends Sat 19 Dec), weekly classes stop.
+        var after = await (await app.GetAsync(new Uri(textUrl).PathAndQuery + "?from=2026-12-20&days=1")).Content.ReadAsStringAsync();
+        Assert.Contains("Sun 20 Dec 2026\n- No classes\n", after.ReplaceLineEndings("\n"));
+        Assert.Equal(HttpStatusCode.BadRequest, (await app.GetAsync(new Uri(textUrl).PathAndQuery + "?from=soon")).StatusCode);
+
         // A reset link replaces the old one: the old one stops working.
         var fresh = (await Json(await s.PostAsync("/api/me/calendar/reset", null))).GetProperty("url").GetString()!;
         Assert.NotEqual(url, fresh);
         Assert.Equal(HttpStatusCode.NotFound, (await app.GetAsync(new Uri(url).PathAndQuery)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await app.GetAsync(new Uri(textUrl).PathAndQuery)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await app.GetAsync(new Uri(fresh).PathAndQuery)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await app.GetAsync("/api/calendar/guess.ics")).StatusCode);
     }
