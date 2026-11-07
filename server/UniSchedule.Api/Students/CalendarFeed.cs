@@ -75,7 +75,7 @@ public static partial class CalendarFeed
             const string text = "text/plain; charset=utf-8";
             var s = token.Length >= 40 ? await db.Students.FirstOrDefaultAsync(x => x.CalendarToken == token, ct) : null;
             if (s is null)
-                return Results.Text("This Classy link was reset or doesn't exist. Get the new one in Classy: Menu, then Add to my calendar.", text, statusCode: StatusCodes.Status404NotFound);
+                return Results.Text("This Classy link was reset or doesn't exist. Get the new one in Classy: Menu, then Calendar & ChatGPT.", text, statusCode: StatusCodes.Status404NotFound);
             DateOnly? start = null;
             if (from is not null && (start = ScheduleImport.ParseDate(from)) is null)
                 return Results.Text("Use ?from=YYYY-MM-DD, for example ?from=2026-11-15.", text, statusCode: StatusCodes.Status400BadRequest);
