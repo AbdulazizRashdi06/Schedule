@@ -74,17 +74,12 @@ function Screen({ children }: { children: React.ReactNode }) {
 
 const delay = (ms: number): CSSProperties => ({ animationDelay: `${ms}ms` })
 
-/** The coloured blocks above the logo: a timetable falling into place. */
-function Decor() {
-  const cols: { pt: number; blocks: [string, number][] }[] = [
-    { pt: 60, blocks: [['bg-navy', 1], ['bg-ice', 6]] },
-    { pt: 0, blocks: [['bg-ice', 3], ['dashed', 8], ['bg-sky', 5]] },
-    { pt: 104, blocks: [['bg-sky', 2]] },
-    { pt: 30, blocks: [['bg-navy', 7], ['bg-ice', 4]] },
-    { pt: 140, blocks: [['bg-navy', 9]] },
-  ]
+type Col = { pt: number; blocks: [string, number][] }
+
+/** Columns of blocks dropping in: a timetable falling into place. The second number is each block's delay step. */
+function Blocks({ cols, className }: { cols: Col[]; className: string }) {
   return (
-    <div aria-hidden="true" className="mx-6 mt-6 grid h-[250px] grid-cols-5 gap-2">
+    <div aria-hidden="true" className={cx('grid gap-2', className)} style={{ gridTemplateColumns: `repeat(${cols.length}, minmax(0, 1fr))` }}>
       {cols.map((c, i) => (
         <div key={i} className="flex flex-col gap-2" style={{ paddingTop: c.pt }}>
           {c.blocks.map(([bg, d], j) => (
@@ -94,6 +89,44 @@ function Decor() {
       ))}
     </div>
   )
+}
+
+/** The blocks above the logo, and the logo with the last few blocks landing beside it. */
+function Decor() {
+  return (
+    <>
+      <Blocks
+        className="mx-6 mt-6 h-[208px]"
+        cols={[
+          { pt: 60, blocks: [['bg-navy', 1], ['bg-ice', 6]] },
+          { pt: 0, blocks: [['bg-ice', 3], ['dashed', 8], ['bg-sky', 5]] },
+          { pt: 104, blocks: [['bg-tan', 2]] },
+          { pt: 30, blocks: [['bg-navy', 7], ['bg-ice', 4]] },
+          { pt: 140, blocks: [['bg-sky', 9]] },
+        ]}
+      />
+      <div className="flex items-end gap-3 px-6 pt-2">
+        <h1 className="rise relative aspect-[531/358] w-[210px] shrink-0" style={delay(180)}>
+          <span className="sr">Classy</span>
+          {/* The lettering is the theme's navy (it follows the accent colour); the clock and underline stay tan. */}
+          <span aria-hidden="true" className="absolute inset-0 bg-navy" style={logoInk} />
+          <img src="/logo-tan.png" alt="" className="absolute inset-0 size-full" />
+        </h1>
+        <Blocks
+          className="h-[142px] flex-1"
+          cols={[
+            { pt: 72, blocks: [['bg-ice', 11]] },
+            { pt: 0, blocks: [['bg-navy', 10], ['bg-sky', 12]] },
+          ]}
+        />
+      </div>
+    </>
+  )
+}
+
+const logoInk: CSSProperties = {
+  WebkitMask: 'url(/logo-ink.png) center / contain no-repeat',
+  mask: 'url(/logo-ink.png) center / contain no-repeat',
 }
 
 function IdStep({ id, setId, onSent }: { id: string; setId: (v: string) => void; onSent: (s: CodeSent) => void }) {
@@ -140,9 +173,6 @@ function IdStep({ id, setId, onSent }: { id: string; setId: (v: string) => void;
     <Screen>
       <Decor />
       <form onSubmit={send} noValidate className="flex flex-1 flex-col">
-        <h1 className="rise px-6 pt-7" style={delay(180)}>
-          <img src="/logo.png" alt="Classy" width={210} height={142} className="h-auto w-[210px]" />
-        </h1>
         <div className="rise flex flex-col gap-2.5 px-6 pt-[26px]" style={delay(300)}>
           <label htmlFor="uid" className="label text-[12px] tracking-[0.14em] text-muted">
             University ID
