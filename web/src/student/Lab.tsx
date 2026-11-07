@@ -361,6 +361,19 @@ export default function Lab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, dates])
 
+  // The "This week" shortcut (long-press the installed app's icon) opens home scrolled down to the week, once.
+  const openedOnWeek = useRef(false)
+  useLayoutEffect(() => {
+    if (!ready || openedOnWeek.current || params.get('show') !== 'week') return
+    openedOnWeek.current = true
+    const el = weekSection.current
+    if (el) page.current?.scrollTo({ top: el.offsetTop, behavior: 'instant' })
+    // Then out of the address, so a reload or Back behaves like plain home.
+    const p = new URLSearchParams(params)
+    p.delete('show')
+    setParams(p, { replace: true })
+  }, [ready, params, setParams])
+
   // Moving through days keeps the week below on the same week.
   const daysSettled = useMemo(
     () =>

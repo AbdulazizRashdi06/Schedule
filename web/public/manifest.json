@@ -26,5 +26,21 @@
       "type": "image/png",
       "purpose": "maskable"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "This week",
+      "short_name": "Week",
+      "description": "Your week's timetable",
+      "url": "/?show=week",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Free rooms",
+      "short_name": "Rooms",
+      "description": "Rooms with no class right now",
+      "url": "/rooms",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
   ]
 }

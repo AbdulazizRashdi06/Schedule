@@ -92,6 +92,10 @@ export default function CalendarSheet({ open, onClose }: { open: boolean; onClos
             </div>
             <p className="text-[13px] font-semibold text-muted">The link is private. Reset it if you shared it by mistake: calendars using the old one stop updating.</p>
           </div>
+          {/* Web apps can't have home-screen widgets, but calendar apps can: theirs then shows the next class. */}
+          <p className="rounded-[12px] bg-ice px-3 py-2.5 text-[14px] leading-snug font-bold">
+            Tip: once it’s added, put your calendar app’s widget on your home or lock screen (on iPhone, Calendar’s “Up Next”) to see your next class at a glance.
+          </p>
         </>
       )}
     </Sheet>
