@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ComponentProps, type CSSProperties, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ')
 export { cx }
@@ -246,7 +247,7 @@ export function Sheet({ open, onClose, label, children, className }: { open: boo
   const { mounted, shown } = usePresence(open)
   const ref = useDialog(open, onClose)
   if (!mounted) return null
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50">
       <div className="scrim absolute inset-0 bg-navy/45" data-shown={shown} onClick={onClose} />
       <section
@@ -264,7 +265,8 @@ export function Sheet({ open, onClose, label, children, className }: { open: boo
         <span aria-hidden="true" className="h-[5px] w-10 shrink-0 self-center rounded-[3px] bg-navy/20" />
         {children}
       </section>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -273,7 +275,7 @@ export function Drawer({ open, onClose, label, children }: { open: boolean; onCl
   const { mounted, shown } = usePresence(open, 300)
   const ref = useDialog(open, onClose)
   if (!mounted) return null
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50">
       <div className="scrim absolute inset-0 bg-navy/35" data-shown={shown} onClick={onClose} />
       <section
@@ -287,7 +289,8 @@ export function Drawer({ open, onClose, label, children }: { open: boolean; onCl
       >
         {children}
       </section>
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -296,7 +299,7 @@ export function Modal({ open, onClose, label, children }: { open: boolean; onClo
   const { mounted, shown } = usePresence(open, 200)
   const ref = useDialog(open, onClose)
   if (!mounted) return null
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 grid place-items-center p-4">
       <div className="scrim absolute inset-0 bg-navy/35" data-shown={shown} onClick={onClose} />
       <section
@@ -310,7 +313,8 @@ export function Modal({ open, onClose, label, children }: { open: boolean; onClo
       >
         {children}
       </section>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

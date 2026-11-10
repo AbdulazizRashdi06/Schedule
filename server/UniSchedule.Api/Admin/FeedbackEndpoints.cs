@@ -12,6 +12,7 @@ public static class FeedbackEndpoints
 
     public record PromptBody(string? Message);
     public record AnswerBody(int PromptId, int? Rating, string? Comment, bool? Dismissed);
+    public record ReportBody(string? Text, string? Page);
 
     public static void MapFeedback(this RouteGroupBuilder api)
     {
@@ -47,6 +48,23 @@ public static class FeedbackEndpoints
             return Results.NoContent();
         });
 
+        // "Report a problem" from the menu. Max 10 a day per student.
+        api.MapPost("/me/reports", async (ReportBody body, HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) =>
+        {
+            var id = http.User.Id();
+            var text = body.Text?.Trim() ?? "";
+            if (text.Length == 0) return Errors.BadRequest("Tell us what went wrong.");
+            if (text.Length > MaxComment) return Errors.BadRequest($"Keep it under {MaxComment} characters.");
+            var now = clock.GetUtcNow();
+            var since = now.AddDays(-1);
+            if (await db.ProblemReports.CountAsync(r => r.StudentId == id && r.At > since, ct) >= 10)
+                return Errors.BadRequest("You've sent a lot of reports today. Try again tomorrow.");
+            var page = body.Page?.Trim();
+            db.ProblemReports.Add(new ProblemReport { StudentId = id, Text = text, Page = page is { Length: > 0 } ? page[..Math.Min(page.Length, 200)] : null, At = now });
+            await db.SaveChangesAsync(ct);
+            return Results.NoContent();
+        }).RequireAuthorization(Session.StudentPolicy);
+
         // ---- Staff: no student IDs, so ratings stay anonymous ----
         var admin = api.MapGroup("/admin/feedback").RequireAuthorization(Session.StaffPolicy);
 
@@ -80,6 +98,19 @@ public static class FeedbackEndpoints
             db.FeedbackPrompts.Add(prompt);
             await db.SaveChangesAsync(ct);
             return Results.Ok(new { prompt.Id });
+        });
+
+        admin.MapGet("/reports", async (AppDb db, CancellationToken ct) =>
+            Results.Ok(await db.ProblemReports.OrderByDescending(r => r.Id).Take(300)
+                .Select(r => new { r.Id, r.Text, r.Page, r.At, r.ResolvedAt }).ToListAsync(ct)));
+
+        admin.MapPost("/reports/{id:int}/resolve", async (int id, AppDb db, TimeProvider clock, CancellationToken ct) =>
+        {
+            var report = await db.ProblemReports.FirstOrDefaultAsync(r => r.Id == id, ct);
+            if (report is null) return Errors.NotFound("That report doesn't exist.");
+            report.ResolvedAt = report.ResolvedAt is null ? clock.GetUtcNow() : null;
+            await db.SaveChangesAsync(ct);
+            return Results.NoContent();
         });
 
         admin.MapPost("/{id:int}/close", async (int id, AppDb db, TimeProvider clock, CancellationToken ct) =>

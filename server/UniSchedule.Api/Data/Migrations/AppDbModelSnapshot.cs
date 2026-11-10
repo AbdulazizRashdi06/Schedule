@@ -757,6 +757,35 @@ namespace UniSchedule.Api.Data.Migrations
                     b.ToTable("Picks");
                 });
 
+            modelBuilder.Entity("UniSchedule.Api.Data.ProblemReport", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("At")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Page")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("ResolvedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("StudentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StudentId");
+
+                    b.ToTable("ProblemReports");
+                });
+
             modelBuilder.Entity("UniSchedule.Api.Data.PushSubscription", b =>
                 {
                     b.Property<int>("Id")
@@ -1499,6 +1528,15 @@ namespace UniSchedule.Api.Data.Migrations
                     b.Navigation("Section");
 
                     b.Navigation("Student");
+                });
+
+            modelBuilder.Entity("UniSchedule.Api.Data.ProblemReport", b =>
+                {
+                    b.HasOne("UniSchedule.Api.Data.Student", null)
+                        .WithMany()
+                        .HasForeignKey("StudentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("UniSchedule.Api.Data.PushSubscription", b =>

@@ -17,6 +17,14 @@ interface Prompt {
   comments: { rating: number; comment: string; at: string }[]
 }
 
+interface Report {
+  id: number
+  text: string
+  page: string | null
+  at: string
+  resolvedAt: string | null
+}
+
 const DEFAULT = 'Classy is in beta. How are you finding it? Tell us what to fix or add.'
 
 /** Push a "Rate Classy" pop-up to every student and read the answers. Answers are anonymous. */
@@ -25,7 +33,12 @@ export default function Feedback() {
   const [message, setMessage] = useState(DEFAULT)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const load = () => api.get<Prompt[]>('/admin/feedback').then(setPrompts, (e) => setError(errorText(e)))
+  const [reports, setReports] = useState<Report[] | null>(null)
+  const load = () =>
+    Promise.all([
+      api.get<Prompt[]>('/admin/feedback').then(setPrompts, (e) => setError(errorText(e))),
+      api.get<Report[]>('/admin/feedback/reports').then(setReports, (e) => setError(errorText(e))),
+    ])
   useEffect(() => {
     void load()
   }, [])
@@ -46,7 +59,7 @@ export default function Feedback() {
 
   return (
     <>
-      <PageTitle title="Feedback." sub="Ask students to rate Classy. Each student sees the pop-up once. Answers are anonymous." />
+      <PageTitle title="Feedback." sub="Problem reports from students, and rate-us pop-ups. Both are anonymous." />
       <section className="flex max-w-[640px] flex-col gap-3 rounded-[20px] p-4 shadow-[inset_0_0_0_2px_rgb(0_0_0/0.1)]">
         <label htmlFor="rate-message" className="text-[20px] font-extrabold">
           Push a rate-us message
@@ -64,6 +77,29 @@ export default function Feedback() {
         <Button className="self-start" busy={busy} disabled={!message.trim()} onClick={() => act(() => api.post('/admin/feedback', { message }))}>
           Push to students
         </Button>
+      </section>
+
+      <section className="flex max-w-[720px] flex-col gap-3">
+        <h2 className="text-[24px] font-extrabold">
+          Problem reports{reports && ` · ${reports.filter((r) => !r.resolvedAt).length} open`}
+        </h2>
+        {reports?.length === 0 && <p className="text-[15px] font-semibold text-muted">No reports yet. Students send them from Menu → Report a problem.</p>}
+        <ul className="flex flex-col gap-2">
+          {reports?.map((r) => (
+            <li key={r.id} className={`flex items-start gap-3 rounded-[14px] bg-paper p-3 ${r.resolvedAt ? 'opacity-55' : ''}`}>
+              <div className="min-w-0 flex-1">
+                <span className="label text-[11px] tracking-[0.12em]">
+                  {shortDate(r.at)}
+                  {r.page && ` · ${r.page}`}
+                </span>
+                <p className="text-[15px] font-semibold break-words whitespace-pre-wrap">{r.text}</p>
+              </div>
+              <Button variant="secondary" size="sm" disabled={busy} onClick={() => act(() => api.post(`/admin/feedback/reports/${r.id}/resolve`))}>
+                {r.resolvedAt ? 'Reopen' : 'Fixed'}
+              </Button>
+            </li>
+          ))}
+        </ul>
       </section>
 
       {prompts?.length === 0 && <p className="text-[15px] font-semibold text-muted">Nothing pushed yet.</p>}

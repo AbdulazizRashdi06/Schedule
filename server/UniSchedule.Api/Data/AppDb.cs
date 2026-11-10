@@ -41,6 +41,7 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
     public DbSet<Enrollment> Enrollments => Set<Enrollment>();
     public DbSet<PendingSync> PendingSyncs => Set<PendingSync>();
     public DbSet<FeedbackResponse> FeedbackResponses => Set<FeedbackResponse>();
+    public DbSet<ProblemReport> ProblemReports => Set<ProblemReport>();
     public DbSet<DayOff> DaysOff => Set<DayOff>();
     public DbSet<Absence> Absences => Set<Absence>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
@@ -202,6 +203,7 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
             e.HasOne<FeedbackPrompt>().WithMany().HasForeignKey(x => x.PromptId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<Student>().WithMany().HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Cascade);
         });
+        m.Entity<ProblemReport>(e => e.HasOne<Student>().WithMany().HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Cascade));
         m.Entity<UploadLog>(e =>
         {
             e.HasIndex(x => x.At);

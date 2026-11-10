@@ -392,6 +392,17 @@ public class FeedbackResponse
     public DateTimeOffset At { get; set; }
 }
 
+/// <summary>A problem a student reported from the menu: free text plus the page they were on.</summary>
+public class ProblemReport
+{
+    public int Id { get; set; }
+    public int StudentId { get; set; }
+    public string Text { get; set; } = "";
+    public string? Page { get; set; }
+    public DateTimeOffset At { get; set; }
+    public DateTimeOffset? ResolvedAt { get; set; }
+}
+
 /// <summary>A site-wide switch or value owners change in the dashboard, such as whether the public timetable API is on.</summary>
 public class AppSetting
 {

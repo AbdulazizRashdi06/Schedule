@@ -8,6 +8,7 @@ import LogoutConfirm from '../components/LogoutConfirm'
 import ChangeYear from './ChangeYear'
 import CalendarSheet from './CalendarSheet'
 import NotificationsSheet from './NotificationsSheet'
+import ReportSheet from './ReportSheet'
 
 /** Menu / profile sheet: who you are, where to go, colours, log out. */
 export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () => void; me: Me | null }) {
@@ -18,6 +19,7 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
   const [changingYear, setChangingYear] = useState(false)
   const [calendar, setCalendar] = useState(false)
   const [notify, setNotify] = useState(false)
+  const [report, setReport] = useState(false)
   const item = 'tint flex h-14 items-center justify-between rounded-[12px] text-[22px] font-extrabold'
   return (
     <>
@@ -84,6 +86,16 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
             </button>
           </>
         )}
+        <button
+          type="button"
+          onClick={() => {
+            onClose()
+            setReport(true)
+          }}
+          className={cx(item, 'text-left')}
+        >
+          Report a problem<span aria-hidden="true" className="text-[18px]">→</span>
+        </button>
         {staff && (
           <Link to="/admin" className={item}>
             <span className="flex items-center gap-2.5">
@@ -116,6 +128,7 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
       {me && <ChangeYear key={String(changingYear)} open={changingYear} onClose={() => setChangingYear(false)} current={me.year} />}
       <CalendarSheet open={calendar} onClose={() => setCalendar(false)} />
       <NotificationsSheet open={notify} onClose={() => setNotify(false)} />
+      <ReportSheet open={report} onClose={() => setReport(false)} />
       <LogoutConfirm
         open={confirmOut}
         onClose={() => setConfirmOut(false)}
