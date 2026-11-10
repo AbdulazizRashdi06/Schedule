@@ -13,7 +13,7 @@ public class FreeRoomsTests(ApiFactory factory) : IClassFixture<ApiFactory>
 
     /// <summary>
     /// Sundays: A101 08:00–09:30 and 13:15–14:45, A102 09:45–11:15. Sun 18 Oct 2026 only: Lab L2 08:00–09:30.
-    /// Mondays: a class with no room yet (TBA).
+    /// Tuesdays: named campus spaces. Non-room entries include online classes and off-site activities.
     /// </summary>
     async Task<HttpClient> Published()
     {
@@ -25,7 +25,15 @@ public class FreeRoomsTests(ApiFactory factory) : IClassFixture<ApiFactory>
             "FR102,Midday,FRM,Core,1,1,B,,Sun,09:45-11:15,A102\n" +
             "FR103,Afternoon,FRM,Core,1,1,C,,Sun,13:15-14:45,a101\n" +
             "FR104,Once,FRM,Core,1,1,D,2026-10-18,,08:00-09:30,Lab L2\n" +
-            "FR105,Unplaced,FRM,Core,1,1,E,,Mon,08:00-09:30,TBA\n";
+            "FR105,Unplaced,FRM,Core,1,1,E,,Mon,08:00-09:30,TBA\n" +
+            "FR106,Online course,FRM,Core,1,1,F,,Sun,08:00-09:30,Coursera\n" +
+            "FR107,Trip,FRM,Core,1,1,G,,Sun,08:00-09:30,Field Trip\n" +
+            "FR108,Excursion,FRM,Core,1,1,H,,Sun,08:00-09:30,Excursion\n" +
+            "FR109,Internship,FRM,Core,1,1,I,,Sun,08:00-09:30,Internship\n" +
+            "FR110,Thesis,FRM,Core,1,1,J,,Sun,08:00-09:30,Thesis\n" +
+            "FR111,Remote class,FRM,Core,1,1,K,,Sun,08:00-09:30,Online\n" +
+            "FR112,Hall class,FRM,Core,1,1,L,,Tue,08:00-09:30,Oman Hall\n" +
+            "FR113,Workshop,FRM,Core,1,1,M,,Tue,08:00-09:30,ENG Warehouse\n";
         var sem = (await Json(await owner.PostAsJsonAsync("/api/admin/semesters", new { term = "Fall", year = 2093 }))).GetProperty("id").GetInt32();
         using var file = new MultipartFormDataContent { { new ByteArrayContent(System.Text.Encoding.UTF8.GetBytes(csv)), "file", "r.csv" } };
         Assert.Equal(HttpStatusCode.OK, (await owner.PostAsync($"/api/admin/semesters/{sem}/upload/apply", file)).StatusCode);
@@ -42,11 +50,11 @@ public class FreeRoomsTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var c = await Published();
         Assert.Equal(HttpStatusCode.Unauthorized, (await factory.Client().GetAsync("/api/rooms/free")).StatusCode);
 
-        // Sunday 08:30: A101 and the one-off Lab L2 are in use; A102 is free until its 09:45 class.
+        // Sunday 08:30: A101 and Lab L2 are in use. Non-room entries count as neither busy nor free rooms.
         var early = await Json(await c.GetAsync("/api/rooms/free?date=2026-10-18&at=08:30"));
         Assert.True(early.GetProperty("classesThatDay").GetBoolean());
         Assert.Equal(2, early.GetProperty("busy").GetInt32());
-        Assert.Equal(new Dictionary<string, string?> { ["A102"] = "09:45" }, Rooms(early));
+        Assert.Equal(new Dictionary<string, string?> { ["A102"] = "09:45", ["ENG Warehouse"] = null, ["Oman Hall"] = null }, Rooms(early));
 
         // 10:00: A101 is free until its afternoon class (written "a101" in the file: the same room); Lab L2 for the rest of the day.
         var later = Rooms(await Json(await c.GetAsync("/api/rooms/free?date=2026-10-18&at=10:00")));
@@ -63,7 +71,7 @@ public class FreeRoomsTests(ApiFactory factory) : IClassFixture<ApiFactory>
         // A Friday has no classes: every room is free, and the page is told so.
         var friday = await Json(await c.GetAsync("/api/rooms/free?date=2026-10-23&at=10:00"));
         Assert.False(friday.GetProperty("classesThatDay").GetBoolean());
-        Assert.Equal(3, friday.GetProperty("rooms").GetArrayLength());
+        Assert.Equal(5, friday.GetProperty("rooms").GetArrayLength());
 
         Assert.Equal(HttpStatusCode.BadRequest, (await c.GetAsync("/api/rooms/free?at=noon")).StatusCode);
     }

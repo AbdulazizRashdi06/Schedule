@@ -15,8 +15,8 @@ public static partial class FreeRooms
 {
     static readonly TimeSpan Oman = TimeSpan.FromHours(4);
 
-    /// <summary>Room cells that aren't rooms: "TBA", "N/A", "-", "Online".</summary>
-    [GeneratedRegex(@"^(tba|tbd|n/?a|-+|online)$", RegexOptions.IgnoreCase)]
+    /// <summary>Placeholder locations, online classes and activities without a campus room.</summary>
+    [GeneratedRegex(@"^(?:tba|tbd|n/?a|-+|online|coursera|field[\s-]*trips?|excursions?|internships?|thesis|theses)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex NotARoom();
 
     [GeneratedRegex(@"^[A-Za-z]+")]
