@@ -167,12 +167,14 @@ public class PlannerTests
         using (var scope = w.Factory.Services.CreateScope()) {
             var db = scope.ServiceProvider.GetRequiredService<AppDb>();
             await db.Students.Where(s => s.Id == w.StudentId).ExecuteUpdateAsync(u => u.SetProperty(s => s.RemindMinutes, 15));
-            db.PushSubscriptions.Add(new PushSubscription { StudentId = w.StudentId, Endpoint = "https://push.example.com/moved", P256dh = "k", Auth = "a", CreatedAt = DateTimeOffset.UtcNow });
+            db.PushSubscriptions.Add(new PushSubscription { StudentId = w.StudentId, Endpoint = "https://fcm.googleapis.com/fcm/send/moved", P256dh = "k", Auth = "a", CreatedAt = DateTimeOffset.UtcNow });
             await db.SaveChangesAsync();
             DateTimeOffset At(int day, int h, int m, int sec = 0) => new(2026, 11, day, h, m, sec, TimeSpan.FromHours(4));
             Assert.DoesNotContain(await UniSchedule.Api.Students.Notifications.DueReminders(db, At(8, 7, 44, 50), At(8, 7, 45, 20), default, planner: true), d => d.StudentId == w.StudentId);
             var due = Assert.Single(await UniSchedule.Api.Students.Notifications.DueReminders(db, At(9, 12, 44, 50), At(9, 12, 45, 20), default, planner: true), d => d.StudentId == w.StudentId);
             Assert.Equal("LOG201 in 15 min", due.Note.Title);
+            // Opens the planner event itself, which the website finds under p{event id}.
+            Assert.Equal($"/?session=p{eventId}.2026-11-09.13:00", due.Note.Url);
         }
 
         // Group free time: free that Sunday morning, busy on the Monday afternoon.

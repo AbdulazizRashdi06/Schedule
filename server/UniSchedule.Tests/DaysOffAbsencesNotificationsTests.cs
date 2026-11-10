@@ -42,12 +42,12 @@ public class DaysOffAbsencesNotificationsTests(ApiFactory factory) : IClassFixtu
         var db = scope.ServiceProvider.GetRequiredService<AppDb>();
         var me = await db.Students.Where(x => x.UniversityId == studentId).Select(x => x.Id).FirstAsync();
         // Saved before keys were checked on the way in.
-        db.PushSubscriptions.Add(new PushSubscription { StudentId = me, Endpoint = "https://push.example.com/broken", P256dh = "x", Auth = "y", CreatedAt = DateTimeOffset.UtcNow });
+        db.PushSubscriptions.Add(new PushSubscription { StudentId = me, Endpoint = "https://fcm.googleapis.com/fcm/send/broken", P256dh = "x", Auth = "y", CreatedAt = DateTimeOffset.UtcNow });
         await db.SaveChangesAsync();
 
         var push = factory.Services.GetRequiredService<PushSender>();
         Assert.Equal(0, await push.SendAsync(db, [me], new Note("t", "b", "/", "test", 60), default));
-        Assert.False(await db.PushSubscriptions.AnyAsync(x => x.Endpoint == "https://push.example.com/broken"));
+        Assert.False(await db.PushSubscriptions.AnyAsync(x => x.Endpoint == "https://fcm.googleapis.com/fcm/send/broken"));
     }
 
     static int setups;
@@ -93,6 +93,9 @@ public class DaysOffAbsencesNotificationsTests(ApiFactory factory) : IClassFixtu
 
         // The timetable lists them, and the weekly class skips the Sunday one.
         var tt = await Json(await s.GetAsync("/api/me/timetable"));
+        // The semester's first and last teaching day: Sun 6 Sep 2026 to the Saturday ending week 15.
+        Assert.Equal("2026-09-06", tt.GetProperty("span").GetProperty("first").GetString());
+        Assert.Equal("2026-12-19", tt.GetProperty("span").GetProperty("last").GetString());
         Assert.Equal(["2026-10-18", "2026-11-18", "2026-11-19"], tt.GetProperty("daysOff").EnumerateArray().Select(d => d.GetProperty("date").GetString()!).ToArray());
         var meeting = tt.GetProperty("classes")[0].GetProperty("section").GetProperty("meetings")[0];
         Assert.Equal(["2026-10-18"], meeting.GetProperty("excludedDates").EnumerateArray().Select(d => d.GetString()!).ToArray());
@@ -163,9 +166,9 @@ public class DaysOffAbsencesNotificationsTests(ApiFactory factory) : IClassFixtu
         // A device, then settings.
         Assert.Equal(HttpStatusCode.BadRequest, (await s.PostAsJsonAsync("/api/me/push", new { endpoint = "http://not-https.example/x", keys = new { p256dh = "k", auth = "a" } })).StatusCode);
         // Keys that can't be encrypted to are refused: they'd fail on every send.
-        Assert.Equal(HttpStatusCode.BadRequest, (await s.PostAsJsonAsync("/api/me/push", new { endpoint = "https://push.example.com/device-1", keys = new { p256dh = "BKey", auth = "Auth" } })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await s.PostAsJsonAsync("/api/me/push", new { endpoint = "https://fcm.googleapis.com/fcm/send/device-1", keys = new { p256dh = "BKey", auth = "Auth" } })).StatusCode);
         var (p256dh, auth) = DeviceKeys();
-        Assert.Equal(HttpStatusCode.NoContent, (await s.PostAsJsonAsync("/api/me/push", new { endpoint = "https://push.example.com/device-1", keys = new { p256dh, auth } })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await s.PostAsJsonAsync("/api/me/push", new { endpoint = "https://fcm.googleapis.com/fcm/send/device-1", keys = new { p256dh, auth } })).StatusCode);
         var settings = await Json(await s.GetAsync("/api/me/notifications"));
         Assert.Equal(1, settings.GetProperty("devices").GetInt32());
         Assert.True(settings.GetProperty("remindMinutes").ValueKind == JsonValueKind.Null);
@@ -200,7 +203,100 @@ public class DaysOffAbsencesNotificationsTests(ApiFactory factory) : IClassFixtu
         Assert.DoesNotContain(await Notifications.ChangeAlerts(db, before, DateTimeOffset.UtcNow.AddMinutes(1), default), a => a.StudentId == me);
 
         // Removing the device stops it all.
-        Assert.Equal(HttpStatusCode.NoContent, (await s.PostAsJsonAsync("/api/me/push/remove", new { endpoint = "https://push.example.com/device-1" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await s.PostAsJsonAsync("/api/me/push/remove", new { endpoint = "https://fcm.googleapis.com/fcm/send/device-1" })).StatusCode);
         Assert.Equal(0, (await Json(await s.GetAsync("/api/me/notifications"))).GetProperty("devices").GetInt32());
+    }
+
+    [Fact]
+    public void Only_real_push_services_are_allowed_endpoints()
+    {
+        Assert.True(Notifications.AllowedEndpoint("https://fcm.googleapis.com/fcm/send/abc"));
+        Assert.True(Notifications.AllowedEndpoint("https://updates.push.services.mozilla.com/wpush/v2/abc"));
+        Assert.True(Notifications.AllowedEndpoint("https://wns2-by3p.notify.windows.com/w/?token=abc"));
+        Assert.True(Notifications.AllowedEndpoint("https://web.push.apple.com/abc"));
+        Assert.False(Notifications.AllowedEndpoint("https://push.example.com/abc"));
+        Assert.False(Notifications.AllowedEndpoint("https://fcm.googleapis.com.evil.example/abc"));
+        Assert.False(Notifications.AllowedEndpoint("https://push.apple.com.evil.example/abc"));
+        Assert.False(Notifications.AllowedEndpoint("http://fcm.googleapis.com/fcm/send/abc"));
+        Assert.False(Notifications.AllowedEndpoint("https://localhost/abc"));
+    }
+
+    [Fact]
+    public async Task Devices_must_use_a_push_service_and_are_capped_at_ten()
+    {
+        var (s, studentId) = await Student();
+        var (p256dh, auth) = DeviceKeys();
+        Assert.Equal(HttpStatusCode.BadRequest, (await s.PostAsJsonAsync("/api/me/push", new { endpoint = "https://internal.example.com/hook", keys = new { p256dh, auth } })).StatusCode);
+        for (var i = 0; i < Notifications.MaxDevices; i++)
+            Assert.Equal(HttpStatusCode.NoContent, (await s.PostAsJsonAsync("/api/me/push", new { endpoint = $"https://fcm.googleapis.com/fcm/send/cap-{i}", keys = new { p256dh, auth } })).StatusCode);
+        var eleventh = await s.PostAsJsonAsync("/api/me/push", new { endpoint = "https://fcm.googleapis.com/fcm/send/cap-10", keys = new { p256dh, auth } });
+        Assert.Equal(HttpStatusCode.Conflict, eleventh.StatusCode);
+        Assert.Contains("10 devices", (await Json(eleventh)).GetProperty("error").GetString());
+        // Renewing one already saved still works.
+        Assert.Equal(HttpStatusCode.NoContent, (await s.PostAsJsonAsync("/api/me/push", new { endpoint = "https://fcm.googleapis.com/fcm/send/cap-3", keys = new { p256dh, auth } })).StatusCode);
+
+        // One saved before hosts were checked is dropped on the next send, without posting to it.
+        var (_, otherId) = await Student();
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+        var other = await db.Students.Where(x => x.UniversityId == otherId).Select(x => x.Id).FirstAsync();
+        db.PushSubscriptions.Add(new PushSubscription { StudentId = other, Endpoint = "https://internal.example.com/old", P256dh = p256dh, Auth = auth, CreatedAt = DateTimeOffset.UtcNow });
+        await db.SaveChangesAsync();
+        Assert.Equal(0, await factory.Services.GetRequiredService<PushSender>().SendAsync(db, [other], new Note("t", "b", "/", "test", 60), default));
+        Assert.False(await db.PushSubscriptions.AnyAsync(x => x.Endpoint == "https://internal.example.com/old"));
+    }
+
+    [Fact]
+    public async Task Publishing_a_semester_announces_it_once_to_students_with_a_device()
+    {
+        var (owner, s, studentId, sem, _, _) = await Setup();
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+        var name = await db.Semesters.Where(x => x.Id == sem).Select(x => x.Name).FirstAsync();
+        Assert.Equal(name, await db.AppSettings.Where(x => x.Key == Notifications.PublishPending).Select(x => x.Value).FirstAsync());
+
+        var (p256dh, auth) = DeviceKeys();
+        Assert.Equal(HttpStatusCode.NoContent, (await s.PostAsJsonAsync("/api/me/push", new { endpoint = $"https://fcm.googleapis.com/fcm/send/out-{studentId}", keys = new { p256dh, auth } })).StatusCode);
+        var me = await db.Students.Where(x => x.UniversityId == studentId).Select(x => x.Id).FirstAsync();
+        var (who, note) = (await Notifications.PublishAnnouncement(db, default))!.Value;
+        Assert.Contains(me, who);
+        Assert.Equal(who.Count, who.Distinct().Count());
+        Assert.Equal(new Note($"{name} is out", "Set up your courses in about a minute.", "/setup", "published", 3 * 86_400), note);
+
+        // Publishing the semester that's already current isn't news again.
+        await db.AppSettings.Where(x => x.Key == Notifications.PublishPending).ExecuteDeleteAsync();
+        Assert.Equal(HttpStatusCode.OK, (await owner.PostAsync($"/api/admin/semesters/{sem}/publish", null)).StatusCode);
+        Assert.Null(await Notifications.PublishAnnouncement(db, default));
+    }
+}
+
+/// <summary>The notification worker's round, on a database of its own (no devices, so nothing is really sent).</summary>
+public class NotificationWorkerTests(ApiFactory factory) : IClassFixture<ApiFactory>
+{
+    [Fact]
+    public async Task A_failing_change_check_neither_replays_reminders_nor_stops_the_announcement()
+    {
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+            Assert.False(await db.PushSubscriptions.AnyAsync());
+            var now0 = DateTimeOffset.UtcNow;
+            // An unreadable "changes since" makes the change alerts throw.
+            db.AppSettings.Add(new AppSetting { Key = Notifications.ChangesSince, Value = "not a date", UpdatedBy = "test", UpdatedAt = now0 });
+            db.AppSettings.Add(new AppSetting { Key = Notifications.PublishPending, Value = "Fall 2099", UpdatedBy = "test", UpdatedAt = now0 });
+            await db.SaveChangesAsync();
+        }
+        var worker = new NotificationWorker(factory.Services.GetRequiredService<IServiceScopeFactory>(), factory.Services.GetRequiredService<PushSender>(),
+            TimeProvider.System, Microsoft.Extensions.Logging.Abstractions.NullLogger<NotificationWorker>.Instance);
+        var last = DateTimeOffset.UtcNow.AddSeconds(-30);
+        var now = DateTimeOffset.UtcNow;
+        // The next round's reminders start from now, so the ones just sent aren't sent again.
+        Assert.Equal(now, await worker.RoundAsync(last, now, default));
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+            Assert.False(await db.AppSettings.AnyAsync(x => x.Key == Notifications.PublishPending));
+            Assert.Equal("not a date", await db.AppSettings.Where(x => x.Key == Notifications.ChangesSince).Select(x => x.Value).FirstAsync());
+        }
     }
 }

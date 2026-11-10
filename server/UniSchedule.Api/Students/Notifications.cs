@@ -22,6 +22,8 @@ public static class Notifications
     const string PrivateKey = "push.vapid.private";
     /// <summary>Changes up to this time have been announced.</summary>
     public const string ChangesSince = "push.changes.since";
+    /// <summary>Set when a semester is published (its name), removed once students were told it's out.</summary>
+    public const string PublishPending = "push.publish.pending";
     static readonly TimeSpan Oman = TimeSpan.FromHours(4);
     static readonly int[] RemindChoices = [5, 10, 15, 30, 60];
 
@@ -51,6 +53,20 @@ public static class Notifications
             db.ChangeTracker.Clear();
             return await KeysAsync(db, config, ct);
         }
+    }
+
+    /// <summary>Devices one student can have notifications on.</summary>
+    public const int MaxDevices = 10;
+
+    /// <summary>
+    /// Only real Web Push services (Chrome/Edge/Android, Firefox, Windows, Apple) get an endpoint: the server posts to it,
+    /// so any other https address could be used to make the server call it.
+    /// </summary>
+    public static bool AllowedEndpoint(string endpoint)
+    {
+        if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || !uri.IsDefaultPort) return false;
+        var host = uri.Host.ToLowerInvariant();
+        return host == "fcm.googleapis.com" || host.EndsWith(".push.services.mozilla.com") || host.EndsWith(".notify.windows.com") || host.EndsWith(".push.apple.com");
     }
 
     static byte[]? FromBase64Url(string s)
@@ -112,12 +128,14 @@ public static class Notifications
         // This browser or installed app accepts notifications. An endpoint is one device: it moves to whoever signs in there.
         me.MapPost("/push", async (SubscribeBody body, HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) =>
         {
-            if (body.Endpoint is not { Length: > 0 and < 1000 } endpoint || !Uri.TryCreate(endpoint, UriKind.Absolute, out var uri) || uri.Scheme != "https"
+            if (body.Endpoint is not { Length: > 0 and < 1000 } endpoint || !AllowedEndpoint(endpoint)
                 || body.Keys?.P256dh is not { Length: > 0 and < 200 } p256dh || body.Keys.Auth is not { Length: > 0 and < 100 } auth
                 || !ValidKeys(p256dh, auth))
                 return Errors.BadRequest("This browser sent an incomplete subscription. Try again.");
             var id = http.User.Id();
             var sub = await db.PushSubscriptions.FirstOrDefaultAsync(x => x.Endpoint == endpoint, ct);
+            if (sub is null && await db.PushSubscriptions.CountAsync(x => x.StudentId == id, ct) >= MaxDevices)
+                return Errors.Conflict($"Notifications are on for {MaxDevices} devices already. Turn them off on one you don't use first.");
             if (sub is null) db.PushSubscriptions.Add(sub = new Sub { Endpoint = endpoint, CreatedAt = clock.GetUtcNow() });
             sub.StudentId = id;
             sub.P256dh = p256dh;
@@ -175,13 +193,25 @@ public static class Notifications
                     StudentSchedule.Source.Slot => new Note($"{i.Name} in {s.Minutes} min", string.Join(" · ", new[] { time, i.Room }.Where(x => !string.IsNullOrWhiteSpace(x))),
                         "/", $"slot-{i.SlotId}-{on:yyyy-MM-dd}", ttl),
                     StudentSchedule.Source.Planner => new Note($"{i.Code} {(i.EventKind == "exam" ? "exam " : "")}in {s.Minutes} min", $"{i.Name} · {time} · {where}",
-                        $"/?session={i.CourseId}.{on:yyyy-MM-dd}.{time}", $"event-{i.EventId}-{on:yyyy-MM-dd}", ttl),
+                        $"/?session=p{i.EventId}.{on:yyyy-MM-dd}.{time}", $"event-{i.EventId}-{on:yyyy-MM-dd}", ttl),
                     _ => new Note($"{i.Code} in {s.Minutes} min", $"{i.Name} · {time} · {where}",
                         $"/?session={i.CourseId}.{on:yyyy-MM-dd}.{time}", $"class-{i.CourseId}-{on:yyyy-MM-dd}-{i.Start:HHmm}", ttl),
                 }));
             }
         }
         return due;
+    }
+
+    /// <summary>
+    /// "A new semester is out", once a semester was published (<see cref="PublishPending"/> holds its name): for every
+    /// student with a device. Null when nothing is waiting to be announced.
+    /// </summary>
+    public static async Task<(List<int> StudentIds, Note Note)?> PublishAnnouncement(AppDb db, CancellationToken ct)
+    {
+        var pending = await db.AppSettings.Where(x => x.Key == PublishPending).Select(x => x.Value).FirstOrDefaultAsync(ct);
+        if (pending is null) return null;
+        var who = await db.PushSubscriptions.Select(p => p.StudentId).Distinct().ToListAsync(ct);
+        return (who, new Note($"{pending} is out", "Set up your courses in about a minute.", "/setup", "published", 3 * 86_400));
     }
 
     /// <summary>
@@ -226,9 +256,9 @@ public sealed class PushSender(IHttpClientFactory http, IConfiguration config, I
         foreach (var sub in subs)
         {
             // Keys nothing can be encrypted to (saved before keys were checked) would fail on every send: forget them.
-            if (!Notifications.ValidKeys(sub.P256dh, sub.Auth))
+            if (!Notifications.ValidKeys(sub.P256dh, sub.Auth) || !Notifications.AllowedEndpoint(sub.Endpoint))
             {
-                log.LogWarning("Dropped a device with unusable push keys");
+                log.LogWarning("Dropped a device with unusable push keys or address");
                 db.PushSubscriptions.Remove(sub);
                 continue;
             }
@@ -254,7 +284,10 @@ public sealed class PushSender(IHttpClientFactory http, IConfiguration config, I
     }
 }
 
-/// <summary>Every 30 seconds: sends the class reminders that have come due, and alerts for classes that changed.</summary>
+/// <summary>
+/// Every 30 seconds: sends the class reminders that have come due, alerts for classes that changed, and "a new semester is
+/// out" after one was published. Each part fails on its own, so one problem never repeats or stops the others.
+/// </summary>
 public sealed class NotificationWorker(IServiceScopeFactory scopes, PushSender push, TimeProvider clock, ILogger<NotificationWorker> log) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stop)
@@ -262,35 +295,65 @@ public sealed class NotificationWorker(IServiceScopeFactory scopes, PushSender p
         var last = clock.GetUtcNow();
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
         while (await timer.WaitForNextTickAsync(stop))
-        {
-            var now = clock.GetUtcNow();
-            try
-            {
-                using var scope = scopes.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<AppDb>();
-                var planner = await Planner.PlannerEngine.Enabled(db, scope.ServiceProvider.GetRequiredService<IConfiguration>(), stop);
-                foreach (var (student, note) in await Notifications.DueReminders(db, last, now, stop, planner))
-                    await push.SendAsync(db, [student], note, stop);
+            last = await RoundAsync(last, clock.GetUtcNow(), stop);
+    }
 
-                // Changes since the last announced moment; the first run starts from now rather than announcing history.
-                var setting = await db.AppSettings.FirstOrDefaultAsync(x => x.Key == Notifications.ChangesSince, stop);
-                if (setting is null)
-                    db.AppSettings.Add(setting = new AppSetting { Key = Notifications.ChangesSince, Value = now.ToString("O"), UpdatedBy = "system", UpdatedAt = now });
-                else
-                {
-                    var since = DateTimeOffset.Parse(setting.Value, System.Globalization.CultureInfo.InvariantCulture);
-                    foreach (var (student, note) in await Notifications.ChangeAlerts(db, since, now, stop))
-                        await push.SendAsync(db, [student], note, stop);
-                    setting.Value = now.ToString("O");
-                    setting.UpdatedAt = now;
-                }
-                await db.SaveChangesAsync(stop);
-                last = now;
-            }
-            catch (Exception e) when (!stop.IsCancellationRequested)
+    /// <summary>One round: reminders due in (last, now], then change alerts, then a semester announcement. Returns where the next round's reminders start.</summary>
+    public async Task<DateTimeOffset> RoundAsync(DateTimeOffset last, DateTimeOffset now, CancellationToken stop)
+    {
+        try
+        {
+            using var scope = scopes.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+            var planner = await Planner.PlannerEngine.Enabled(db, scope.ServiceProvider.GetRequiredService<IConfiguration>(), stop);
+            foreach (var (student, note) in await Notifications.DueReminders(db, last, now, stop, planner))
+                await push.SendAsync(db, [student], note, stop);
+            // The reminders went out: whatever fails below must not send them again next round.
+            last = now;
+        }
+        catch (Exception e) when (!stop.IsCancellationRequested)
+        {
+            log.LogError(e, "Notifications round failed");
+        }
+
+        try
+        {
+            using var scope = scopes.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+            // Changes since the last announced moment; the first run starts from now rather than announcing history.
+            var setting = await db.AppSettings.FirstOrDefaultAsync(x => x.Key == Notifications.ChangesSince, stop);
+            if (setting is null)
+                db.AppSettings.Add(setting = new AppSetting { Key = Notifications.ChangesSince, Value = now.ToString("O"), UpdatedBy = "system", UpdatedAt = now });
+            else
             {
-                log.LogError(e, "Notifications round failed");
+                var since = DateTimeOffset.Parse(setting.Value, System.Globalization.CultureInfo.InvariantCulture);
+                foreach (var (student, note) in await Notifications.ChangeAlerts(db, since, now, stop))
+                    await push.SendAsync(db, [student], note, stop);
+                setting.Value = now.ToString("O");
+                setting.UpdatedAt = now;
+            }
+            await db.SaveChangesAsync(stop);
+        }
+        catch (Exception e) when (!stop.IsCancellationRequested)
+        {
+            log.LogError(e, "Change alerts failed");
+        }
+
+        try
+        {
+            using var scope = scopes.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+            // A semester was published: tell everyone with a device, once.
+            if (await Notifications.PublishAnnouncement(db, stop) is { } announce)
+            {
+                if (announce.StudentIds.Count > 0) await push.SendAsync(db, announce.StudentIds, announce.Note, stop);
+                await db.AppSettings.Where(x => x.Key == Notifications.PublishPending).ExecuteDeleteAsync(stop);
             }
         }
+        catch (Exception e) when (!stop.IsCancellationRequested)
+        {
+            log.LogError(e, "Semester announcement failed");
+        }
+        return last;
     }
 }

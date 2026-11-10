@@ -309,7 +309,9 @@ public static class StudentEndpoints
                 ? await UniSchedule.Api.Planner.PlannerEngine.StudentView(db, current.Id, picks, ct)
                 : (Events: new List<UniSchedule.Api.Planner.PlannerOccurrence>(), Excluded: new Dictionary<string, List<string>>());
             // Weekly classes skip the planner's cancellations and the semester's days off; dated ones keep their date.
-            var daysOff = await DaysOff.ForAsync(db, current.Id, ct);
+            // The semester's first and last teaching day (its days off come with it).
+            var span = await SemesterSpan.ForAsync(db, current, ct);
+            var daysOff = span.DaysOff;
             List<string>? Skipped(Section section, Meeting m)
             {
                 var skipped = (planner.Excluded.GetValueOrDefault(UniSchedule.Api.Planner.PlannerEngine.Fingerprint(section, m)) ?? [])
@@ -331,6 +333,7 @@ public static class StudentEndpoints
             return Results.Ok(new
             {
                 semester = new { current.Id, current.Name },
+                span = new { first = span.First.ToString("yyyy-MM-dd"), last = span.Last.ToString("yyyy-MM-dd") },
                 daysOff = daysOff.OrderBy(d => d.Key).Select(d => new { date = d.Key.ToString("yyyy-MM-dd"), name = d.Value }),
                 plannerEvents = planner.Events,
                 slots = slots.OrderBy(s => s.Date).ThenBy(s => s.Day).ThenBy(s => s.Start).Select(PersonalEndpoints.Of),

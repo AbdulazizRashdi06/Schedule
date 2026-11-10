@@ -33,6 +33,8 @@ public static class Cli
         user.MustChangePassword = true;
         user.FailedLogins = 0;
         user.LockedUntil = null;
+        // A reset signs the account out wherever it's signed in.
+        if (existed) user.SessionVersion++;
         if (!existed) db.AdminUsers.Add(user);
         await db.SaveChangesAsync();
         Console.WriteLine($"{(existed ? "Reset" : "Created")} {role.Value.ToString().ToLowerInvariant()} account \"{username}\".");

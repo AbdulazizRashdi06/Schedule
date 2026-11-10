@@ -110,6 +110,40 @@ public sealed class ImportTests : IDisposable
         Assert.Equal(2, await db.Picks.CountAsync(x => x.StudentId == student.Id && x.SectionId != null));
     }
 
+    static Meeting M(int day, string room) => new() { Day = day, Start = new(8, 0), End = new(9, 30), Room = room };
+
+    [Fact]
+    public void A_room_change_on_one_day_is_a_change_and_reordered_rows_are_not()
+    {
+        // Sun A101, Tue A101, Thu Lab L2 → Tue moves to Lab L2: the distinct rooms are the same, but it's still a change.
+        Meeting[] old = [M(0, "A101"), M(2, "A101"), M(4, "Lab L2")];
+        var moved = new[] { M(0, "A101"), M(2, "Lab L2"), M(4, "Lab L2") }.Select(ParsedMeeting.Of);
+        Assert.Equal("Room: Tue A101 → Lab L2", ScheduleImport.DescribeChange("Dr. A", old, "Dr. A", moved));
+
+        // The same meetings listed in another order are no change.
+        var reordered = new[] { M(4, "Lab L2"), M(0, "A101"), M(2, "A101") }.Select(ParsedMeeting.Of);
+        Assert.Null(ScheduleImport.DescribeChange("Dr. A", old, "Dr. A", reordered));
+        Meeting[] twoRooms = [M(0, "B2"), M(2, "A1")];
+        Assert.Null(ScheduleImport.DescribeChange("Dr. A", twoRooms, "Dr. A", new[] { M(2, "A1"), M(0, "B2") }.Select(ParsedMeeting.Of)));
+
+        // Every meeting moving to one new room keeps the short wording.
+        Assert.Equal("Room: A101 → B2", ScheduleImport.DescribeChange("Dr. A", [M(0, "A101"), M(2, "A101")], "Dr. A", new[] { M(0, "B2"), M(2, "B2") }.Select(ParsedMeeting.Of)));
+    }
+
+    [Fact]
+    public async Task A_one_day_room_change_is_saved_on_upload()
+    {
+        var csv = Header + "CS301,Networks,CS,Core,3,1,Dr. N,Sun/Tue,08:00-09:30,A101\nCS301,Networks,CS,Core,3,1,Dr. N,Thu,08:00-09:30,Lab L2\n";
+        await Apply(csv);
+        semester.IsCurrent = true;
+        await db.SaveChangesAsync();
+        await Apply(Header + "CS301,Networks,CS,Core,3,1,Dr. N,Sun,08:00-09:30,A101\nCS301,Networks,CS,Core,3,1,Dr. N,Tue/Thu,08:00-09:30,Lab L2\n");
+        db.ChangeTracker.Clear();
+        var sec = await db.Sections.Include(s => s.Meetings).SingleAsync(s => s.Course.Code == "CS301");
+        Assert.Equal("Lab L2", sec.Meetings.Single(m => m.Day == 2).Room);
+        Assert.Equal("Room: Tue A101 → Lab L2", sec.ChangeSummary);
+    }
+
     [Fact]
     public async Task Changes_to_an_unpublished_semester_get_no_badge()
     {

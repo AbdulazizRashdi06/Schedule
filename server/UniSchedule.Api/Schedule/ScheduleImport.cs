@@ -185,12 +185,28 @@ public static class ScheduleImport
             if (!string.Equals(oldInstructor, newInstructor, StringComparison.Ordinal)) parts.Add($"Instructor: {(oldInstructor.Length > 0 ? oldInstructor : "none")} → {(newInstructor.Length > 0 ? newInstructor : "none")}");
             return parts.Count == 0 ? null : string.Join("; ", parts);
         }
-        var oldTimes = string.Join(", ", oldList.OrderBy(m => m.Day).ThenBy(m => m.Start).Select(m => $"{Timeslots.DayNames[m.Day]} {Timeslots.Format(m.Start)}–{Timeslots.Format(m.End)}"));
-        var newTimes = string.Join(", ", newList.OrderBy(m => m.Day).ThenBy(m => m.Start).Select(m => $"{Timeslots.DayNames[m.Day]} {Timeslots.Format(m.Start)}–{Timeslots.Format(m.End)}"));
-        if (oldTimes != newTimes) parts.Add($"Time: {oldTimes} → {newTimes}");
-        var oldRooms = string.Join(", ", oldList.Select(m => m.Room).Where(r => r.Length > 0).Distinct());
-        var newRooms = string.Join(", ", newList.Select(m => m.Room).Where(r => r.Length > 0).Distinct());
-        if (oldRooms != newRooms) parts.Add($"Room: {(oldRooms.Length > 0 ? oldRooms : "none")} → {(newRooms.Length > 0 ? newRooms : "none")}");
+        // Sorted, so the same meetings listed in another order are no change.
+        var oldSorted = oldList.OrderBy(m => m.Day).ThenBy(m => m.Start).ThenBy(m => m.End).ThenBy(m => m.Room, StringComparer.Ordinal).ToList();
+        var newSorted = newList.OrderBy(m => m.Day).ThenBy(m => m.Start).ThenBy(m => m.End).ThenBy(m => m.Room, StringComparer.Ordinal).ToList();
+        var oldTimes = string.Join(", ", oldSorted.Select(m => $"{Timeslots.DayNames[m.Day]} {Timeslots.Format(m.Start)}–{Timeslots.Format(m.End)}"));
+        var newTimes = string.Join(", ", newSorted.Select(m => $"{Timeslots.DayNames[m.Day]} {Timeslots.Format(m.Start)}–{Timeslots.Format(m.End)}"));
+        static string RoomText(string r) => r.Length > 0 ? r : "none";
+        if (oldTimes != newTimes)
+        {
+            parts.Add($"Time: {oldTimes} → {newTimes}");
+            var oldRooms = string.Join(", ", oldSorted.Select(m => m.Room).Where(r => r.Length > 0).Distinct().Order(StringComparer.Ordinal));
+            var newRooms = string.Join(", ", newSorted.Select(m => m.Room).Where(r => r.Length > 0).Distinct().Order(StringComparer.Ordinal));
+            if (oldRooms != newRooms) parts.Add($"Room: {RoomText(oldRooms)} → {RoomText(newRooms)}");
+        }
+        else
+        {
+            // Same times: compare each meeting's room, so moving one day's class to another room is caught.
+            var moved = oldSorted.Zip(newSorted).Where(p => p.First.Room != p.Second.Room).ToList();
+            if (moved.Count > 0 && moved.Count == oldSorted.Count && moved.Select(p => (p.First.Room, p.Second.Room)).Distinct().Count() == 1)
+                parts.Add($"Room: {RoomText(moved[0].First.Room)} → {RoomText(moved[0].Second.Room)}");
+            else if (moved.Count > 0)
+                parts.Add("Room: " + string.Join(", ", moved.Select(p => $"{Timeslots.DayNames[p.First.Day]} {RoomText(p.First.Room)} → {RoomText(p.Second.Room)}")));
+        }
         if (!string.Equals(oldInstructor, newInstructor, StringComparison.Ordinal)) parts.Add($"Instructor: {(oldInstructor.Length > 0 ? oldInstructor : "none")} → {(newInstructor.Length > 0 ? newInstructor : "none")}");
         return parts.Count == 0 ? null : string.Join("; ", parts);
     }

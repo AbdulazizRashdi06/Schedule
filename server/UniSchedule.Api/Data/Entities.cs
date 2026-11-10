@@ -83,6 +83,8 @@ public class AdminUser
     public DateTimeOffset CreatedAt { get; set; }
     public string? CreatedBy { get; set; }
     public DateTimeOffset? LastSeenAt { get; set; }
+    /// <summary>Goes up when the password is changed or reset: sign-ins from before then stop working.</summary>
+    public int SessionVersion { get; set; }
 }
 
 public class LoginCode

@@ -137,6 +137,59 @@ public class AuthFlowTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task Test_mode_never_shows_a_batch_reps_code()
+    {
+        var id = NewId();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+            var s = new Student { UniversityId = id, Email = StudentIds.EmailFor(id), CreatedAt = DateTimeOffset.UtcNow };
+            db.Students.Add(s);
+            await db.SaveChangesAsync();
+            db.BatchRepAssignments.Add(new UniSchedule.Api.Planner.BatchRepAssignment { StudentId = s.Id, HomeFamily = "COMP", AssignedBy = "test", AssignedAt = DateTimeOffset.UtcNow });
+            await db.SaveChangesAsync();
+        }
+        var sent = await Json(await factory.Client().PostAsJsonAsync("/api/auth/request-code", new { universityId = id }));
+        Assert.Equal(JsonValueKind.Null, sent.GetProperty("testCode").ValueKind);
+        // An ordinary student still gets one.
+        var other = await Json(await factory.Client().PostAsJsonAsync("/api/auth/request-code", new { universityId = NewId() }));
+        Assert.Equal(JsonValueKind.String, other.GetProperty("testCode").ValueKind);
+    }
+
+    [Fact]
+    public async Task Changing_or_resetting_a_password_signs_out_other_sessions()
+    {
+        await factory.AddAdmin("owner-sv", "owner-password-1", AdminRole.Owner, mustChange: false);
+        var rsa = await factory.AddAdmin("rsa-sv", "rsa-password-1", AdminRole.Rsa, mustChange: false);
+        async Task<HttpClient> SignIn(string user, string password)
+        {
+            var c = factory.Client();
+            Assert.Equal(HttpStatusCode.OK, (await c.PostAsJsonAsync("/api/auth/admin-login", new { username = user, password })).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await c.GetAsync("/api/admin/stats")).StatusCode);
+            return c;
+        }
+
+        // Changing it: this browser stays signed in, the other one is signed out.
+        var here = await SignIn("rsa-sv", "rsa-password-1");
+        var there = await SignIn("rsa-sv", "rsa-password-1");
+        Assert.Equal(HttpStatusCode.NoContent, (await here.PostAsJsonAsync("/api/auth/change-password", new { currentPassword = "rsa-password-1", newPassword = "a-much-better-password-2" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await here.GetAsync("/api/admin/stats")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await there.GetAsync("/api/admin/stats")).StatusCode);
+
+        // An owner resetting it signs out everywhere.
+        var owner = await SignIn("owner-sv", "owner-password-1");
+        Assert.Equal(HttpStatusCode.OK, (await owner.PostAsync($"/api/admin/accounts/{rsa.Id}/reset-password", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await here.GetAsync("/api/admin/stats")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync("/api/admin/stats")).StatusCode);
+
+        // So does a reset from the server command line.
+        var ownerAgain = await SignIn("owner-sv", "owner-password-1");
+        using (var scope = factory.Services.CreateScope())
+            Assert.Equal(0, await UniSchedule.Api.Cli.RunCreateAdmin(scope.ServiceProvider.GetRequiredService<AppDb>(), ["owner-sv", "owner"]));
+        Assert.Equal(HttpStatusCode.Unauthorized, (await ownerAgain.GetAsync("/api/admin/stats")).StatusCode);
+    }
+
+    [Fact]
     public async Task Students_cannot_reach_the_dashboard_and_guests_cannot_reach_anything()
     {
         var student = await SignInStudent(NewId());

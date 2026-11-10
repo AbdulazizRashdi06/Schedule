@@ -25,14 +25,20 @@ const publish = (r: Reply) => {
 /** Forgets the signed-out student's list, so whoever signs in next doesn't see it while theirs loads. */
 export function resetAbsences() {
   shared = null
+  generation++
 }
+/** Goes up on sign-out, so a list that arrives after it isn't kept for the next student. */
+let generation = 0
 
 /** The student's missed classes and the attendance limit (if the university set one), kept in step across pages. */
 export function useAbsences() {
   const [reply, setReply] = useState<Reply | null>(shared)
   useEffect(() => {
     listeners.add(setReply)
-    api.get<Reply>('/me/absences').then(publish, () => {})
+    const asked = generation
+    api.get<Reply>('/me/absences').then((r) => {
+      if (asked === generation) publish(r)
+    }, () => {})
     return () => {
       listeners.delete(setReply)
     }

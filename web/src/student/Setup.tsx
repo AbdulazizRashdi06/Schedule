@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api, errorText, store } from '../lib/api'
+import { api, errorText } from '../lib/api'
 import { useSession } from '../lib/session'
+import { ENABLE_MESSAGE, deviceSubscribed, enableDevice } from '../lib/push'
 import type { Course, CourseType, Major, Me, Options, PickRow } from '../lib/types'
 import { yearName } from '../lib/year'
 import { ErrorText, Icon, Sk, cx } from '../components/ui'
@@ -318,12 +319,30 @@ function YearStep({ me, onNext }: { me: Me; onNext: () => void }) {
   )
 }
 
-/** Nothing published yet: an empty week with a shimmer. "Notify me" is a visual toggle until notifications exist. */
+/**
+ * Nothing published yet: an empty week with a shimmer. "Notify me" turns on notifications for this device; the server
+ * tells every device with them on when a semester comes out.
+ */
 function Waiting({ me, onChange }: { me: Me; onChange: () => void }) {
   const { logout } = useSession()
   const navigate = useNavigate()
-  const [notify, setNotify] = useState(() => store.get('notify-publish') === '1')
+  const [notify, setNotify] = useState(false)
+  const [notifyError, setNotifyError] = useState('')
   const [confirmOut, setConfirmOut] = useState(false)
+  useEffect(() => {
+    deviceSubscribed().then((on) => on && setNotify(true), () => {})
+  }, [])
+  const turnOn = async () => {
+    setNotifyError('')
+    try {
+      // Straight from the tap: the browser only shows its permission prompt in answer to one.
+      const result = await enableDevice()
+      if (result === 'on') setNotify(true)
+      else setNotifyError(ENABLE_MESSAGE[result])
+    } catch (e) {
+      setNotifyError(errorText(e))
+    }
+  }
   const out = async () => {
     await logout()
     navigate('/login', { replace: true })
@@ -359,8 +378,7 @@ function Waiting({ me, onChange }: { me: Me; onChange: () => void }) {
           type="button"
           aria-pressed={notify}
           onClick={() => {
-            store.set('notify-publish', notify ? '0' : '1')
-            setNotify(!notify)
+            if (!notify) void turnOn()
           }}
           style={delay(150)}
           className={cx('press rise flex h-[60px] items-center justify-center rounded-full text-[18px] font-extrabold', notify ? 'bg-sky text-navy' : 'bg-navy text-cream')}
@@ -370,6 +388,7 @@ function Waiting({ me, onChange }: { me: Me; onChange: () => void }) {
             {notify ? 'We’ll ping you' : 'Notify me when it’s out'}
           </span>
         </button>
+        <ErrorText className="justify-center">{notifyError}</ErrorText>
         <p className="rise text-center text-[14px] font-semibold" style={delay(200)}>
           Wrong account?{' '}
           <button type="button" onClick={out} className="underline underline-offset-2">

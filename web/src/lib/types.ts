@@ -115,6 +115,8 @@ export interface Timetable {
   needsSection: { courseId: number; code: string; name: string; removed: boolean }[]
   clashes: [number, number][]
   slots?: CustomSlot[]
+  /** The semester's first and last teaching day: weekly classes and slots only meet between them. Missing when unknown. */
+  span?: { first: string; last: string } | null
 }
 
 export interface StudentPlannerEvent {

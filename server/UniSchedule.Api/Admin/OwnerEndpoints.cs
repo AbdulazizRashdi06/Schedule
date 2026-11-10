@@ -93,6 +93,8 @@ public static partial class OwnerEndpoints
             user.MustChangePassword = true;
             user.FailedLogins = 0;
             user.LockedUntil = null;
+            // Wherever the account is signed in now gets signed out.
+            user.SessionVersion++;
             await db.SaveChangesAsync(ct);
             return Results.Ok(new { user.Id, user.Username, temporaryPassword = password });
         });

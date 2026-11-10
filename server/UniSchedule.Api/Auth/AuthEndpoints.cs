@@ -97,9 +97,10 @@ public static class AuthEndpoints
             }
 
             // Test mode (Auth:TestMode) shows the code in the app while real email isn't set up.
-            // Never for owners: their accounts can see every student.
+            // Never for owners (their accounts can see every student) or batch reps (they publish onto other students' timetables).
             var isOwner = IsConfiguredOwner(config, id) || await db.Students.AnyAsync(s => s.UniversityId == id && s.IsOwner, ct);
-            var showCode = config.GetValue<bool>("Auth:TestMode") && !isOwner;
+            var isRep = await db.BatchRepAssignments.AnyAsync(r => db.Students.Any(s => s.Id == r.StudentId && s.UniversityId == id), ct);
+            var showCode = config.GetValue<bool>("Auth:TestMode") && !isOwner && !isRep;
             return Results.Ok(new { email = address, resendAfterSeconds = (int)LoginCodes.ResendAfter.TotalSeconds, testCode = showCode ? code : null });
         }).RequireRateLimiting(RequestCodeLimit);
 
@@ -205,7 +206,10 @@ public static class AuthEndpoints
             if (pw == body.CurrentPassword) return Errors.BadRequest("Pick a different password from the temporary one.");
             user.PasswordHash = Hasher.HashPassword(user, pw);
             user.MustChangePassword = false;
+            // Signs out every other place this account is signed in; this one gets a fresh cookie and stays.
+            user.SessionVersion++;
             await db.SaveChangesAsync(ct);
+            await Session.SignInAdminAsync(http, user);
             return Results.NoContent();
         }).RequireAuthorization();
 

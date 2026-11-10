@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
 import { DAY_SHORT } from '../lib/time'
-import { TYPE_NAME, inWeek, initials, isoDate, nowMinutes, onDate, type Session } from '../lib/slots'
+import { TYPE_NAME, addDays, inWeek, initials, isoDate, nowMinutes, onDate, type Session } from '../lib/slots'
 import { ErrorText, Sk, cx } from '../components/ui'
 import ClassNotes from './ClassNotes'
 import NotFound from './NotFound'
@@ -166,6 +166,8 @@ function until(s: Session, now: Date) {
   }
   let days = (s.meeting.day - now.getDay() + 7) % 7
   if (days === 0 && s.start <= nowMin) days = 7
-  while (s.meeting.excludedDates?.includes(new Date(now.getFullYear(), now.getMonth(), now.getDate() + days, 12).toLocaleDateString('en-CA'))) days += 7
-  return days * 1440 + s.start - nowMin
+  // Skip the weeks it doesn't meet: days off, and weeks before or after the teaching weeks (a year on is as far as we look).
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  for (; days < 366; days += 7) if (onDate(s, addDays(today, days))) return days * 1440 + s.start - nowMin
+  return Infinity
 }

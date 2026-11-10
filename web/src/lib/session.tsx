@@ -3,6 +3,7 @@ import { ApiError, api, store } from './api'
 import { resetAbsences } from './absences'
 import { disableDevice, resetNotifySettings } from './push'
 import type { SessionInfo } from './types'
+import { resetTimetable } from '../student/timetable'
 
 interface SessionCtx {
   session: SessionInfo | null
@@ -24,7 +25,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setSession(s)
       return s
     } catch (e) {
-      const saved = e instanceof ApiError && e.status === 0 ? store.get(SAVED) : null
+      // A signed-out answer is a 200 with no kind, so a failed request never means signed out: offline (0) or the
+      // server restarting (5xx) keeps the saved session.
+      const failed = e instanceof ApiError && (e.status === 0 || e.status >= 500)
+      const saved = failed ? store.get(SAVED) : null
       const s: SessionInfo = saved ? JSON.parse(saved) : { kind: null }
       setSession(s)
       return s
@@ -39,6 +43,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     store.remove('timetable')
     resetAbsences()
     resetNotifySettings()
+    resetTimetable()
     setSession({ kind: null })
   }, [])
   useEffect(() => {

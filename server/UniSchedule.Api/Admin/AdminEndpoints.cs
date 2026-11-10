@@ -67,6 +67,11 @@ public static class AdminEndpoints
                 .ExecuteUpdateAsync(u => u.SetProperty(s => s.ChangedAt, (DateTimeOffset?)null).SetProperty(s => s.ChangeSummary, (string?)null), ct);
             semester.IsCurrent = true;
             semester.PublishedAt = clock.GetUtcNow();
+            // The notification worker tells students with notifications on that it's out (Notifications.PublishAnnouncement).
+            var pending = await db.AppSettings.FirstOrDefaultAsync(x => x.Key == Students.Notifications.PublishPending, ct);
+            if (pending is null) db.AppSettings.Add(pending = new AppSetting { Key = Students.Notifications.PublishPending, UpdatedBy = "system" });
+            pending.Value = semester.Name;
+            pending.UpdatedAt = semester.PublishedAt.Value;
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             return Results.Ok(Dto.Of(semester));

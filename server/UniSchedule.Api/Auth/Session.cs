@@ -22,13 +22,17 @@ public static class Session
     public const string OwnerPolicy = "owner";
     public const string RepPolicy = "batch-rep";
 
-    public static Task SignInStudentAsync(HttpContext http, Student s) => SignIn(http, "student", s.Id);
-    public static Task SignInAdminAsync(HttpContext http, AdminUser a) => SignIn(http, "admin", a.Id);
+    /// <summary>The account's <see cref="AdminUser.SessionVersion"/> when the cookie was made. Missing = 0.</summary>
+    public const string VersionClaim = "session-version";
 
-    private static Task SignIn(HttpContext http, string kind, int id)
+    public static Task SignInStudentAsync(HttpContext http, Student s) => SignIn(http, "student", s.Id);
+    public static Task SignInAdminAsync(HttpContext http, AdminUser a) =>
+        SignIn(http, "admin", a.Id, new Claim(VersionClaim, a.SessionVersion.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+
+    private static Task SignIn(HttpContext http, string kind, int id, params Claim[] extra)
     {
         var identity = new ClaimsIdentity(
-            [new Claim(ClaimTypes.NameIdentifier, id.ToString()), new Claim(KindClaim, kind)],
+            [new Claim(ClaimTypes.NameIdentifier, id.ToString()), new Claim(KindClaim, kind), .. extra],
             CookieAuthenticationDefaults.AuthenticationScheme);
         return http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity),
             new AuthenticationProperties { IsPersistent = true });
@@ -65,8 +69,11 @@ public static class Session
         }
         else if (principal.Kind() == "admin")
         {
-            var a = await db.AdminUsers.Where(x => x.Id == id).Select(x => new { x.Role, x.MustChangePassword, x.LastSeenAt }).FirstOrDefaultAsync();
+            var a = await db.AdminUsers.Where(x => x.Id == id).Select(x => new { x.Role, x.MustChangePassword, x.LastSeenAt, x.SessionVersion }).FirstOrDefaultAsync();
             if (a is null) { await Reject(ctx); return; }
+            // A password change or reset since this cookie was made signs it out. Cookies from before versions existed count as 0.
+            var version = int.TryParse(principal.FindFirstValue(VersionClaim), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0;
+            if (version != a.SessionVersion) { await Reject(ctx); return; }
             if (a.LastSeenAt is null || a.LastSeenAt < stale)
                 await db.AdminUsers.Where(x => x.Id == id).ExecuteUpdateAsync(u => u.SetProperty(x => x.LastSeenAt, now));
             identity.AddClaim(new Claim(RoleClaim, a.Role == AdminRole.Owner ? "owner" : "rsa"));

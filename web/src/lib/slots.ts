@@ -34,6 +34,9 @@ export interface Session {
   notes: number
   /** Note counts per date ("2026-11-03"), for each week a weekly class meets. */
   noteDates: Record<string, number>
+  /** For a weekly class or slot: the semester's first and last teaching day ("2026-09-06"), outside which it doesn't meet. */
+  firstDate?: string
+  lastDate?: string
 }
 
 /** Notes on a session as it falls on a date: whole-class notes plus that day's session notes, weekly classes included. */
@@ -111,6 +114,13 @@ export function buildSessions(tt: Timetable): Session[] {
     const start = minutes(event.start), end = minutes(event.end)
     out.push({ cls, meeting, type: event.kind === 'exam' ? 'exam' : sessionType(event.room), ...slotSpan(start, end), start, end, clash: false, notes: 0, noteDates: {}, plannerEventId: event.id, plannerNotes: event.notes })
   }
+  // Weekly classes and slots only meet in the teaching weeks (planner events are all dated, so they're left alone).
+  if (tt.span)
+    for (const s of out)
+      if (!s.meeting.date) {
+        s.firstDate = tt.span.first
+        s.lastDate = tt.span.last
+      }
   for (const a of out)
     a.clash = out.some(
       (b) =>
@@ -143,14 +153,19 @@ export const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMo
 /** "2026-10-13" for a local date. */
 export const isoDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
-/** Whether a session happens on a date: a dated class only on its date, a weekly one on its weekday. */
-export const onDate = (s: Session, d: Date) => !s.meeting.excludedDates?.includes(isoDate(d)) && (s.meeting.date ? s.meeting.date === isoDate(d) : s.meeting.day === d.getDay())
+/** Whether a session happens on a date: a dated class only on its date, a weekly one on its weekday within the teaching weeks. */
+export function onDate(s: Session, d: Date) {
+  const iso = isoDate(d)
+  if (s.meeting.excludedDates?.includes(iso)) return false
+  if (s.meeting.date) return s.meeting.date === iso
+  return s.meeting.day === d.getDay() && !(s.firstDate && iso < s.firstDate) && !(s.lastDate && iso > s.lastDate)
+}
 
-/** The sessions of the seven days from `start`: weekly classes, plus dated classes that fall in those days. */
+/** The sessions of the seven days from `start`: weekly classes meeting that week, plus dated classes that fall in those days. */
 export function inWeek(sessions: Session[], start: Date) {
   const from = isoDate(start)
   const to = isoDate(addDays(start, 6))
-  return sessions.filter((s) => s.meeting.date ? s.meeting.date >= from && s.meeting.date <= to : !s.meeting.excludedDates?.includes(isoDate(addDays(start, (s.meeting.day - start.getDay() + 7) % 7))))
+  return sessions.filter((s) => s.meeting.date ? s.meeting.date >= from && s.meeting.date <= to : onDate(s, addDays(start, (s.meeting.day - start.getDay() + 7) % 7)))
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']

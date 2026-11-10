@@ -37,16 +37,22 @@ async function fetchData(): Promise<Data> {
 let inflight: Promise<Data> | null = null
 let loadedAt = 0
 const FRESH_MS = 5_000
+/** Goes up on sign-out, so a reply asked for by the signed-out student is thrown away rather than shown to the next. */
+let generation = 0
 function load(): Promise<Data> {
-  inflight ??= fetchData()
+  if (inflight) return inflight
+  const asked = generation
+  const request: Promise<Data> = fetchData()
     .then((d) => {
+      if (asked !== generation) throw new Error('Signed out')
       loadedAt = Date.now()
       return d
     })
     .finally(() => {
-      inflight = null
+      if (inflight === request) inflight = null
     })
-  return inflight
+  inflight = request
+  return request
 }
 
 export function useTimetable() {
@@ -103,6 +109,14 @@ export function useTimetable() {
 /** Forget the cached timetable (after the student edits their courses). */
 export const clearTimetableCache = () => {
   cache = null
+}
+
+/** On sign-out: forget everything about this student, including a load still on its way. */
+export const resetTimetable = () => {
+  cache = null
+  inflight = null
+  loadedAt = 0
+  generation++
 }
 
 /** Dev only: `?now=2026-10-14T10:05` pins the clock, to check the live and between-classes states. */

@@ -77,11 +77,19 @@ const publish = (s: NotifySettings) => {
 /** Forgets the signed-out student's settings, so whoever signs in next doesn't see them while theirs load. */
 export function resetNotifySettings() {
   shared = null
+  generation++
 }
+/** Goes up on sign-out, so settings that arrive after it aren't kept for the next student. */
+let generation = 0
 
 export function useNotifySettings() {
   const [settings, setSettings] = useState<NotifySettings | null>(shared)
-  const reload = useCallback(() => api.get<NotifySettings>('/me/notifications').then(publish, () => {}), [])
+  const reload = useCallback(() => {
+    const asked = generation
+    return api.get<NotifySettings>('/me/notifications').then((s) => {
+      if (asked === generation) publish(s)
+    }, () => {})
+  }, [])
   useEffect(() => {
     listeners.add(setSettings)
     void reload()
