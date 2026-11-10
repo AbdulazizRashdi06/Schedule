@@ -18,14 +18,14 @@ export default function ChangeYear({ open, onClose, current }: { open: boolean; 
     <Modal open={open} onClose={onClose} label="Change my year">
       <h2 className="text-[30px] leading-none font-extrabold tracking-[-0.03em]">Change my year</h2>
       <div role="radiogroup" aria-label="Study year" className="grid grid-cols-3 gap-2">
-        {YEARS.map((y) => (
+        {YEARS.map((y, i) => (
           <button
             key={y}
             type="button"
             role="radio"
             aria-checked={year === y}
             onClick={() => setYear(y)}
-            className={cx('press h-14 rounded-[16px] text-[17px] font-extrabold', year === y ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_rgb(11_25_87/0.16)]')}
+            className={cx('press h-14 rounded-[16px] text-[17px] font-extrabold', i === 0 && 'col-span-3', year === y ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_rgb(11_25_87/0.16)]')}
           >
             {yearName(y)}
           </button>
