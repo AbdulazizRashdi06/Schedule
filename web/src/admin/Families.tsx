@@ -25,7 +25,7 @@ interface DefaultRow {
   year: number
 }
 
-const YEARS = [0, 1, 2, 3, 4, 5]
+const YEARS = [0, 1, 2, 3, 4]
 /** One target's defaults: year → course codes. */
 type Board = Record<number, string[]>
 const norm = (code: string) => code.replace(/\s+/g, '').toUpperCase()

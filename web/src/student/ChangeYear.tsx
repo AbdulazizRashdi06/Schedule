@@ -4,7 +4,7 @@ import { api, errorText } from '../lib/api'
 import { yearName } from '../lib/year'
 import { Button, ErrorText, Modal, cx } from '../components/ui'
 
-const YEARS = [0, 1, 2, 3, 4, 5]
+const YEARS = [0, 1, 2, 3, 4]
 
 /** Change study year after setup (postponed a year, or picked the wrong one). Core courses switch to the new year's. */
 export default function ChangeYear({ open, onClose, current }: { open: boolean; onClose: () => void; current: number | null }) {
