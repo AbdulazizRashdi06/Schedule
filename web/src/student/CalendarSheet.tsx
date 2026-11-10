@@ -40,9 +40,9 @@ export default function CalendarSheet({ open, onClose }: { open: boolean; onClos
     ? [
         { name: 'Apple', hint: 'iPhone, iPad, Mac', href: webcal },
         { name: 'Google', hint: 'Every phone on your account', href: google },
-        { name: 'Outlook', hint: 'Uni Microsoft account', href: `https://outlook.office.com/calendar/0/addfromweb?url=${encodeURIComponent(url)}&name=Classy` },
+        { name: 'Outlook', hint: 'Uni Microsoft account', href: `https://outlook.office.com/calendar/0/addfromweb?url=${encodeURIComponent(url)}&name=Classy%20Schedule` },
         // Samsung Calendar shows the Google account's calendars, so it's added through Google.
-        { name: 'Samsung', hint: 'Via Google, then turn on Classy', href: google },
+        { name: 'Samsung', hint: 'Via Google, then turn on Classy Schedule', href: google },
       ]
     : []
 
@@ -90,7 +90,7 @@ export default function CalendarSheet({ open, onClose }: { open: boolean; onClos
             ))}
           </ul>
           {/* Samsung Calendar can't subscribe to a link, only import a file once. Same origin, so `download` works. */}
-          <a href={url} download="Classy.ics" className="tint -mt-0.5 rounded-[12px] py-1 text-[13px] leading-snug font-semibold text-muted">
+          <a href={url} download="Classy Schedule.ics" className="tint -mt-0.5 rounded-[12px] py-1 text-[13px] leading-snug font-semibold text-muted">
             <span className="font-extrabold text-navy underline underline-offset-2">Samsung without Google? Download the file</span> and open it in Samsung Calendar. It adds your classes once and won’t update when they change.
           </a>
 

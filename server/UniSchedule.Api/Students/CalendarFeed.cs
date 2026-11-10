@@ -161,7 +161,7 @@ public static partial class CalendarFeed
         ics.Line("PRODID:-//Classy//Timetable//EN");
         ics.Line("CALSCALE:GREGORIAN");
         ics.Line("METHOD:PUBLISH");
-        ics.Line("X-WR-CALNAME:Classy");
+        ics.Line("X-WR-CALNAME:Classy Schedule");
         ics.Line("X-WR-TIMEZONE:Asia/Muscat");
         // A hint to refresh hourly; each calendar app decides for itself in the end.
         ics.Line("REFRESH-INTERVAL;VALUE=DURATION:PT1H");
