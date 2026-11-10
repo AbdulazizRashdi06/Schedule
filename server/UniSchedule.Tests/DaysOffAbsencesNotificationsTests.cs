@@ -103,7 +103,8 @@ public class DaysOffAbsencesNotificationsTests(ApiFactory factory) : IClassFixtu
         // The calendar feed leaves that Sunday out; free rooms says it's a day off and R1 is free.
         var url = (await Json(await s.GetAsync("/api/me/calendar"))).GetProperty("url").GetString()!;
         var ics = await (await factory.Client().GetAsync(new Uri(url).PathAndQuery)).Content.ReadAsStringAsync();
-        Assert.Contains("EXDATE;TZID=Asia/Muscat:20261018T080000\r\n", ics);
+        Assert.DoesNotContain("DTSTART;TZID=Asia/Muscat:20261018T080000\r\n", ics);
+        Assert.Contains("DTSTART;TZID=Asia/Muscat:20261025T080000\r\n", ics);
         var rooms = await Json(await s.GetAsync("/api/rooms/free?date=2026-10-18&at=08:30"));
         Assert.Equal("Test Day", rooms.GetProperty("dayOff").GetString());
         Assert.Contains(rooms.GetProperty("rooms").EnumerateArray(), r => r.GetProperty("room").GetString() == "R1");

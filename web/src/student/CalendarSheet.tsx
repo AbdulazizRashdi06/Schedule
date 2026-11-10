@@ -89,6 +89,10 @@ export default function CalendarSheet({ open, onClose }: { open: boolean; onClos
               </li>
             ))}
           </ul>
+          {/* Samsung Calendar can't subscribe to a link, only import a file once. Same origin, so `download` works. */}
+          <a href={url} download="Classy.ics" className="tint -mt-0.5 rounded-[12px] py-1 text-[13px] leading-snug font-semibold text-muted">
+            <span className="font-extrabold text-navy underline underline-offset-2">Samsung without Google? Download the file</span> and open it in Samsung Calendar. It adds your classes once and won’t update when they change.
+          </a>
 
           {/* The same private link as plain text: saved in ChatGPT's memory, it opens it when asked about classes. */}
           <section className="mt-2 flex flex-col gap-3 rounded-[24px] bg-navy p-5 text-cream">

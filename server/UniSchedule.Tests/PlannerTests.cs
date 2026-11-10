@@ -157,7 +157,8 @@ public class PlannerTests
         // Calendar feed: that Sunday is left out and the Monday is added.
         var links = await Json(await w.Student.GetAsync("/api/me/calendar"));
         var ics = await (await w.Factory.Client().GetAsync(new Uri(links.GetProperty("url").GetString()!).PathAndQuery)).Content.ReadAsStringAsync();
-        Assert.Contains("EXDATE;TZID=Asia/Muscat:20261108T080000\r\n", ics);
+        Assert.DoesNotContain("DTSTART;TZID=Asia/Muscat:20261108T080000\r\n", ics);
+        Assert.Contains("DTSTART;TZID=Asia/Muscat:20261115T080000\r\n", ics);
         Assert.Contains($"UID:planner-{eventId}-20261109@classy", ics);
         var text = await (await w.Factory.Client().GetAsync(new Uri(links.GetProperty("textUrl").GetString()!).PathAndQuery + "?from=2026-11-08&days=2")).Content.ReadAsStringAsync();
         Assert.Contains("Sun 8 Nov 2026 · week 8\n- No classes", text.Replace("\r\n", "\n"));

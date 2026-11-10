@@ -69,9 +69,12 @@ public class CalendarTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var ics = await feed.Content.ReadAsStringAsync();
         Assert.StartsWith("BEGIN:VCALENDAR\r\n", ics);
         Assert.Contains("SUMMARY:Weekly Things · Lecture\r\n", ics);
-        // Weekly from week 1's Sunday (6 Sep) to the end of week 15 (Sat 19 Dec, 23:59:59 in Oman).
+        // Weekly from week 1's Sunday (6 Sep) to week 15's (13 Dec), each meeting its own event: no repeat rules,
+        // which Samsung Calendar dropped.
         Assert.Contains("DTSTART;TZID=Asia/Muscat:20260906T080000\r\n", ics);
-        Assert.Contains("RRULE:FREQ=WEEKLY;UNTIL=20261219T195959Z\r\n", ics);
+        Assert.Contains("DTSTART;TZID=Asia/Muscat:20261213T080000\r\n", ics);
+        Assert.DoesNotContain("DTSTART;TZID=Asia/Muscat:20261220T080000\r\n", ics);
+        Assert.DoesNotContain("RRULE", ics);
         Assert.Contains("SUMMARY:Dated Thing · Lab\r\n", ics);
         Assert.Contains("DTSTART;TZID=Asia/Muscat:20261019T113000\r\n", ics);
         Assert.Contains("LOCATION:Lab L2\r\n", ics);

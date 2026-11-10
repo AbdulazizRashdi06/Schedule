@@ -191,37 +191,31 @@ public static partial class CalendarFeed
         return ics.ToString();
     }
 
-    /// <summary>One event: on its date, or weekly on its weekday from the semester's first week to its last.</summary>
+    /// <summary>
+    /// One event on its date, or one event per week it meets. Weekly classes are written out date by date rather than as a
+    /// repeating rule: Samsung Calendar (through Google) dropped repeating events, and this way days off just don't appear.
+    /// </summary>
     static void Event(Ics ics, string uid, string stamp, string summary, string location, string description, StudentSchedule.Item i, SemesterSpan span)
     {
-        DateOnly on;
         if (i.Date is DateOnly date)
         {
             // A dated class the batch rep cancelled or moved doesn't happen.
-            if (i.Skip.Contains(date)) return;
-            on = date;
+            if (!i.Skip.Contains(date)) One(ics, uid, stamp, summary, location, description, i, date);
+            return;
         }
-        else
-        {
-            on = span.First.AddDays(i.Day);
-            if (on > span.Last) return;
-        }
+        var at = uid.IndexOf('@');
+        for (var d = span.First; d <= span.Last; d = d.AddDays(1))
+            if (span.Happens(i, d))
+                One(ics, $"{uid[..at]}-{d:yyyyMMdd}{uid[at..]}", stamp, summary, location, description, i, d);
+    }
+
+    static void One(Ics ics, string uid, string stamp, string summary, string location, string description, StudentSchedule.Item i, DateOnly on)
+    {
         ics.Line("BEGIN:VEVENT");
         ics.Line($"UID:{uid}");
         ics.Line($"DTSTAMP:{stamp}");
         ics.Line($"DTSTART;TZID=Asia/Muscat:{on:yyyyMMdd}T{i.Start:HHmmss}");
         ics.Line($"DTEND;TZID=Asia/Muscat:{on:yyyyMMdd}T{i.End:HHmmss}");
-        if (i.Date is null)
-        {
-            // UNTIL is in UTC: the end of the last day in Oman.
-            var until = new DateTimeOffset(span.Last.ToDateTime(new TimeOnly(23, 59, 59)), Oman).UtcDateTime;
-            ics.Line($"RRULE:FREQ=WEEKLY;UNTIL={until:yyyyMMdd'T'HHmmss'Z'}");
-            // Weeks it doesn't happen: days off (classes only), and classes a batch rep cancelled or moved.
-            var skipped = i.Skip.Concat(i.From == StudentSchedule.Source.Class ? span.DaysOff.Keys : [])
-                .Where(d => (int)d.DayOfWeek == i.Day && d >= on && d <= span.Last).Distinct().Order();
-            foreach (var off in skipped)
-                ics.Line($"EXDATE;TZID=Asia/Muscat:{off:yyyyMMdd}T{i.Start:HHmmss}");
-        }
         ics.Line($"SUMMARY:{Ics.Escape(summary)}");
         if (!string.IsNullOrWhiteSpace(location)) ics.Line($"LOCATION:{Ics.Escape(location)}");
         if (!string.IsNullOrWhiteSpace(description)) ics.Line($"DESCRIPTION:{Ics.Escape(description)}");
