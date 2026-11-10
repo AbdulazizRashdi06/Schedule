@@ -258,7 +258,7 @@ export function Sheet({ open, onClose, label, children, className }: { open: boo
         aria-label={label}
         data-shown={shown}
         className={cx(
-          'sheet absolute inset-x-0 bottom-0 mx-auto flex max-h-[88dvh] w-full max-w-[480px] flex-col gap-2.5 overflow-y-auto rounded-t-[32px] bg-cream px-6 pt-3 pb-[max(1.75rem,env(safe-area-inset-bottom))] shadow-[0_-20px_40px_-20px_rgb(11_25_87/0.5)] outline-none',
+          'sheet absolute inset-x-0 bottom-0 mx-auto flex max-h-[88dvh] w-full max-w-[480px] flex-col gap-2.5 overflow-x-hidden overflow-y-auto rounded-t-[32px] bg-cream px-6 pt-3 pb-[max(1.75rem,env(safe-area-inset-bottom))] shadow-[0_-20px_40px_-20px_rgb(11_25_87/0.5)] outline-none',
           className,
         )}
       >
@@ -300,7 +300,7 @@ export function Modal({ open, onClose, label, children }: { open: boolean; onClo
   const ref = useDialog(open, onClose)
   if (!mounted) return null
   return createPortal(
-    <div className="fixed inset-0 z-50 grid place-items-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="scrim absolute inset-0 bg-navy/35" data-shown={shown} onClick={onClose} />
       <section
         ref={ref}
@@ -309,7 +309,7 @@ export function Modal({ open, onClose, label, children }: { open: boolean; onClo
         aria-modal="true"
         aria-label={label}
         data-shown={shown}
-        className="modal relative flex max-h-[90dvh] w-[460px] max-w-full flex-col gap-[18px] overflow-y-auto rounded-[28px] bg-cream p-7 shadow-[0_32px_64px_-24px_rgb(11_25_87/0.55)] outline-none"
+        className="modal relative flex max-h-[90dvh] w-full min-w-0 max-w-[460px] flex-col overflow-x-hidden gap-[18px] overflow-y-auto rounded-[28px] bg-cream p-5 sm:p-7 shadow-[0_32px_64px_-24px_rgb(11_25_87/0.55)] outline-none"
       >
         {children}
       </section>
