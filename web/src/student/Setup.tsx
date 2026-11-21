@@ -328,6 +328,7 @@ function Waiting({ me, onChange }: { me: Me; onChange: () => void }) {
   const navigate = useNavigate()
   const [notify, setNotify] = useState(false)
   const [notifyError, setNotifyError] = useState('')
+  const [outError, setOutError] = useState('')
   const [confirmOut, setConfirmOut] = useState(false)
   useEffect(() => {
     deviceSubscribed().then((on) => on && setNotify(true), () => {})
@@ -346,6 +347,11 @@ function Waiting({ me, onChange }: { me: Me; onChange: () => void }) {
   const out = async () => {
     await logout()
     navigate('/login', { replace: true })
+  }
+  /** "Sign in with another ID" logs out straight away, with no dialog to show a failure in. */
+  const anotherId = () => {
+    setOutError('')
+    out().catch((e) => setOutError(errorText(e)))
   }
   return (
     <>
@@ -391,10 +397,11 @@ function Waiting({ me, onChange }: { me: Me; onChange: () => void }) {
         <ErrorText className="justify-center">{notifyError}</ErrorText>
         <p className="rise text-center text-[14px] font-semibold" style={delay(200)}>
           Wrong account?{' '}
-          <button type="button" onClick={out} className="underline underline-offset-2">
+          <button type="button" onClick={anotherId} className="underline underline-offset-2">
             Sign in with another ID
           </button>
         </p>
+        <ErrorText className="justify-center">{outError}</ErrorText>
         <button type="button" onClick={onChange} className="label h-11 text-[12px] text-muted link-hover">
           Change major or year
         </button>

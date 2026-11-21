@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useNavigate, useOutletContext } from 'react-rout
 import { api, store } from '../lib/api'
 import { useSession } from '../lib/session'
 import type { Semester } from '../lib/types'
+import { campusNow, campusTime } from '../lib/slots'
 import { Tag, cx } from '../components/ui'
 import LogoutConfirm from '../components/LogoutConfirm'
 
@@ -194,13 +195,13 @@ export function Filters<T extends string>({ value, onChange, options }: { value:
 }
 
 /** "9 Oct" */
-export const shortDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+export const shortDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { timeZone: 'Asia/Muscat', day: 'numeric', month: 'short' })
 
-/** "Today 09:52", "Yesterday", "8 Oct". */
+/** "Today 09:52", "Yesterday", "8 Oct", in Oman time. */
 export function seen(iso: string | null, never = 'Never') {
   if (!iso) return never
-  const d = new Date(iso)
-  const today = new Date()
+  const d = campusTime(new Date(iso))
+  const today = campusNow()
   const days = Math.round((new Date(today.toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86_400_000)
   if (days === 0) return `Today ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
   if (days === 1) return 'Yesterday'

@@ -2,6 +2,7 @@ import { useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { api, errorText } from '../lib/api'
 import type { Semester } from '../lib/types'
+import { campusNow } from '../lib/slots'
 import { Button, Confirm, ErrorText, Notice, Select, TextField, cx } from '../components/ui'
 import { PageTitle, useAdmin } from './AdminLayout'
 import WeeksEditor from './WeeksEditor'
@@ -445,7 +446,7 @@ export function CheckStep({ p, onBack, onNext, backLabel = 'Back' }: { p: Previe
 }
 
 function NewSemester({ onCreated }: { onCreated: (id: number) => void }) {
-  const now = new Date()
+  const now = campusNow()
   const [term, setTerm] = useState(now.getMonth() >= 7 ? 'Spring' : 'Fall')
   const [year, setYear] = useState(String(now.getMonth() >= 7 ? now.getFullYear() + 1 : now.getFullYear()))
   const [busy, setBusy] = useState(false)

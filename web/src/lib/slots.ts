@@ -142,6 +142,21 @@ export const weekDays = (sessions: Session[]) => [0, 1, 2, 3, 4, 5, 6].filter((d
 
 export const nowMinutes = (now: Date) => now.getHours() * 60 + now.getMinutes()
 
+/** Oman is UTC+4 all year (no daylight saving). Class times are Oman times, and the server counts days in Oman time. */
+const OMAN_MS = 4 * 3_600_000
+
+/**
+ * An instant as a clock on campus shows it: a Date whose own getters (getDate, getDay, getHours…) read Oman's date and
+ * time, whatever time zone the device is set to. Read its fields only; its timestamp is shifted.
+ */
+export function campusTime(at: Date) {
+  const o = new Date(at.getTime() + OMAN_MS)
+  return new Date(o.getUTCFullYear(), o.getUTCMonth(), o.getUTCDate(), o.getUTCHours(), o.getUTCMinutes(), o.getUTCSeconds())
+}
+
+/** Now, on campus. Use this, not new Date(), for today, this week and the time of day. */
+export const campusNow = () => campusTime(new Date())
+
 /** The Sunday that starts the week `offset` weeks from now. */
 export function weekStart(now: Date, offset = 0) {
   const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay() + offset * 7)

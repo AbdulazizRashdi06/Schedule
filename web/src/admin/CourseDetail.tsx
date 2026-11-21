@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { api, errorText } from '../lib/api'
 import type { Course, Meeting, Section, Semester, Weeks } from '../lib/types'
 import { DAY_LONG, meetsText } from '../lib/time'
-import { SLOTS } from '../lib/slots'
+import { SLOTS, campusNow } from '../lib/slots'
 import { yearName } from '../lib/year'
 import { Button, Drawer, ErrorText, Loading, Notice, Select, Tag, TextField, Toast, useToast } from '../components/ui'
 import { PageTitle, Th, shortDate } from './AdminLayout'
@@ -173,7 +173,7 @@ function SectionEditor({ code, section, students, live, weeks: teaching, onCance
     setRows(rows.map((r) => (r.key === key ? { ...r, ...patch, ...(patch.date ? { day: parse(patch.date).getDay() } : {}) } : r)))
   const remove = (key: number) => setRows(rows.filter((r) => r.key !== key))
 
-  const thisWeek = weekOf(iso(new Date()))
+  const thisWeek = weekOf(iso(campusNow()))
   const weekly = rows.filter((r) => !r.date)
   const dated = rows.filter((r) => r.date)
   const weeks = [...new Set(dated.map((r) => weekOf(r.date!)))].sort()
@@ -183,7 +183,7 @@ function SectionEditor({ code, section, students, live, weeks: teaching, onCance
   /** A new dated class a week after the last one, at the same time and room (today, first slot, when there are none). */
   const addDated = () => {
     const last = [...dated].sort(order)[dated.length - 1] as Row | undefined
-    const date = last ? addDays(last.date!, 7) : iso(new Date())
+    const date = last ? addDays(last.date!, 7) : iso(campusNow())
     setRows([...rows, withKey({ day: parse(date).getDay(), start: last?.start ?? SLOTS[0][0], end: last?.end ?? SLOTS[0][1], room: last?.room ?? '', date })].sort(order))
   }
   const addWeekly = () => setRows([...rows, withKey({ day: 0, start: SLOTS[0][0], end: SLOTS[0][1], room: weekly[weekly.length - 1]?.room ?? '', date: null })].sort(order))

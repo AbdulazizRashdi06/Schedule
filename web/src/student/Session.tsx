@@ -88,7 +88,7 @@ export default function SessionPage({
 
         {cls.section.changeSummary && cls.section.changedAt && (
           <div className="mx-3 mt-4 rounded-[18px] bg-cream px-4 py-3">
-            <p className="label text-[10px]">Changed {new Date(cls.section.changedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</p>
+            <p className="label text-[10px]">Changed {new Date(cls.section.changedAt).toLocaleDateString(undefined, { timeZone: 'Asia/Muscat', day: 'numeric', month: 'short' })}</p>
             <p className="mt-1 text-[14px] font-semibold">{cls.section.changeSummary}</p>
           </div>
         )}

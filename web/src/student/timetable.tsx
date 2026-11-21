@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { ApiError, api, errorText, store } from '../lib/api'
 import type { Me, Timetable } from '../lib/types'
-import { buildSessions, type Session } from '../lib/slots'
+import { buildSessions, campusNow, campusTime, type Session } from '../lib/slots'
 import { Icon, cx } from '../components/ui'
 
 export { Icon }
@@ -58,7 +58,7 @@ function load(): Promise<Data> {
 export function useTimetable() {
   const [data, setData] = useState(cache)
   const [error, setError] = useState('')
-  /** When set, we're offline and showing what was saved at this time. */
+  /** When set, we're offline and showing what was saved at this time (campus time). */
   const [offline, setOffline] = useState<Date | null>(null)
 
   const fetchNow = useCallback(async () => {
@@ -71,10 +71,11 @@ export function useTimetable() {
       setError('')
       return true
     } catch (e) {
-      const old = e instanceof ApiError && e.status === 0 ? saved() : null
+      // As in the session: offline (0) or the server restarting (5xx) shows the saved timetable.
+      const old = e instanceof ApiError && (e.status === 0 || e.status >= 500) ? saved() : null
       if (old) {
         if (!cache) setData({ me: old.me, tt: old.tt })
-        setOffline(new Date(old.savedAt))
+        setOffline(campusTime(new Date(old.savedAt)))
       } else setError(errorText(e))
       return false
     }
@@ -119,10 +120,13 @@ export const resetTimetable = () => {
   generation++
 }
 
-/** Dev only: `?now=2026-10-14T10:05` pins the clock, to check the live and between-classes states. */
+/**
+ * The time on campus (see campusNow), whatever the device's time zone. Dev only: `?now=2026-10-14T10:05` (an Oman
+ * time) pins the clock, to check the live and between-classes states.
+ */
 const fakeNow = () => {
   const v = import.meta.env.DEV ? new URLSearchParams(location.search).get('now') : null
-  return v ? new Date(v) : new Date()
+  return v ? new Date(v) : campusNow()
 }
 
 export function useNow() {

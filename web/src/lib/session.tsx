@@ -38,7 +38,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // First, while still signed in: this device stops getting this student's reminders, so the next person to use it
     // doesn't see them.
     await disableDevice().catch(() => {})
-    await api.post('/auth/logout').catch(() => {})
+    // Only the server's answer clears the sign-in cookie: if it doesn't come (offline, server restarting), this throws
+    // and the student stays signed in here too, rather than being told they're out while the cookie still works.
+    await api.post('/auth/logout')
     store.remove(SAVED)
     store.remove('timetable')
     resetAbsences()
