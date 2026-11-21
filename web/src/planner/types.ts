@@ -1,3 +1,4 @@
+import { campusNow, isoDate } from '../lib/slots'
 import type { Course, Semester, Weeks } from '../lib/types'
 
 export interface Target { courseId: number; sectionIds: number[] }
@@ -18,5 +19,5 @@ export interface AiJob { id: string; status: string; error: string | null; resul
 
 export const emptySpec = (date: string, targets: Target[] = []): Spec => ({ kind: 'exam', action: 'add', title: '', date, start: '09:00', end: '11:00', room: '', targets, repeatUntil: null, source: null, notes: '' })
 export const dateValue = (s: string) => new Date(`${s}T12:00:00`)
-export const campusToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Muscat', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+export const campusToday = () => isoDate(campusNow())
 export const courseColour = (courseId: number) => ['bg-sky text-navy', 'bg-ice text-navy', 'bg-navy text-cream', 'bg-paper text-navy'][Math.abs(courseId) % 4]

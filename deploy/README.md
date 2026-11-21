@@ -26,6 +26,18 @@ Run everything below **from the laptop**: the SSH key (`~/.ssh/zarqa_vps`) is on
    | `AUTH_TEST_MODE` | `true` shows the sign-in code in the app (never for owners) until email works |
    | `EMAIL_PROVIDER` | `log` (codes in the logs) or `resend` |
    | `RESEND_API_KEY`, `EMAIL_FROM` | For `resend`; the sender's domain must be verified in Resend |
+
+   Optional, each left out keeps the server's default (listed in `.env.example`):
+
+   | Variable | Default | Meaning |
+   |---|---|---|
+   | `RATE_LIMIT_REQUEST_CODE`, `RATE_LIMIT_VERIFY`, `RATE_LIMIT_PUBLIC_TIMETABLE` | 1000, 2000, 600 | Per IP per 5 minutes: sign-in code requests, code checks, public timetable reads |
+   | `SYNC_EXTRA_CODES` | `CS1102-L` | Extra EduWave course codes for Classy Sync, comma-separated; empty for none |
+   | `PLANNER_ENABLED`, `PLANNER_AI_URL`, `PLANNER_AI_MODEL` | `false`, `http://codex:8090/v1/chat/completions`, `gpt-6-luna` | Semester planner; the owners' dashboard setting wins over `PLANNER_ENABLED` |
+   | `ANALYTICS_ENABLED` | `true` | Usage analytics |
+   | `PUSH_SUBJECT` | `mailto:schedule@tryzarqa.com` | Contact sent with push notifications |
+
+   Only the variables in `deploy/docker-compose.yml` reach the app, and they win over `appsettings.json`. To add another setting, map it there and commit (edits to the server's copy are replaced on every deploy).
 4. **Add the site to Zarqa's Caddy.** Append `deploy/Caddyfile.snippet` to `C:\Projects\LostraAi\deploy\Caddyfile`, deploy Zarqa as usual (or reload Caddy on the server), e.g.:
    ```bash
    ssh -i ~/.ssh/zarqa_vps deploy@173.249.40.122 "cd /opt/<zarqa> && docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile"
@@ -47,11 +59,13 @@ Use `owner` instead of `rsa` for an owner account. Running it again for an exist
 
 ## Everyday
 
-- **Update:** commit, then `./deploy/deploy.sh` (only committed code is shipped).
+- **Update:** commit, then `./deploy/deploy.sh` (only committed code is shipped). It builds the new image while the site keeps running, stops the app, backs up the database to `/opt/uni-schedule/backups` (the newest 14 are kept), and starts the new version. If `/api/health` doesn't answer within a minute, it puts back the previous image (kept as `uni-schedule:previous`) and that backup, starts it, and fails.
 - **Logs / sign-in codes:**
   `ssh -i ~/.ssh/zarqa_vps deploy@173.249.40.122 "cd /opt/uni-schedule && docker compose -f deploy/docker-compose.yml --env-file deploy/.env logs -f --tail 100"`
-- **Backup the database:**
-  `ssh -i ~/.ssh/zarqa_vps deploy@173.249.40.122 "docker run --rm -v uni-schedule_data:/d -v /opt/uni-schedule:/b alpine tar czf /b/backup-\$(date +%F).tgz -C /d ."`
+- **Backup the database:** every deploy makes one. By hand, stop the app first so SQLite isn't copied mid-write (the site is down for a few seconds):
+  `ssh -i ~/.ssh/zarqa_vps deploy@173.249.40.122 "cd /opt/uni-schedule && docker compose -f deploy/docker-compose.yml --env-file deploy/.env stop && docker run --rm -v uni-schedule_data:/d -v /opt/uni-schedule:/b alpine tar czf /b/backup-\$(date +%F).tgz -C /d .; docker compose -f deploy/docker-compose.yml --env-file deploy/.env start"`
+- **Restore a backup:** stop the app, empty the volume and unpack the whole archive, so `schedule.db` comes back together with any `schedule.db-wal` and the `keys/` from the same backup, then start it:
+  `ssh -i ~/.ssh/zarqa_vps deploy@173.249.40.122 "cd /opt/uni-schedule && docker compose -f deploy/docker-compose.yml --env-file deploy/.env stop && docker run --rm -v uni-schedule_data:/d -v /opt/uni-schedule/backups:/b:ro alpine sh -c 'own=\$(stat -c %u:%g /d) && rm -rf /d/* && tar xzf /b/db-YYYYMMDD-HHMMSS.tgz -C /d && chown -R \$own /d' && docker compose -f deploy/docker-compose.yml --env-file deploy/.env start"`
 - Database migrations run automatically at startup.
 
 ## Deploying from GitHub

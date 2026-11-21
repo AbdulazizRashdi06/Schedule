@@ -14,7 +14,7 @@ interface Pending {
   preview: Preview
 }
 
-const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { timeZone: 'Asia/Muscat', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 
 /** The latest timetable the Classy Sync extension fetched from EduWave: check it and apply it like an upload. */
 export default function EduWaveSync({ semester }: { semester: Semester }) {

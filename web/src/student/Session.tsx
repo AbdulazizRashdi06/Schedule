@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ENABLE_MESSAGE, enableDevice, useNotifySettings } from '../lib/push'
 import { Link } from 'react-router-dom'
 import { DAY_LONG, DAY_SHORT } from '../lib/time'
-import { TYPE_NAME, addDays, fmtDate, initials, isoDate, nowMinutes, onDate, type Session } from '../lib/slots'
+import { TYPE_NAME, addDays, clashOn, fmtDate, initials, isoDate, nowMinutes, onDate, type Session } from '../lib/slots'
 import { cx } from '../components/ui'
 import { counts, heldSoFar, useAbsences } from '../lib/absences'
 import type { Weeks } from '../lib/types'
@@ -88,7 +88,7 @@ export default function SessionPage({
 
         {cls.section.changeSummary && cls.section.changedAt && (
           <div className="mx-3 mt-4 rounded-[18px] bg-cream px-4 py-3">
-            <p className="label text-[10px]">Changed {new Date(cls.section.changedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}</p>
+            <p className="label text-[10px]">Changed {new Date(cls.section.changedAt).toLocaleDateString(undefined, { timeZone: 'Asia/Muscat', day: 'numeric', month: 'short' })}</p>
             <p className="mt-1 text-[14px] font-semibold">{cls.section.changeSummary}</p>
           </div>
         )}
@@ -260,7 +260,7 @@ function Row({ s, date, live, badge, arrow }: { s: Session; date: Date; live: bo
       <span className="flex items-center gap-1.5">
         <span className={cx('flex flex-col items-end gap-1')}>
           <span className={cx('label rounded-full px-2 py-1 text-[10px]', live ? 'bg-navy text-sky' : 'text-ice')}>{badge}</span>
-          {s.clash && <span className="label rounded-full bg-alert-ink px-2 py-1 text-[10px] text-cream">Clash</span>}
+          {clashOn(s, date) && <span className="label rounded-full bg-alert-ink px-2 py-1 text-[10px] text-cream">Clash</span>}
         </span>
         {arrow && <Icon name="next" className="size-4 text-ice" />}
       </span>

@@ -218,6 +218,12 @@ export function Tag({ children, tone = 'ice', className }: { children: ReactNode
   return <span className={cx('label inline-flex shrink-0 items-center rounded-full px-2 py-1 text-[10px] tracking-[0.1em]', tones[tone], className)}>{children}</span>
 }
 
+/**
+ * How many dialogs are open. The page is locked while any is, and unlocked when the last one goes, whatever order they
+ * close in (a sheet and the confirm opened over it can unmount together, the sheet first).
+ */
+let openDialogs = 0
+
 /** Escape closes, the page behind can't scroll, focus moves in and comes back. */
 function useDialog(open: boolean, onClose: () => void) {
   const ref = useRef<HTMLElement>(null)
@@ -230,12 +236,11 @@ function useDialog(open: boolean, onClose: () => void) {
     const back = document.activeElement as HTMLElement | null
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close.current()
     document.addEventListener('keydown', onKey)
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    if (openDialogs++ === 0) document.body.style.overflow = 'hidden'
     requestAnimationFrame(() => ref.current?.focus())
     return () => {
       document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prev
+      if (--openDialogs === 0) document.body.style.overflow = ''
       back?.focus?.()
     }
   }, [open])

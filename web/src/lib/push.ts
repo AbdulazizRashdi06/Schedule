@@ -26,10 +26,21 @@ function key(base64: string) {
 
 const registration = () => navigator.serviceWorker.register('/sw.js').then(() => navigator.serviceWorker.ready)
 
-/** This device's subscription, if it has one. */
+/**
+ * Whether this device gets the signed-in student's notifications. The browser can keep a subscription the server no
+ * longer has for this student (they were removed, their sign-in ran out, an earlier save failed), so it is sent again:
+ * the server keeps it once and moves it to whoever is signed in. If that fails, the device counts as off.
+ */
 export async function deviceSubscribed() {
   if (!pushSupported() || Notification.permission !== 'granted') return false
-  return Boolean(await (await registration()).pushManager.getSubscription())
+  const sub = await (await registration()).pushManager.getSubscription()
+  if (!sub) return false
+  try {
+    await api.post('/me/push', sub.toJSON())
+    return true
+  } catch {
+    return false
+  }
 }
 
 export type EnableResult = 'on' | 'denied' | 'unsupported' | 'home-screen'
@@ -43,8 +54,15 @@ export async function enableDevice(): Promise<EnableResult> {
   if (permission !== 'granted') return 'denied'
   const reg = await registration()
   const { publicKey } = await api.get<{ publicKey: string }>('/push/key')
-  const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key(publicKey) }))
-  await api.post('/me/push', sub.toJSON())
+  const existing = await reg.pushManager.getSubscription()
+  const sub = existing ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key(publicKey) }))
+  try {
+    await api.post('/me/push', sub.toJSON())
+  } catch (e) {
+    // The server didn't take it: don't leave behind a subscription made just now that nothing sends to.
+    if (!existing) await sub.unsubscribe().catch(() => {})
+    throw e
+  }
   return 'on'
 }
 

@@ -2,6 +2,7 @@ import { useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { api, errorText } from '../lib/api'
 import type { Semester } from '../lib/types'
+import { campusNow } from '../lib/slots'
 import { Button, Confirm, ErrorText, Notice, Select, TextField, cx } from '../components/ui'
 import { PageTitle, useAdmin } from './AdminLayout'
 import WeeksEditor from './WeeksEditor'
@@ -38,7 +39,7 @@ const LABELS = ['Semester', 'File', 'Check', 'Publish']
 type Tab = 'added' | 'changed' | 'removed' | 'errors' | 'majors'
 
 export default function Upload() {
-  const { semester, semesters, setSemesterId, reloadSemesters } = useAdmin()
+  const { semester, semesters, setSemesterId, reloadSemesters, isOwner } = useAdmin()
   const [step, setStep] = useState(0)
   // Step 1: an existing semester, or a new one.
   const [pick, setPick] = useState<number | 'new' | null>(semester?.id ?? (semesters.length ? null : 'new'))
@@ -108,7 +109,7 @@ export default function Upload() {
           </div>
           {target && <WeeksEditor key={target.id} semesterId={target.id} name={target.name} />}
           {target && <DaysOffEditor key={`off-${target.id}`} semesterId={target.id} name={target.name} />}
-          <AttendanceLimit />
+          <AttendanceLimit readOnly={!isOwner} />
           {target && !target.isCurrent && (
             <div>
               <Button variant="danger" size="sm" onClick={() => setDeleting(true)}>
@@ -223,7 +224,13 @@ export default function Upload() {
             <Button variant="secondary" onClick={() => go(0)}>
               Back
             </Button>
-            <Button disabled={!preview || checking} onClick={() => go(2)}>
+            <Button
+              disabled={!preview || checking}
+              onClick={() => {
+                setPublishOnly(false)
+                go(2)
+              }}
+            >
               Check the file
             </Button>
             {!target.isCurrent && (target.courses ?? 0) > 0 && (
@@ -242,7 +249,16 @@ export default function Upload() {
         </Pane>
       )}
 
-      {step === 2 && target && preview && <CheckStep p={preview} onBack={() => go(1)} onNext={() => go(3)} />}
+      {step === 2 && target && preview && (
+        <CheckStep
+          p={preview}
+          onBack={() => go(1)}
+          onNext={() => {
+            setPublishOnly(false)
+            go(3)
+          }}
+        />
+      )}
 
       {step === 3 && target && (
         <Pane>
@@ -268,7 +284,17 @@ export default function Upload() {
               </p>
               <ErrorText>{error}</ErrorText>
               <div className="flex flex-wrap gap-2.5">
-                <Button variant="secondary" className="h-[52px]" onClick={() => go(publishOnly ? 1 : 2)}>
+                <Button
+                  variant="secondary"
+                  className="h-[52px]"
+                  onClick={() => {
+                    // Leaving "as it is": a file checked after this is applied when publishing.
+                    if (publishOnly) {
+                      setPublishOnly(false)
+                      go(1)
+                    } else go(2)
+                  }}
+                >
                   Back
                 </Button>
                 {!target.isCurrent && !publishOnly && (
@@ -445,7 +471,7 @@ export function CheckStep({ p, onBack, onNext, backLabel = 'Back' }: { p: Previe
 }
 
 function NewSemester({ onCreated }: { onCreated: (id: number) => void }) {
-  const now = new Date()
+  const now = campusNow()
   const [term, setTerm] = useState(now.getMonth() >= 7 ? 'Spring' : 'Fall')
   const [year, setYear] = useState(String(now.getMonth() >= 7 ? now.getFullYear() + 1 : now.getFullYear()))
   const [busy, setBusy] = useState(false)

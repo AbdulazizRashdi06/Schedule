@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { ApiError, api, errorText, store } from '../lib/api'
 import type { Me, Timetable } from '../lib/types'
-import { buildSessions, type Session } from '../lib/slots'
+import { buildSessions, campusNow, campusTime, type Session } from '../lib/slots'
 import { Icon, cx } from '../components/ui'
 
 export { Icon }
@@ -12,8 +12,23 @@ interface Data {
   tt: Timetable | null
 }
 
-// Shared by Today, Schedule and Course so moving between them doesn't reload or flash.
+// Shared by Today, Schedule and Course so moving between them doesn't reload or flash. Screens on at the same time
+// (home and the Today inside it) all show it, so a change one of them loads or makes shows in every one.
 let cache: Data | null = null
+/** When set, we're offline and showing what was saved at this time (campus time). Shared like the timetable. */
+let offlineAt: Date | null = null
+const listeners = new Set<() => void>()
+function share(d: Data | null, offline: Date | null) {
+  cache = d
+  offlineAt = offline
+  listeners.forEach((l) => l())
+}
+const subscribe = (l: () => void) => {
+  listeners.add(l)
+  return () => {
+    listeners.delete(l)
+  }
+}
 
 /** The last timetable that loaded, shown (with a banner) when the server can't be reached. */
 const SAVED = 'timetable'
@@ -56,26 +71,22 @@ function load(): Promise<Data> {
 }
 
 export function useTimetable() {
-  const [data, setData] = useState(cache)
+  const data = useSyncExternalStore(subscribe, () => cache)
+  const offline = useSyncExternalStore(subscribe, () => offlineAt)
   const [error, setError] = useState('')
-  /** When set, we're offline and showing what was saved at this time. */
-  const [offline, setOffline] = useState<Date | null>(null)
 
   const fetchNow = useCallback(async () => {
     try {
       const d = await load()
-      cache = d
       save(d)
-      setData(d)
-      setOffline(null)
+      share(d, null)
       setError('')
       return true
     } catch (e) {
-      const old = e instanceof ApiError && e.status === 0 ? saved() : null
-      if (old) {
-        if (!cache) setData({ me: old.me, tt: old.tt })
-        setOffline(new Date(old.savedAt))
-      } else setError(errorText(e))
+      // As in the session: offline (0) or the server restarting (5xx) shows the saved timetable.
+      const old = e instanceof ApiError && (e.status === 0 || e.status >= 500) ? saved() : null
+      if (old) share(cache ?? { me: old.me, tt: old.tt }, campusTime(new Date(old.savedAt)))
+      else setError(errorText(e))
       return false
     }
   }, [])
@@ -99,8 +110,7 @@ export function useTimetable() {
   const markSeen = useCallback((sectionId: number) => {
     api.post('/me/seen', { sectionId }).catch(() => {})
     if (!cache?.tt) return
-    cache = { ...cache, tt: { ...cache.tt, classes: cache.tt.classes.map((c) => (c.section.id === sectionId ? { ...c, changed: false } : c)) } }
-    setData(cache)
+    share({ ...cache, tt: { ...cache.tt, classes: cache.tt.classes.map((c) => (c.section.id === sectionId ? { ...c, changed: false } : c)) } }, offlineAt)
   }, [])
 
   return { me: data?.me ?? null, tt: data?.tt ?? null, sessions, error, markSeen, offline, retry: fetchNow }
@@ -114,15 +124,19 @@ export const clearTimetableCache = () => {
 /** On sign-out: forget everything about this student, including a load still on its way. */
 export const resetTimetable = () => {
   cache = null
+  offlineAt = null
   inflight = null
   loadedAt = 0
   generation++
 }
 
-/** Dev only: `?now=2026-10-14T10:05` pins the clock, to check the live and between-classes states. */
+/**
+ * The time on campus (see campusNow), whatever the device's time zone. Dev only: `?now=2026-10-14T10:05` (an Oman
+ * time) pins the clock, to check the live and between-classes states.
+ */
 const fakeNow = () => {
   const v = import.meta.env.DEV ? new URLSearchParams(location.search).get('now') : null
-  return v ? new Date(v) : new Date()
+  return v ? new Date(v) : campusNow()
 }
 
 export function useNow() {
@@ -137,8 +151,9 @@ export function useNow() {
 /** Back to where the student came from, or to `fallback` when the page was opened directly. */
 export function useBack(fallback = '/') {
   const navigate = useNavigate()
-  const location = useLocation()
-  return () => (location.key !== 'default' ? navigate(-1) : navigate(fallback))
+  // React Router numbers its history entries in history.state.idx. A replace (the invite flow, the week arrows) keeps
+  // the number, so only idx > 0 means there is a Classy page to go back to; otherwise go to the fallback in place.
+  return () => ((window.history.state as { idx?: number } | null)?.idx ? navigate(-1) : navigate(fallback, { replace: true }))
 }
 
 /** 48px round icon button. */

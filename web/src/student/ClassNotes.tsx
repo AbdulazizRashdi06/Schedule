@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api, errorText } from '../lib/api'
 import type { Section } from '../lib/types'
-import { addDays, isoDate } from '../lib/slots'
+import { addDays, campusNow, isoDate } from '../lib/slots'
 import { DAY_SHORT } from '../lib/time'
 import { ErrorText, cx } from '../components/ui'
 
@@ -51,7 +51,7 @@ export default function ClassNotes({ courseId, section, me, onChanged, session }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState<{ id: number; text: string } | null>(null)
-  const dates = useMemo(() => upcomingDates(section, new Date()), [section])
+  const dates = useMemo(() => upcomingDates(section, campusNow()), [section])
 
   useEffect(() => {
     api.get<Note[]>(`/me/notes?courseId=${courseId}`).then(setNotes, (e) => setError(errorText(e)))

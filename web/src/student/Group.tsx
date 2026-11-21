@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { api, errorText } from '../lib/api'
 import { DAY_SHORT } from '../lib/time'
 import { addDays, fmtDate, fmtDuration, fmtWeekRange, isoDate, weekStart, weekTitle } from '../lib/slots'
@@ -15,7 +15,6 @@ const MIN_OPTIONS = [30, 60, 90] as const
 export default function Group() {
   const { id } = useParams()
   const back = useBack('/groups')
-  const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
   const now = useNow()
   const toast = useToast()
@@ -233,7 +232,8 @@ export default function Group() {
               onClose={() => setLeaving(false)}
               onConfirm={async () => {
                 await api.del(`/me/groups/${group.id}/me`)
-                navigate('/groups', { replace: true })
+                // Back to where they came from (normally Groups), so no second Groups entry is left in history.
+                back()
               }}
             />
           </section>

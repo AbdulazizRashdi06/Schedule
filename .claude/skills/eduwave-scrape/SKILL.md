@@ -26,7 +26,7 @@ Load the `anthropic-skills:built-in-browser` skill before the first browser step
 2. **The course codes to fetch.** Take the Code column of `imports/offered-codes.md` (EduWave spelling, like `CS 1 107`), plus any lab codes such as `CS 1 102-L`. If the user names other courses, add them.
 3. **Inject the script.** Read `tools/eduwave/inpage-scrape.js` and run its whole text in the EduWave tab with the browser JavaScript tool. It returns `EduWave scrape ready`. Then run `ewStart([...codes])` with the code list as a JSON array.
 4. **Wait and check.** Every ~60–90 seconds run `ewStatus()`, and tell the user the progress in one short line (`120 of 217`).
-   - `status: 'paused'`, with a sign-out message: ask the user to sign in again and reopen Advisor Plan through the menu. Then inject the script again (it keeps its progress in `window.__ew`) and run `ewResume()`.
+   - `status: 'paused'`, with a sign-out message: ask the user to sign in again and reopen Advisor Plan through the menu **in the same tab**. Then inject the script again (it keeps its progress in that tab's sessionStorage) and run `ewResume()`. If it answers `Nothing to resume`, the progress was lost: run `ewStart` again.
    - `failed` lists codes EduWave didn't answer twice. Mention them, and re-run just those if there are many.
 5. **What changed.** When `status` is `'done'`, read `imports/ew-old-hashes.txt` (the last run's fingerprints) and run `await ewDiff("<its contents>")`.
    - `added` lines are new or changed.

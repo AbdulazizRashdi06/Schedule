@@ -4,7 +4,7 @@ import { AnimatePresence, animate, motion, useReducedMotion, useScroll, useTrans
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import SessionPage from './Session'
 import { DAY_LONG, DAY_SHORT, minutes } from '../lib/time'
-import { SLOTS, TYPE_NAME, addDays, fmtWeekRange, inWeek, isoDate, notesOn, nowMinutes, onDate, weekDays, weekStart, weekTitle, type ClassType, type Session } from '../lib/slots'
+import { SLOTS, TYPE_NAME, addDays, clashOn, fmtWeekRange, inWeek, isoDate, notesOn, nowMinutes, onDate, weekDays, weekStart, weekTitle, type ClassType, type Session } from '../lib/slots'
 import { tick } from '../lib/native'
 import { Icon, cx } from '../components/ui'
 import { store } from '../lib/api'
@@ -23,6 +23,8 @@ const DAY_MS = 86_400_000
 const ROW = 86
 const GAP = 8
 const NUDGE = 'lab-swipe-nudge'
+/** How many days from Sunday the week's label runs: through the last day shown (Saturday can be shown without Friday). */
+const throughLast = (days: number[]) => days[days.length - 1] + 1
 
 /**
  * One page's width in a strip, unrounded. clientWidth rounds to whole pixels, and on a 392.7px-wide phone that error
@@ -392,6 +394,8 @@ export default function Lab() {
   // them, so nothing has to run inside a state update.
   const shownIso = useRef(todayIso)
   const shownWeek = useRef(0)
+  // The date that was today when the days were last lined up, so a page left open past midnight moves on to the new day.
+  const shownToday = useRef(todayIso)
 
   /** Puts a day on screen in both strips' terms: the days on it, the week below on its week. */
   const land = useCallback(
@@ -413,12 +417,17 @@ export default function Lab() {
 
   // Open on today. When the days change later (adding a slot can add a Friday, the semester's weeks can arrive), stay
   // on the date you were on rather than whatever now sits at the same position.
+  // Past midnight, a student who was on today goes on to the new today (one who swiped to another day stays there).
   useLayoutEffect(() => {
     if (!ready) return
+    if (shownToday.current !== todayIso) {
+      if (shownIso.current === shownToday.current) shownIso.current = todayIso
+      shownToday.current = todayIso
+    }
     const i = dates.findIndex((d) => isoDate(d) === shownIso.current)
     land(i >= 0 ? i : todayIndex, 'instant')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, dates])
+  }, [ready, dates, todayIso])
 
   // The "This week" shortcut (long-press the installed app's icon) opens home scrolled down to the week, once.
   const openedOnWeek = useRef(false)
@@ -693,7 +702,7 @@ export default function Lab() {
         <ShareSheet
           open={sharing}
           onClose={() => setSharing(false)}
-          input={{ sessions: shareSessions, days: weekDays(shareSessions), start: shareStart, title: weekTitle(week, shareStart, sem), range: fmtWeekRange(shareStart, weekDays(shareSessions).length) }}
+          input={{ sessions: shareSessions, days: weekDays(shareSessions), start: shareStart, title: weekTitle(week, shareStart, sem), range: fmtWeekRange(shareStart, throughLast(weekDays(shareSessions))) }}
         />
       )}
     </LabNav.Provider>
@@ -780,7 +789,7 @@ function WeekPage({
       <motion.header style={{ y: headY, opacity: headOpacity }} className="flex items-start justify-between gap-4 px-2 pt-2">
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <p className="label text-[12px] tracking-[0.14em]">
-            {title} · {fmtWeekRange(start, days.length)}
+            {title} · {fmtWeekRange(start, throughLast(days))}
           </p>
           <FitTitle>{HEADLINE[offset] ?? `${title}.`}</FitTitle>
         </div>
@@ -891,12 +900,12 @@ function WeekPage({
                       key={i}
                       type="button"
                       onClick={() => (s.mine ? onEdit(s.mine) : onOpen(s, addDays(start, d)))}
-                      aria-label={`${s.cls.name}, ${TYPE_NAME[s.type].toLowerCase()}, ${DAY_LONG[d]} ${s.meeting.start} to ${s.meeting.end}${s.meeting.room ? `, room ${s.meeting.room}` : ''}${s.clash ? ', clashes with another class' : ''}${s.cls.changed ? ', changed' : ''}`}
+                      aria-label={`${s.cls.name}, ${TYPE_NAME[s.type].toLowerCase()}, ${DAY_LONG[d]} ${s.meeting.start} to ${s.meeting.end}${s.meeting.room ? `, room ${s.meeting.room}` : ''}${clashOn(s, addDays(start, d)) ? ', clashes with another class' : ''}${s.cls.changed ? ', changed' : ''}`}
                       className={cx(
                         'press relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[12px] p-1.5 text-left',
                         BLOCK[s.type],
                         live && 'ring-[2.5px] ring-navy ring-offset-2 ring-offset-cream',
-                        s.clash && 'outline-2 -outline-offset-2 outline-alert',
+                        clashOn(s, addDays(start, d)) && 'outline-2 -outline-offset-2 outline-alert',
                       )}
                     >
                       <span className={cx('display leading-none tracking-[-0.03em]', cell.length > 1 ? 'text-[12px] break-all' : 'truncate text-[16px]')}>{s.cls.code}</span>

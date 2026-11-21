@@ -51,7 +51,7 @@ For the next session (local Claude Code on the laptop). Read this first, then `R
 - **Edits to a live semester** (upload or single-section edit) show a "Changed" badge to students who picked that section. Edits before publishing don't.
 - **Removed sections** clear the pick and flag the student to re-pick. A banner on their timetable links to Edit my courses.
 - **Allowed electives** are stored by course code (`MajorElective`), so they carry over between semesters. Electives with no major in the upload are open to everyone.
-- **Rate limits** are per IP per 5 minutes: 10 code requests, 20 verifies. They can be changed with `RateLimits__RequestCode` / `RateLimits__Verify`.
+- **Rate limits** are per IP per 5 minutes: 1000 code requests, 2000 verifies, 600 public timetable reads (campus Wi-Fi shares one IP; each ID has its own tighter limits). In production they can be changed with `RATE_LIMIT_REQUEST_CODE` / `RATE_LIMIT_VERIFY` / `RATE_LIMIT_PUBLIC_TIMETABLE` in `deploy/.env`.
 - **Data** lives in the `uni-schedule_data` Docker volume: SQLite + data-protection keys. Sessions survive restarts. Migrations run at startup. A backup command is in `deploy/README.md`.
 
 ## Run and check locally

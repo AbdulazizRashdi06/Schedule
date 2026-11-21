@@ -21,7 +21,14 @@ export default function NotificationsSheet({ open, onClose }: { open: boolean; o
     setStatus('')
     setError('')
     void reload()
-    deviceSubscribed().then(setDevice, () => setDevice(false))
+    deviceSubscribed().then(
+      (on) => {
+        setDevice(on)
+        // The check sends this device to the server again, which can change the device count.
+        if (on) void reload()
+      },
+      () => setDevice(false),
+    )
   }, [open, reload])
 
   const run = async (fn: () => Promise<void>) => {
