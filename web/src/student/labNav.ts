@@ -7,8 +7,6 @@ import type { CustomSlot } from '../lib/types'
  * page instead. Screens without it (the course page, the old schedule) keep their plain links.
  */
 export const LabNav = createContext<{
-  /** Scroll down to the week. */
-  week: () => void
   /** Scroll to a day's page. */
   day: (date: Date) => void
   menu: () => void

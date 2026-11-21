@@ -67,8 +67,8 @@ export default function Today() {
   const tomorrow = nextDate && addDays(now, 1).toDateString() === nextDate.toDateString()
 
   return (
-    <div className="min-h-dvh bg-cream text-navy">
-      <div className="mx-auto flex min-h-dvh max-w-[480px] flex-col pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1.75rem,env(safe-area-inset-bottom))]">
+    <div className="min-h-[calc(100dvh-var(--week-cue,0px))] bg-cream text-navy">
+      <div className="mx-auto flex min-h-[calc(100dvh-var(--week-cue,0px))] max-w-[480px] flex-col pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1.75rem,env(safe-area-inset-bottom))]">
         {offline && <OfflineBanner savedAt={offline} retry={retry} />}
         {!offline && me && <RatePrompt />}
         <header className="flex items-start justify-between gap-4 px-6 pt-2">
@@ -152,8 +152,8 @@ export function DayHome({ date, offset, sessions, dayOff }: { date: Date; offset
   const [first, ...rest] = list
   const title = offset === 1 ? 'Tomorrow.' : offset === -1 ? 'Yesterday.' : `${DAY_LONG[date.getDay()]}.`
   return (
-    <div className="min-h-dvh bg-cream text-navy">
-      <div className="mx-auto flex min-h-dvh max-w-[480px] flex-col pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1.75rem,env(safe-area-inset-bottom))]">
+    <div className="min-h-[calc(100dvh-var(--week-cue,0px))] bg-cream text-navy">
+      <div className="mx-auto flex min-h-[calc(100dvh-var(--week-cue,0px))] max-w-[480px] flex-col pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1.75rem,env(safe-area-inset-bottom))]">
         <header className="flex items-start justify-between gap-4 px-6 pt-2">
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             <p className="label text-[12px] tracking-[0.14em]">
@@ -368,16 +368,12 @@ function LastOne({ children }: { children: ReactNode }) {
   )
 }
 
-/** "Full week →": on the home page a scroll down to the week; elsewhere, a link home. */
+/** "Full week →" on screens away from home. On the home page the cue at the foot of the day leads down to the week. */
 function WeekLink() {
   const lab = useContext(LabNav)
-  const cls = 'label ml-auto flex min-h-11 items-center py-3 text-[12px] link-hover'
-  return lab ? (
-    <button type="button" onClick={lab.week} className={cls}>
-      Full week →
-    </button>
-  ) : (
-    <Link to="/" className={cls}>
+  if (lab) return null
+  return (
+    <Link to="/" className="label ml-auto flex min-h-11 items-center py-3 text-[12px] link-hover">
       Full week →
     </Link>
   )

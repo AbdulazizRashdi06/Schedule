@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import { flushSync } from 'react-dom'
 import { AnimatePresence, animate, motion, useReducedMotion, useScroll, useTransform, type MotionValue } from 'motion/react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
@@ -225,7 +225,7 @@ const EASE_OUT = [0.23, 1, 0.32, 1] as const
  * today, so it arrives from the side today lies on, its arrow points there, and when you go back it leaves the same way,
  * as if it had gone home ahead of you.
  */
-function BackPill({ show, label, dir, onBack }: { show: boolean; label: string; dir: number; onBack: () => void }) {
+function BackPill({ show, label, dir, onBack, lift = 0 }: { show: boolean; label: string; dir: number; onBack: () => void; lift?: number }) {
   const reduce = useReducedMotion()
   // The side today is on, kept while the pill leaves (by then you're back on today and there's no side).
   const side = useRef(1)
@@ -233,7 +233,7 @@ function BackPill({ show, label, dir, onBack }: { show: boolean; label: string; 
   const s = side.current
   const settle = { type: 'spring', visualDuration: 0.36, bounce: 0.18 } as const
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.75rem))] z-30 flex justify-center">
+    <div style={{ marginBottom: lift }} className="pointer-events-none fixed inset-x-0 bottom-[max(1.25rem,calc(env(safe-area-inset-bottom)+0.75rem))] z-30 flex justify-center">
       <AnimatePresence initial={false} mode="popLayout">
         {show && (
           <motion.button
@@ -267,6 +267,55 @@ function BackPill({ show, label, dir, onBack }: { show: boolean; label: string; 
           </motion.button>
         )}
       </AnimatePresence>
+    </div>
+  )
+}
+
+/**
+ * The way down to the week: its name over three chevrons that light up one after another, in a row at the foot of the
+ * day. The row is part of the page, so it moves under your finger with no script in between; on a day longer than the
+ * screen it stays at the bottom edge until the day has scrolled past. As the week comes up the chevrons draw apart and
+ * the cue fades into it.
+ */
+function WeekCue({ page, days, label, onGo }: { page: RefObject<HTMLDivElement | null>; days: RefObject<HTMLElement | null>; label: string; onGo: () => void }) {
+  const reduce = useReducedMotion()
+  const { scrollY } = useScroll({ container: page })
+  // How far the week has come up, in px: a day longer than the screen scrolls past first.
+  const pull = useTransform(scrollY, (v) => Math.max(0, v - Math.max(0, (days.current?.offsetHeight ?? 0) - (page.current?.clientHeight ?? 0))))
+  const opacity = useTransform(pull, [40, 220], [1, 0])
+  const second = useTransform(pull, [0, 150], [0, 6])
+  const third = useTransform(second, (v) => v * 2)
+  return (
+    <div className="pointer-events-none sticky bottom-0 z-[5] flex h-[var(--week-cue)] justify-center bg-linear-to-t from-cream from-60% to-cream/0">
+      <motion.button
+        type="button"
+        onClick={onGo}
+        aria-label={`${label}, show the week`}
+        style={{ opacity }}
+        className="label pointer-events-auto flex h-14 flex-col items-center gap-1.5 px-6 pt-1.5 text-[12px] tracking-[0.14em]"
+      >
+        {label}
+        <span aria-hidden="true" className="flex flex-col items-center">
+          {[0, second, third].map((y, i) => (
+            <motion.svg
+              key={i}
+              viewBox="0 0 24 10"
+              className={cx('h-2.5 w-6', i > 0 && '-mt-0.5')}
+              style={{ y }}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.8}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              initial={{ opacity: 0.18 }}
+              animate={reduce ? { opacity: 0.6 } : { opacity: [0.18, 1, 0.18] }}
+              transition={{ duration: 1.5, ease: 'easeInOut', repeat: Infinity, delay: i * 0.22 }}
+            >
+              <path d="M4 2l8 6 8-6" />
+            </motion.svg>
+          ))}
+        </span>
+      </motion.button>
     </div>
   )
 }
@@ -558,8 +607,8 @@ export default function Lab() {
   )
 
   const nav = useMemo(
-    () => ({ week: toWeek, day: (d: Date) => toDay(d, 'smooth'), menu: () => setMenu(true), add: addOn, edit: setEditing, session: sessionLink }),
-    [toWeek, toDay, addOn, sessionLink],
+    () => ({ day: (d: Date) => toDay(d, 'smooth'), menu: () => setMenu(true), add: addOn, edit: setEditing, session: sessionLink }),
+    [toDay, addOn, sessionLink],
   )
 
   // The open session, from the address: course, date and start time.
@@ -590,7 +639,13 @@ export default function Lab() {
 
   return (
     <LabNav.Provider value={nav}>
-      <div ref={page} onScroll={pageScrolled} className={cx('h-dvh snap-y snap-mandatory overflow-y-auto overscroll-y-contain bg-cream text-navy', noBar)}>
+      <div
+        ref={page}
+        onScroll={pageScrolled}
+        // Room at the foot of each day for the cue down to the week.
+        style={{ '--week-cue': 'calc(3.5rem + env(safe-area-inset-bottom))' } as CSSProperties}
+        className={cx('h-dvh snap-y snap-mandatory overflow-y-auto overscroll-y-contain bg-cream text-navy', noBar)}
+      >
         <section ref={daysSection} className="snap-start" aria-label="Days">
           <motion.div className="relative" style={{ y: dayY, scale: dayScale, transformOrigin: '50% 0%' }}>
             {ready && dates.length > 1 && (
@@ -620,6 +675,7 @@ export default function Lab() {
               <Today />
             )}
           </motion.div>
+          {ready && <WeekCue page={page} days={daysSection} label={weekTitle(week, weekStart(now, week), sem)} onGo={toWeek} />}
         </section>
 
         <section ref={weekSection} className="relative z-10 min-h-dvh snap-start bg-cream" aria-label="Week">
@@ -671,6 +727,8 @@ export default function Lab() {
           label={onWeek ? 'Back to this week' : 'Back to today'}
           dir={onWeek ? Math.sign(WEEKS.indexOf(0) - WEEKS.indexOf(week)) : Math.sign(todayIndex - dayIndex)}
           onBack={() => goBack(onWeek ? 'week' : 'day')}
+          // Above the cue down to the week, which holds the same spot at the foot of a day.
+          lift={onWeek ? 0 : 56}
         />
       )}
       {/* A session slides in from the side over the page, and back out, so where you were on the page is kept. */}
