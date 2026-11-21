@@ -116,7 +116,13 @@ using (var scope = app.Services.CreateScope())
 
 app.UseForwardedHeaders();
 app.UseDefaultFiles();
-app.UseStaticFiles();
+// The page is checked with the server on every visit (a cheap 304), so a deploy shows at once. The hashed scripts it
+// loads keep the browser's usual caching.
+var shell = new StaticFileOptions
+{
+    OnPrepareResponse = ctx => { if (ctx.File.Name == "index.html") ctx.Context.Response.Headers.CacheControl = "no-cache"; }
+};
+app.UseStaticFiles(shell);
 app.UseRouting();
 app.Use(async (http, next) =>
 {
@@ -168,7 +174,7 @@ api.MapPlanner();
 api.Map("/{**rest}", () => Errors.NotFound());
 
 // Client-side routes (/, /setup, /admin/...) all load the app.
-app.MapFallbackToFile("index.html");
+app.MapFallbackToFile("index.html", shell);
 
 app.Run();
 return 0;
