@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ApiError, api, errorText, store } from '../lib/api'
 import type { Me, Timetable } from '../lib/types'
 import { buildSessions, campusNow, campusTime, type Session } from '../lib/slots'
@@ -151,8 +151,9 @@ export function useNow() {
 /** Back to where the student came from, or to `fallback` when the page was opened directly. */
 export function useBack(fallback = '/') {
   const navigate = useNavigate()
-  const location = useLocation()
-  return () => (location.key !== 'default' ? navigate(-1) : navigate(fallback))
+  // React Router numbers its history entries in history.state.idx. A replace (the invite flow, the week arrows) keeps
+  // the number, so only idx > 0 means there is a Classy page to go back to; otherwise go to the fallback in place.
+  return () => ((window.history.state as { idx?: number } | null)?.idx ? navigate(-1) : navigate(fallback, { replace: true }))
 }
 
 /** 48px round icon button. */

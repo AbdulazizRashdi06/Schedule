@@ -31,14 +31,28 @@ export default function AdminHome() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [error, setError] = useState('')
   useEffect(() => {
-    const load = () => api.get<Stats>(`/admin/stats${semester ? `?semesterId=${semester.id}` : ''}`).then(setStats, (e) => setError(errorText(e)))
+    // A successful poll clears an earlier error, and a late answer for the previous semester is dropped.
+    let active = true
+    const load = () =>
+      api.get<Stats>(`/admin/stats${semester ? `?semesterId=${semester.id}` : ''}`).then(
+        (s) => {
+          if (!active) return
+          setStats(s)
+          setError('')
+        },
+        (e) => active && setError(errorText(e)),
+      )
     void load()
     // Keeps "active now" current while the page is open.
     const timer = setInterval(load, 60_000)
-    return () => clearInterval(timer)
+    return () => {
+      active = false
+      clearInterval(timer)
+    }
   }, [semester])
 
-  if (error) return <ErrorText>{error}</ErrorText>
+  // A failed poll keeps the last numbers on screen, with the error above them.
+  if (error && !stats) return <ErrorText>{error}</ErrorText>
   if (!stats)
     return (
       <div aria-busy="true" aria-label="Loading" className="flex flex-col gap-8">
@@ -103,6 +117,7 @@ export default function AdminHome() {
           </Link>
         }
       />
+      <ErrorText>{error}</ErrorText>
       {!stats.semester && (
         <Notice>
           Students can sign in and pick their major, but they’ll wait until you{' '}

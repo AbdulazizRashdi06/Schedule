@@ -179,7 +179,7 @@ function SetupSkeleton() {
   )
 }
 
-function MajorStep({ me, onNext }: { me: Me; onNext: () => void }) {
+function MajorStep({ me, onNext }: { me: Me; onNext: () => Promise<void> }) {
   const [majors, setMajors] = useState<Major[] | null>(null)
   const [picked, setPicked] = useState<number | null>(me.major?.id ?? null)
   const [busy, setBusy] = useState(false)
@@ -234,7 +234,7 @@ function MajorStep({ me, onNext }: { me: Me; onNext: () => void }) {
               setError('')
               try {
                 await api.put('/me/profile', { majorId: picked })
-                onNext()
+                await onNext()
               } catch (e) {
                 setError(errorText(e))
                 setBusy(false)
@@ -249,7 +249,7 @@ function MajorStep({ me, onNext }: { me: Me; onNext: () => void }) {
   )
 }
 
-function YearStep({ me, onNext }: { me: Me; onNext: () => void }) {
+function YearStep({ me, onNext }: { me: Me; onNext: () => Promise<void> }) {
   // The guess from the ID is picked already; the student confirms with Continue. It never moves on by itself.
   const guess = Math.min(me.predictedYear, 4)
   const [year, setYear] = useState<number>(me.year ?? guess)
@@ -305,7 +305,7 @@ function YearStep({ me, onNext }: { me: Me; onNext: () => void }) {
             setError('')
             try {
               await api.put('/me/profile', { year })
-              onNext()
+              await onNext()
             } catch (e) {
               setError(errorText(e))
               setBusy(false)

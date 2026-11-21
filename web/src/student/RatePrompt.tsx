@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, errorText } from '../lib/api'
+import { ApiError, api, errorText } from '../lib/api'
 import { Button, ErrorText, Modal, cx } from '../components/ui'
 
 interface Prompt {
@@ -34,22 +34,30 @@ export default function RatePrompt() {
 
   if (!prompt) return null
 
-  const send = async (dismissed: boolean) => {
+  // Closing always closes, even offline or after staff closed the question. If "Not now" doesn't reach the server, the
+  // pop-up just asks again next time.
+  const dismiss = () => {
+    setOpen(false)
+    if (!thanks) api.post('/me/feedback', { promptId: prompt.id, rating: null, comment: null, dismissed: true }).catch(() => {})
+  }
+
+  const send = async () => {
     setBusy(true)
     setError('')
     try {
-      await api.post('/me/feedback', { promptId: prompt.id, rating: dismissed ? null : rating, comment: dismissed ? null : comment, dismissed })
-      if (dismissed) setOpen(false)
-      else setThanks(true)
+      await api.post('/me/feedback', { promptId: prompt.id, rating, comment, dismissed: false })
+      setThanks(true)
     } catch (e) {
-      setError(errorText(e))
+      // 404: staff closed or replaced this question while it was open, so there is nothing left to answer.
+      if (e instanceof ApiError && e.status === 404) setOpen(false)
+      else setError(errorText(e))
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <Modal open={open} onClose={() => (thanks ? setOpen(false) : void send(true))} label="Rate Classy">
+    <Modal open={open} onClose={dismiss} label="Rate Classy">
       {thanks ? (
         <>
           <h2 className="text-[30px] leading-none font-extrabold tracking-[-0.03em]">Thank you!</h2>
@@ -96,10 +104,10 @@ export default function RatePrompt() {
           />
           <ErrorText>{error}</ErrorText>
           <div className="flex justify-end gap-2.5">
-            <Button variant="secondary" disabled={busy} onClick={() => send(true)}>
+            <Button variant="secondary" disabled={busy} onClick={dismiss}>
               Not now
             </Button>
-            <Button busy={busy} disabled={rating === 0} onClick={() => send(false)}>
+            <Button busy={busy} disabled={rating === 0} onClick={() => void send()}>
               Send
             </Button>
           </div>
