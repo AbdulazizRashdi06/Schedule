@@ -452,6 +452,28 @@ public class PlannerTests
     }
 
     [Fact]
+    public async Task A_weekly_move_follows_its_original_class_on_days_off() {
+        using var w = new World(); await w.Init();
+        // The Sunday class on 15 Nov is off, and so is the Tuesday it would move to on 24 Nov.
+        await DayOff(w, new(2026, 11, 15)); await DayOff(w, new(2026, 11, 24), "Break");
+        var source = (await Json(await w.Rep.GetAsync($"{w.Base}/calendar?from=2026-11-08&to=2026-11-08"))).EnumerateArray()
+            .First(e => e.GetProperty("source").GetProperty("sectionId").GetInt32() == w.Section).GetProperty("source").Deserialize<PlannerSource>(PlannerJson.Options)!;
+        var move = await w.Draft(new EventSpec("class", "replace", "Moved lecture", "2026-11-10", "13:00", "14:30", "B200", [new(w.Course, [w.Section])], "2026-11-24", source));
+        var coverage = Coverage(await w.Analysis(move));
+        Assert.Contains(coverage, x => x.StartsWith("The weekly repeat skips") && x.Contains("2026-11-17"));
+        Assert.Contains("The moved class would fall on a day off or outside the teaching weeks on 2026-11-24, so the class doesn't happen those weeks.", coverage);
+        await w.Publish(move);
+        // No moved class the week its original is a day off, and none on the Tuesday off; that week's Sunday class stays moved away.
+        var student = await Json(await w.Student.GetAsync("/api/me/timetable"));
+        Assert.Equal(["2026-11-10"], student.GetProperty("plannerEvents").EnumerateArray().Select(e => e.GetProperty("date").GetString()!).ToArray());
+        var excluded = student.GetProperty("classes")[0].GetProperty("section").GetProperty("meetings")[0].GetProperty("excludedDates").EnumerateArray().Select(x => x.GetString()).ToArray();
+        Assert.Contains("2026-11-22", excluded);
+        var calendar = (await Json(await w.Rep.GetAsync($"{w.Base}/calendar?from=2026-11-15&to=2026-11-28"))).EnumerateArray()
+            .Where(e => e.GetProperty("targets")[0].GetProperty("sectionIds").EnumerateArray().Any(id => id.GetInt32() == w.Section)).ToArray();
+        Assert.Empty(calendar);
+    }
+
+    [Fact]
     public async Task Slot_finder_and_conflict_check_treat_days_off_as_days_off() {
         using var w = new World(); await w.Init();
         await DayOff(w, new(2026, 11, 22));

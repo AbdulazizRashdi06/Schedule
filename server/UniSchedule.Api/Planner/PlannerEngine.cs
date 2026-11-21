@@ -67,13 +67,24 @@ public static class PlannerEngine
     /// <paramref name="span"/>, the weekly repeats skip days off and dates outside the teaching weeks, as university
     /// classes do. The first date is kept, so a make-up class put on a holiday still happens.
     /// </summary>
-    public static IEnumerable<DateOnly> Dates(EventSpec spec, SemesterSpan? span = null)
+    public static IEnumerable<DateOnly> Dates(EventSpec spec, SemesterSpan? span = null) => Weeks(spec, span).Where(w => w.Shown).Select(w => w.Date);
+
+    /// <summary>
+    /// Each week of an event, with whether it is shown. A change to a university class follows that class: a week whose
+    /// original class falls on a day off is left out. A week whose new date falls on one is not shown, but its original
+    /// class still doesn't happen, so a moved class never comes back on its old day.
+    /// </summary>
+    public static IEnumerable<(DateOnly Date, bool Shown)> Weeks(EventSpec spec, SemesterSpan? span = null)
     {
         if (!Date(spec.Date, out var first)) yield break;
         var until = Date(spec.RepeatUntil, out var last) ? last : first;
+        var original = spec.Source is { } source && Date(source.Date, out var o) ? o : (DateOnly?)null;
+        bool Teaching(DateOnly d) => d >= span!.First && d <= span.Last && !span.DaysOff.ContainsKey(d);
         for (var d = first; d <= until && d.DayNumber - first.DayNumber <= 190; d = d.AddDays(7))
         {
-            if (d == first || span is null || (d >= span.First && d <= span.Last && !span.DaysOff.ContainsKey(d))) yield return d;
+            if (d == first || span is null) yield return (d, true);
+            else if (original is not { } from) { if (Teaching(d)) yield return (d, true); }
+            else if (Teaching(from.AddDays(d.DayNumber - first.DayNumber))) yield return (d, Teaching(d));
             // A draft stored before dates were checked can end in the last week there is.
             if (d.DayNumber > DateOnly.MaxValue.DayNumber - 7) yield break;
         }
@@ -112,7 +123,7 @@ public static class PlannerEngine
         {
             var stale = spec.Source is { } src && !fingerprints.Contains(src.Fingerprint);
             var first = DateOnly.Parse(spec.Date, CultureInfo.InvariantCulture);
-            foreach (var d in Dates(spec, span))
+            foreach (var (d, shown) in Weeks(spec, span))
             {
                 if (effective && !stale && spec.Source is { } original && Date(original.Date, out var originalDate))
                 {
@@ -120,7 +131,7 @@ public static class PlannerEngine
                     output.RemoveAll(x => x.Key == $"import:{original.Fingerprint}:{Iso(replacedDate)}");
                 }
                 // A published cancellation hides its class; once the class changed it no longer applies, so it's shown for review.
-                if (d < from || d > to || (effective && !stale && spec.Action == "cancel")) continue;
+                if (!shown || d < from || d > to || (effective && !stale && spec.Action == "cancel")) continue;
                 output.Add(new($"{status}:{proposalId ?? eventId}:{Iso(d)}", eventId, proposalId, version, spec.Kind, spec.Title, Iso(d), spec.Start, spec.End, spec.Room, spec.Targets, spec.Action == "cancel" ? effective ? "cancelled" : "cancelled-draft" : status, spec.Source, stale, spec.Notes));
             }
         }
@@ -149,8 +160,11 @@ public static class PlannerEngine
             foreach (var d in occurrences.Where(span.DaysOff.ContainsKey)) coverage.Add($"{Iso(d)} is {span.DaysOff[d]}, a day off.");
             // Exams after the last teaching week are the exam period; classes then, or anything before week 1, are unusual.
             if (span.WeeksKnown && (occurrences[0] < span.First || (spec.Kind == "class" && occurrences[0] > span.Last))) coverage.Add($"{Iso(occurrences[0])} is outside the semester's teaching weeks.");
-            var skipped = Dates(spec).Except(occurrences).ToList();
+            var weeks = Weeks(spec, span).ToList();
+            var skipped = Dates(spec).Except(weeks.Select(x => x.Date)).ToList();
             if (skipped.Count > 0) coverage.Add($"The weekly repeat skips days off and dates outside the teaching weeks: {string.Join(", ", skipped.Select(Iso))}.");
+            var dropped = weeks.Where(x => !x.Shown).Select(x => Iso(x.Date)).ToList();
+            if (dropped.Count > 0) coverage.Add($"The moved class would fall on a day off or outside the teaching weeks on {string.Join(", ", dropped)}, so the class doesn't happen those weeks.");
         }
         foreach (var date in occurrences)
         {
@@ -213,7 +227,7 @@ public sealed class PublishedPlan(List<(PlannerEvent Event, EventSpec Spec)> eve
         {
             var matching = picks.Where(p => spec.Targets.Any(t => t.CourseId == p.CourseId && (t.SectionIds.Length == 0 || (p.SectionId is int sid && t.SectionIds.Contains(sid))))).ToList();
             if (matching.Count == 0) continue;
-            foreach (var d in PlannerEngine.Dates(spec, span))
+            foreach (var (d, shown) in PlannerEngine.Weeks(spec, span))
             {
                 if (spec.Source is { } original)
                 {
@@ -221,7 +235,7 @@ public sealed class PublishedPlan(List<(PlannerEvent Event, EventSpec Spec)> eve
                     if (!excluded.ContainsKey(key)) excluded[key] = [];
                     excluded[key].Add(PlannerEngine.Iso(Day(original.Date).AddDays(d.DayNumber - Day(spec.Date).DayNumber)));
                 }
-                if (spec.Action == "cancel") continue;
+                if (!shown || spec.Action == "cancel") continue;
                 var pick = matching[0]; // One shared event, even when a student takes more than one target course.
                 output.Add(new(e.Id, e.Version, spec.Kind, spec.Title, PlannerEngine.Iso(d), spec.Start, spec.End, spec.Room, spec.Notes,
                     pick.CourseId, pick.Course.Code, pick.Course.Name, pick.SectionId, e.UpdatedAt));

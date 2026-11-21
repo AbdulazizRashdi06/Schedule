@@ -227,11 +227,11 @@ public static class PlannerEndpoints
             if (spec.Source is { } source) {
                 var span = await SemesterSpan.ForAsync(db, await db.Semesters.FirstAsync(s => s.Id == w.SemesterId, ct), ct);
                 DateOnly Day(string iso) => DateOnly.ParseExact(iso, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
-                var sourceDates = PlannerEngine.Dates(spec, span).Select(d => Day(source.Date).AddDays(d.DayNumber - Day(spec.Date).DayNumber)).ToHashSet();
+                var sourceDates = PlannerEngine.Weeks(spec, span).Select(w => w.Date).Select(d => Day(source.Date).AddDays(d.DayNumber - Day(spec.Date).DayNumber)).ToHashSet();
                 var active = await db.PlannerEvents.Where(x => x.SemesterId == w.SemesterId && !x.Withdrawn && x.Id != p.EventId).ToListAsync(ct);
                 foreach (var existing in active.Select(x => PlannerJson.Read<EventSpec>(x.PayloadJson)))
                     if (existing.Source is { } other && other.Fingerprint == source.Fingerprint
-                        && PlannerEngine.Dates(existing, span).Any(d => sourceDates.Contains(Day(other.Date).AddDays(d.DayNumber - Day(existing.Date).DayNumber))))
+                        && PlannerEngine.Weeks(existing, span).Select(w => w.Date).Any(d => sourceDates.Contains(Day(other.Date).AddDays(d.DayNumber - Day(existing.Date).DayNumber))))
                         return Errors.Conflict("This university occurrence already has a published adjustment. Edit or withdraw that adjustment instead.");
             }
             if (e is null) { e = new() { SemesterId = w.SemesterId }; db.PlannerEvents.Add(e); }
