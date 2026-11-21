@@ -92,6 +92,7 @@ public static partial class OwnerEndpoints
             user!.PasswordHash = AuthEndpoints.HashPassword(user, password);
             user.MustChangePassword = true;
             user.FailedLogins = 0;
+            user.FailedSince = null;
             user.LockedUntil = null;
             // Wherever the account is signed in now gets signed out.
             user.SessionVersion++;

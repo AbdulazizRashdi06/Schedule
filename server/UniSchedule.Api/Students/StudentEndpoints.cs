@@ -153,7 +153,7 @@ public static class StudentEndpoints
 
         api.MapGet("/majors", async (AppDb db, CancellationToken ct) =>
             await db.Majors.OrderBy(m => m.Name).Select(m => new { m.Id, m.Code, m.Name }).ToListAsync(ct))
-            .RequireAuthorization();
+            .RequireAuthorization(Session.SignedInPolicy);
 
         me.MapPut("/profile", async (ProfileBody body, HttpContext http, AppDb db, CancellationToken ct) =>
         {

@@ -78,6 +78,6 @@ public static partial class FreeRooms
                 rooms = free.OrderBy(r => r.Building).ThenBy(r => r.Room, StringComparer.OrdinalIgnoreCase)
                     .Select(r => new { room = r.Room, building = r.Building, freeUntil = r.Until }),
             });
-        }).RequireAuthorization();
+        }).RequireAuthorization(Session.SignedInPolicy);
     }
 }

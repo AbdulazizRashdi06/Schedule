@@ -204,6 +204,8 @@ public sealed class UsageRetention(IServiceScopeFactory scopes, UsageBuffer buff
                 if (now - lastPrune >= TimeSpan.FromHours(1))
                 {
                     await UsageAnalytics.Prune(db, now, stoppingToken);
+                    // Sign-in codes are only kept for a day (each ID's old ones also go when it asks for a new one).
+                    await UniSchedule.Api.Auth.LoginCodes.Purge(db, now, stoppingToken);
                     lastPrune = now;
                 }
             }

@@ -32,6 +32,7 @@ public static class Cli
         user.PasswordHash = AuthEndpoints.HashPassword(user, password);
         user.MustChangePassword = true;
         user.FailedLogins = 0;
+        user.FailedSince = null;
         user.LockedUntil = null;
         // A reset signs the account out wherever it's signed in.
         if (existed) user.SessionVersion++;

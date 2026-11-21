@@ -23,11 +23,11 @@ const formatId = (raw: string, prev: string) => {
 }
 const validId = (id: string) => /^\d{2}-\d{4}$/.test(id)
 
-/** "Wait 34 seconds…" from the server → 34. */
+/** "Wait 34 seconds…" from the server → 34. Longer waits ("Try again in 5 hours…") give 0, so the message is shown. */
 const waitSeconds = (e: unknown) => {
   if (!(e instanceof ApiError) || e.status !== 429) return 0
-  const m = /(\d+)\s*(second|minute)/.exec(e.message)
-  return m ? Number(m[1]) * (m[2] === 'minute' ? 60 : 1) : 60
+  const m = /(\d+|a)\s*(second|minute)/.exec(e.message)
+  return m ? (m[1] === 'a' ? 1 : Number(m[1])) * (m[2] === 'minute' ? 60 : 1) : 0
 }
 
 export default function Login() {
