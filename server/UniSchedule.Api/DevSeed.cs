@@ -46,7 +46,7 @@ public static class DevSeed
         var semester = new Semester { Name = "Fall 2026", Term = "Fall", Year = 2026, CreatedAt = now, Week1Start = new DateOnly(2026, 9, 6), LastWeek = 15 };
         db.Semesters.Add(semester);
         await db.SaveChangesAsync();
-        await ScheduleImport.ApplyAsync(db, semester, parsed, now, CancellationToken.None);
+        await ScheduleImport.ApplyAsync(db, semester, parsed, TimeProvider.System, CancellationToken.None);
         semester.IsCurrent = true;
         semester.PublishedAt = now;
         await db.SaveChangesAsync();

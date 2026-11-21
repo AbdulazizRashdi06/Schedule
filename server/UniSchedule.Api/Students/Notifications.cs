@@ -177,6 +177,7 @@ public static class Notifications
         var items = (await StudentSchedule.ForAsync(db, semester.Id, students.Select(s => s.Id).ToList(), slots: true, planner, ct)).ToLookup(i => i.StudentId);
 
         var due = new List<(int, Note)>();
+        var now = to.ToOffset(Oman);
         foreach (var s in students)
         {
             // Things starting in this window, shifted by how early the student wants to know.
@@ -187,7 +188,8 @@ public static class Notifications
             for (var on = DateOnly.FromDateTime(lo.DateTime); on <= DateOnly.FromDateTime(hi.DateTime); on = on.AddDays(1))
             {
                 var at = new DateTimeOffset(on.ToDateTime(i.Start), Oman);
-                if (at <= lo || at > hi || !span.Happens(i, on)) continue;
+                // A restarted worker catches up on missed reminders; "in 5 min" for a class that has already started is no use.
+                if (at <= lo || at > hi || at <= now || !span.Happens(i, on)) continue;
                 var time = Timeslots.Format(i.Start);
                 var where = string.IsNullOrWhiteSpace(i.Room) ? "room to be announced" : i.Room;
                 due.Add((s.Id, i.From switch
@@ -302,7 +304,10 @@ public sealed class PushSender(IHttpClientFactory http, IConfiguration config, I
 /// </summary>
 public sealed class NotificationWorker(IServiceScopeFactory scopes, PushSender push, TimeProvider clock, ILogger<NotificationWorker> log) : BackgroundService
 {
-    /// <summary>How far back a restarted worker sends reminders it missed; older ones would only be out of date.</summary>
+    /// <summary>
+    /// How far back a restarted worker sends reminders it missed; older ones would only be out of date. Reminders for a
+    /// class that has already started are never sent (<see cref="Notifications.DueReminders"/>).
+    /// </summary>
     public static readonly TimeSpan CatchUp = TimeSpan.FromMinutes(15);
 
     protected override async Task ExecuteAsync(CancellationToken stop)

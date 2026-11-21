@@ -253,7 +253,7 @@ public static class AdminEndpoints
             if (parsed.Courses.Count == 0) return Errors.BadRequest("The file has no courses.");
             var preview = await ScheduleImport.PreviewAsync(db, id, parsed, ct);
             var now = clock.GetUtcNow();
-            await ScheduleImport.ApplyAsync(db, semester, parsed, now, ct);
+            await ScheduleImport.ApplyAsync(db, semester, parsed, clock, ct);
             await Labs.AlignAsync(db, semester.Id, ct);
             var fileName = Path.GetFileName(req.Form.Files.GetFile("file")?.FileName ?? "");
             db.UploadLogs.Add(new UploadLog
@@ -331,9 +331,12 @@ public static class AdminEndpoints
             section.Instructor = instructor;
             db.Meetings.RemoveRange(section.Meetings);
             section.Meetings = meetings!;
-            // Students only get the "Changed" badge for a published semester.
+            // Students only get the "Changed" badge for a published semester. Stamped once the write lock is held, so
+            // change times follow commit order, as the notification worker needs (ScheduleImport.ApplyAsync).
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
             if (section.Course.Semester.IsCurrent) { section.ChangedAt = clock.GetUtcNow(); section.ChangeSummary = change; }
             await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
             return Results.Ok(Dto.Of(section));
         });
 

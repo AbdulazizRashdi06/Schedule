@@ -39,7 +39,9 @@ public sealed class ImportTests : IDisposable
 
     static ParsedSchedule Parse(string csv) => ScheduleImport.Parse(ScheduleFile.ReadText(csv).Rows);
 
-    async Task Apply(string csv) => await ScheduleImport.ApplyAsync(db, semester, Parse(csv), Now, CancellationToken.None);
+    sealed class Fixed(DateTimeOffset at) : TimeProvider { public override DateTimeOffset GetUtcNow() => at; }
+
+    async Task Apply(string csv) => await ScheduleImport.ApplyAsync(db, semester, Parse(csv), new Fixed(Now), CancellationToken.None);
 
     async Task<Student> StudentWith(params (string Code, string Section)[] picks)
     {

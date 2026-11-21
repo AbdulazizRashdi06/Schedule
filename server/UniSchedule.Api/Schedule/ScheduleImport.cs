@@ -325,9 +325,12 @@ public static class ScheduleImport
     /// A removed section clears that pick and flags it; a removed course drops its picks.
     /// Changes to a published semester mark the section as "Changed" for students.
     /// </summary>
-    public static async Task ApplyAsync(AppDb db, Semester semester, ParsedSchedule parsed, DateTimeOffset now, CancellationToken ct)
+    public static async Task ApplyAsync(AppDb db, Semester semester, ParsedSchedule parsed, TimeProvider clock, CancellationToken ct)
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct);
+        // Changes are stamped once the write lock is held (SQLite's BEGIN IMMEDIATE), so change times follow commit order:
+        // the notification worker announces up to the newest change it read and relies on none committing behind it.
+        var now = clock.GetUtcNow();
         var majors = await db.Majors.ToListAsync(ct);
         var families = await FamilyCodesAsync(db, ct);
         foreach (var token in parsed.Courses.Where(c => c.Type != CourseType.LS).SelectMany(c => c.Majors).Distinct(StringComparer.OrdinalIgnoreCase))

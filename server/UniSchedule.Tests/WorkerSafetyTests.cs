@@ -3,7 +3,10 @@ using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -113,8 +116,36 @@ public class WorkerSafetyTests
         await again.RoundAsync(from, At(11, 7, 46, 30), default);
         Assert.Equal(1, pushes.Posted);
 
-        // After a long outage it catches up only 15 minutes: no "in 15 min" for a class that's long started.
+        // After a long outage it catches up only 15 minutes back.
         Assert.Equal(At(11, 9, 0) - NotificationWorker.CatchUp, await Worker(factory, pushes).RemindersFromAsync(At(11, 9, 0), default));
+    }
+
+    [Fact]
+    public async Task Catching_up_after_a_restart_skips_reminders_for_classes_that_already_started()
+    {
+        using var factory = new ApiFactory();
+        var (_, student) = await Setup(factory);
+        using (var scope = factory.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<AppDb>().Students.Where(s => s.Id == student).ExecuteUpdateAsync(x => x.SetProperty(s => s.RemindMinutes, 5));
+        var pushes = new Pushes();
+
+        // Sunday 11 Oct, class at 08:00, the 5-minute reminder is due at 07:55. The old process's last round ends at 07:54:30.
+        await Worker(factory, pushes).RoundAsync(At(11, 7, 54), At(11, 7, 54, 30), default);
+        Assert.Equal(0, pushes.Posted);
+
+        // The server is back at 08:09, inside the catch-up window, but the class started at 08:00: no "HX101 in 5 min".
+        var late = Worker(factory, pushes);
+        var from = await late.RemindersFromAsync(At(11, 8, 9), default);
+        Assert.Equal(At(11, 7, 54, 30), from);
+        await late.RoundAsync(from, At(11, 8, 9, 30), default);
+        Assert.Equal(0, pushes.Posted);
+
+        // Back before the class starts, the missed reminder still goes out (a week later, same set-up).
+        await Worker(factory, pushes).RoundAsync(At(18, 7, 54), At(18, 7, 54, 30), default);
+        var soon = Worker(factory, pushes);
+        from = await soon.RemindersFromAsync(At(18, 7, 58), default);
+        await soon.RoundAsync(from, At(18, 7, 58, 30), default);
+        Assert.Equal(1, pushes.Posted);
     }
 
     [Fact]
@@ -151,6 +182,64 @@ public class WorkerSafetyTests
             var db = scope.ServiceProvider.GetRequiredService<AppDb>();
             var saved = await db.AppSettings.Where(x => x.Key == Notifications.ChangesSince).Select(x => x.Value).FirstAsync();
             Assert.Equal(At(12, 10, 0, 10), DateTimeOffset.Parse(saved, System.Globalization.CultureInfo.InvariantCulture));
+        }
+    }
+
+    /// <summary>Tells the test when the next transaction is about to begin.</summary>
+    sealed class Beginning : DbTransactionInterceptor
+    {
+        public TaskCompletionSource? Next;
+        public override ValueTask<InterceptionResult<System.Data.Common.DbTransaction>> TransactionStartingAsync(System.Data.Common.DbConnection connection, TransactionStartingEventData e,
+            InterceptionResult<System.Data.Common.DbTransaction> result, CancellationToken ct = default)
+        {
+            Interlocked.Exchange(ref Next, null)?.TrySetResult();
+            return base.TransactionStartingAsync(connection, e, result, ct);
+        }
+    }
+
+    [Theory]
+    [InlineData("upload")]
+    [InlineData("edit")]
+    public async Task A_change_waiting_for_the_write_lock_is_stamped_after_what_committed_meanwhile(string how)
+    {
+        using var factory = new ApiFactory();
+        var (section, _) = await Setup(factory);
+        var beginning = new Beginning();
+        using var app = factory.WithWebHostBuilder(b => b.ConfigureTestServices(s => s.ConfigureDbContext<AppDb>(o => o.AddInterceptors(beginning))));
+        var owner = app.CreateClient(new() { HandleCookies = true });
+        Assert.Equal(HttpStatusCode.OK, (await owner.PostAsJsonAsync("/api/auth/admin-login", new { username = "owner-worker", password = "owner-password-1" })).StatusCode);
+        int sem;
+        string path;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+            sem = await db.Sections.Where(s => s.Id == section).Select(s => s.Course.SemesterId).FirstAsync();
+            path = db.Database.GetConnectionString()!;
+        }
+
+        // Another admin write holds the write lock while an upload or a section edit moving HX101 to R2 starts.
+        await using var other = new SqliteConnection(path);
+        await other.OpenAsync();
+        await using (var begin = other.CreateCommand()) { begin.CommandText = "BEGIN IMMEDIATE"; await begin.ExecuteNonQueryAsync(); }
+        var started = beginning.Next = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var csv = "code,name,major,type,year,section,instructor,date,days,time,room\nHX101,Holiday Things,HXM,Core,1,1,Dr. H,,Sun,08:00-09:30,R2\n";
+        using var file = new MultipartFormDataContent { { new ByteArrayContent(Encoding.UTF8.GetBytes(csv)), "file", "c.csv" } };
+        var write = how == "upload" ? owner.PostAsync($"/api/admin/semesters/{sem}/upload/apply", file)
+            : owner.PutAsJsonAsync($"/api/admin/sections/{section}", new { instructor = "Dr. H", meetings = new[] { new { day = 0, start = "08:00", end = "09:30", room = "R2" } } });
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await Task.Delay(50);
+
+        // The other write commits with a later time; a round reading now would move the announced mark up to it.
+        var committed = DateTimeOffset.UtcNow;
+        await using (var commit = other.CreateCommand()) { commit.CommandText = "COMMIT"; await commit.ExecuteNonQueryAsync(); }
+        Assert.Equal(HttpStatusCode.OK, (await write).StatusCode);
+
+        // The waiting change is stamped after it, so it can't land behind that mark and go unannounced.
+        using (var scope = factory.Services.CreateScope())
+        {
+            var changedAt = await scope.ServiceProvider.GetRequiredService<AppDb>().Sections.Where(s => s.Id == section).Select(s => s.ChangedAt).FirstAsync();
+            Assert.NotNull(changedAt);
+            Assert.True(changedAt > committed, $"stamped {changedAt:O}, the other write committed at {committed:O}");
         }
     }
 

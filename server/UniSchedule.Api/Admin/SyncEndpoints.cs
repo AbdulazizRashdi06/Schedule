@@ -252,7 +252,7 @@ public static partial class SyncEndpoints
             if (parsed.Courses.Count == 0) return Errors.BadRequest("The sync has no courses.");
             var preview = await ScheduleImport.PreviewAsync(db, id, parsed, ct);
             var now = clock.GetUtcNow();
-            await ScheduleImport.ApplyAsync(db, semester, parsed, now, ct);
+            await ScheduleImport.ApplyAsync(db, semester, parsed, clock, ct);
             await Labs.AlignAsync(db, semester.Id, ct);
             var by = await OwnerEndpoints.ActorName(http, db, ct);
             pending.AppliedAt = now;
