@@ -19,6 +19,19 @@ services:
       Auth__TestMode: ${AUTH_TEST_MODE:-false}
       # Comma-separated student IDs that are always owners, e.g. 22-0001,23-0042.
       Owners__Ids: ${OWNER_IDS:-}
+      # The rest default to the server's own defaults; set them in deploy/.env to change them.
+      # Per IP per 5 minutes: sign-in code requests, code checks, public timetable reads.
+      RateLimits__RequestCode: ${RATE_LIMIT_REQUEST_CODE:-1000}
+      RateLimits__Verify: ${RATE_LIMIT_VERIFY:-2000}
+      RateLimits__PublicTimetable: ${RATE_LIMIT_PUBLIC_TIMETABLE:-600}
+      # Extra EduWave course codes for Classy Sync, comma-separated. Set it empty for none.
+      Sync__ExtraCodes: ${SYNC_EXTRA_CODES-CS1102-L}
+      # The owners' dashboard setting wins over Planner__Enabled.
+      Planner__Enabled: ${PLANNER_ENABLED:-false}
+      Planner__AiUrl: ${PLANNER_AI_URL:-http://codex:8090/v1/chat/completions}
+      Planner__AiModel: ${PLANNER_AI_MODEL:-gpt-6-luna}
+      Analytics__Enabled: ${ANALYTICS_ENABLED:-true}
+      Push__Subject: ${PUSH_SUBJECT:-mailto:schedule@tryzarqa.com}
     volumes:
       - data:/app/data
     networks:

@@ -61,4 +61,10 @@ One row per section meeting time; the header row names the columns (any order, c
 | `Auth__TestMode` | `false` (`true` in Development) | show sign-in codes in the app, never for owners |
 | `Email__Provider` | `log` | `log` or `resend` |
 | `Email__ResendApiKey`, `Email__From` | | for Resend |
-| `RateLimits__RequestCode`, `RateLimits__Verify` | 10, 20 | per IP per 5 minutes |
+| `RateLimits__RequestCode`, `RateLimits__Verify`, `RateLimits__PublicTimetable` | 1000, 2000, 600 | per IP per 5 minutes: a flood guard, since campus Wi-Fi shares one IP (each ID has its own tighter limits) |
+| `Sync__ExtraCodes` | `CS1102-L` | extra EduWave course codes for Classy Sync, comma-separated |
+| `Planner__Enabled`, `Planner__AiUrl`, `Planner__AiModel` | `false`, `http://codex:8090/v1/chat/completions`, `gpt-6-luna` | semester planner; the owners' dashboard setting wins over `Planner__Enabled` |
+| `Analytics__Enabled` | `true` | usage analytics |
+| `Push__Subject` | `mailto:schedule@tryzarqa.com` | contact sent with push notifications |
+
+In production these are set in the server's `deploy/.env`; see [deploy/README.md](deploy/README.md) for the names.
