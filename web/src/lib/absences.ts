@@ -29,6 +29,8 @@ export function resetAbsences() {
 }
 /** Goes up on sign-out, so a list that arrives after it isn't kept for the next student. */
 let generation = 0
+/** The last save asked for on each session ("courseId.date.start"), so the next one waits for it. */
+const saving = new Map<string, Promise<unknown>>()
 
 /** The student's missed classes and the attendance limit (if the university set one), kept in step across pages. */
 export function useAbsences() {
@@ -44,16 +46,32 @@ export function useAbsences() {
     }
   }, [])
 
-  /** Marks a session missed or not; shown at once, put back if saving fails. */
+  /**
+   * Marks a session missed or not; shown at once, put back if saving fails. Taps on one session are saved one after
+   * another, so a quick undo can't reach the server before the tap it undoes.
+   */
   const mark = useCallback(async (courseId: number, date: Date, start: string, missed: boolean) => {
     const before = shared ?? { limit: null, absences: [] }
+    const id = `${courseId}.${isoDate(date)}.${start}`
     const key = (a: Absence) => a.courseId === courseId && a.date === isoDate(date) && a.start === start
-    publish({ ...before, absences: missed ? [...before.absences.filter((a) => !key(a)), { courseId, date: isoDate(date), start }] : before.absences.filter((a) => !key(a)) })
+    const was = before.absences.some(key)
+    const set = (on: boolean) => {
+      const now = shared ?? before
+      publish({ ...now, absences: on ? [...now.absences.filter((a) => !key(a)), { courseId, date: isoDate(date), start }] : now.absences.filter((a) => !key(a)) })
+    }
+    set(missed)
+    const run = (saving.get(id) ?? Promise.resolve())
+      .catch(() => {})
+      .then(() => api.put('/me/absences', { courseId, date: isoDate(date), start, missed }))
+    saving.set(id, run)
     try {
-      await api.put('/me/absences', { courseId, date: isoDate(date), start, missed })
+      await run
     } catch (e) {
-      publish(before)
+      // Only undone if no later tap on this session has replaced it; that one is saved next.
+      if (saving.get(id) === run) set(was)
       throw e
+    } finally {
+      if (saving.get(id) === run) saving.delete(id)
     }
   }, [])
 

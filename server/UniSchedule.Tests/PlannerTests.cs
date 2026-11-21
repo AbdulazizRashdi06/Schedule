@@ -255,6 +255,41 @@ public class PlannerTests
     }
 
     [Fact]
+    public async Task Absences_and_session_notes_follow_published_changes() {
+        using var w = new World(); await w.Init();
+        var calendar = await Json(await w.Rep.GetAsync($"{w.Base}/calendar?from=2026-11-08&to=2026-11-15"));
+        PlannerSource Source(string date) => calendar.EnumerateArray().First(e => e.GetProperty("date").GetString() == date && e.GetProperty("source").GetProperty("sectionId").GetInt32() == w.Section)
+            .GetProperty("source").Deserialize<PlannerSource>(PlannerJson.Options)!;
+        // Section 1 meets Sundays 08:00. Cancelled on 8 Nov, moved from 15 Nov to Mon 16 Nov 13:00, a midterm on Tue 17 Nov.
+        await w.Publish(await w.Draft(new EventSpec("class", "cancel", "No lecture", "2026-11-08", "08:00", "09:30", "B105", [new(w.Course, [w.Section])], null, Source("2026-11-08"))));
+        await w.Publish(await w.Draft(new EventSpec("class", "replace", "Moved lecture", "2026-11-16", "13:00", "14:30", "B106", [new(w.Course, [w.Section])], null, Source("2026-11-15"))));
+        await w.Publish(await w.Draft(new EventSpec("exam", "add", "Midterm", "2026-11-17", "10:00", "12:00", "B105", [new(w.Course, [])])));
+
+        async Task<HttpStatusCode> Missed(string date, string start) =>
+            (await w.Student.PutAsJsonAsync("/api/me/absences", new { courseId = w.Course, date, start, missed = true })).StatusCode;
+        Assert.Equal(HttpStatusCode.NoContent, await Missed("2026-11-01", "08:00"));
+        Assert.Equal(HttpStatusCode.NoContent, await Missed("2026-11-16", "13:00"));
+        // Not the cancelled class, not the one that moved away, and not the exam: exams don't count.
+        Assert.Equal(HttpStatusCode.BadRequest, await Missed("2026-11-08", "08:00"));
+        Assert.Equal(HttpStatusCode.BadRequest, await Missed("2026-11-15", "08:00"));
+        Assert.Equal(HttpStatusCode.BadRequest, await Missed("2026-11-17", "10:00"));
+
+        // "This session" notes work on the moved class and the exam, on days the section doesn't otherwise meet.
+        async Task<HttpStatusCode> Note(string date) =>
+            (await w.Student.PostAsJsonAsync("/api/me/notes", new { courseId = w.Course, date, text = "Bring a calculator" })).StatusCode;
+        Assert.Equal(HttpStatusCode.OK, await Note("2026-11-16"));
+        Assert.Equal(HttpStatusCode.OK, await Note("2026-11-17"));
+        Assert.Equal(HttpStatusCode.BadRequest, await Note("2026-11-18"));
+
+        // With the planner off, those sessions are gone again (unmarking still works).
+        await w.Owner.PutAsJsonAsync("/api/admin/planner/settings", new { enabled = false });
+        Assert.Equal(HttpStatusCode.NoContent, (await w.Student.PutAsJsonAsync("/api/me/absences", new { courseId = w.Course, date = "2026-11-16", start = "13:00", missed = false })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, await Missed("2026-11-16", "13:00"));
+        Assert.Equal(HttpStatusCode.BadRequest, await Note("2026-11-17"));
+        Assert.Equal(HttpStatusCode.NoContent, await Missed("2026-11-08", "08:00"));
+    }
+
+    [Fact]
     public async Task Slot_finder_checks_every_recurring_occurrence_and_reports_missing_sections() {
         using var w = new World(); await w.Init();
         await w.Publish(await w.Draft(w.Exam("2026-11-15", "10:00", "11:30")));

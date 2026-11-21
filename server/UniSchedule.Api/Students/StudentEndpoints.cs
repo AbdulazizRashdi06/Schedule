@@ -253,6 +253,7 @@ public static class StudentEndpoints
             if (current is null) return Errors.Conflict("No semester has been published yet.");
             if (s.MajorId is null) return Errors.Conflict("Pick your major first.");
             var wanted = body.Picks ?? [];
+            if (wanted.Any(p => p is null)) return Errors.BadRequest("Each pick needs a course.");
             if (wanted.Select(p => p.CourseId).Distinct().Count() != wanted.Count) return Errors.BadRequest("Each course can only be picked once.");
 
             var allowed = (await Options(db, current.Id, s.MajorId.Value, ct, s.Id)).ToDictionary(c => c.Id);

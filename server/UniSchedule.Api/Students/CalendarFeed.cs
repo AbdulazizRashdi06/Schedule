@@ -39,13 +39,16 @@ public static partial class CalendarFeed
         // The student's feed link, made the first time they ask for it.
         me.MapGet("", async (HttpContext http, AppDb db, CancellationToken ct) =>
         {
-            var s = await db.Students.FirstAsync(x => x.Id == http.User.Id(), ct);
-            if (s.CalendarToken is null)
+            var id = http.User.Id();
+            var token = await db.Students.Where(x => x.Id == id).Select(x => x.CalendarToken).FirstAsync(ct);
+            if (token is null)
             {
-                s.CalendarToken = NewToken();
-                await db.SaveChangesAsync(ct);
+                // Only set while still unset, then read back: two first requests at once get the same link, not one dead one.
+                await db.Students.Where(x => x.Id == id && x.CalendarToken == null)
+                    .ExecuteUpdateAsync(u => u.SetProperty(x => x.CalendarToken, NewToken()), ct);
+                token = await db.Students.Where(x => x.Id == id).Select(x => x.CalendarToken).FirstAsync(ct);
             }
-            return Results.Ok(Links(http.Request, s.CalendarToken));
+            return Results.Ok(Links(http.Request, token!));
         });
 
         // A new link; calendars subscribed with the old one stop updating.

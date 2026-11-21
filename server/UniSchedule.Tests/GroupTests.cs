@@ -200,6 +200,25 @@ public class GroupTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task When_the_last_two_leave_at_once_the_group_is_still_deleted()
+    {
+        for (var run = 0; run < 10; run++)
+        {
+            var a = await Student();
+            var b = await Student();
+            var group = await Json(await a.PostAsJsonAsync("/api/me/groups", new { name = $"Leaving {run}", kind = "car", displayName = "A" }));
+            var id = group.GetProperty("id").GetInt32();
+            var code = group.GetProperty("inviteCode").GetString();
+            Assert.Equal(HttpStatusCode.OK, (await b.PostAsJsonAsync($"/api/groups/invite/{code}/join", new { displayName = "B" })).StatusCode);
+
+            var left = await Task.WhenAll(a.DeleteAsync($"/api/me/groups/{id}/me"), b.DeleteAsync($"/api/me/groups/{id}/me"));
+            Assert.All(left, r => Assert.Equal(HttpStatusCode.NoContent, r.StatusCode));
+            using var scope = factory.Services.CreateScope();
+            Assert.False(await scope.ServiceProvider.GetRequiredService<AppDb>().StudyGroups.AnyAsync(g => g.Id == id), $"run {run}: an empty group was left behind");
+        }
+    }
+
+    [Fact]
     public async Task Removing_students_also_removes_the_groups_they_leave_empty()
     {
         // Its own app: Delete all data would wipe the other tests' semesters.
