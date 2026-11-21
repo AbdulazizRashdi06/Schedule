@@ -27,18 +27,18 @@ Run everything below **from the laptop**: the SSH key (`~/.ssh/zarqa_vps`) is on
    | `EMAIL_PROVIDER` | `log` (codes in the logs) or `resend` |
    | `RESEND_API_KEY`, `EMAIL_FROM` | For `resend`; the sender's domain must be verified in Resend |
 
-   Optional, each left out keeps the server's default (listed in `.env.example`):
+   Every line of `deploy/.env` reaches the app, so any setting in [README.md](../README.md#configuration) can also go there, written `Section__Key=value`. `.env.example` lists the useful ones, commented out with their defaults:
 
    | Variable | Default | Meaning |
    |---|---|---|
-   | `RATE_LIMIT_REQUEST_CODE`, `RATE_LIMIT_VERIFY`, `RATE_LIMIT_PUBLIC_TIMETABLE` | 1000, 2000, 600 | Per IP per 5 minutes: sign-in code requests, code checks, public timetable reads |
-   | `RATE_LIMIT_WRONG_CODES_PER_HOUR` | 300 | Wrong sign-in codes per IP per rolling hour, across all IDs |
-   | `SYNC_EXTRA_CODES` | `CS1102-L` | Extra EduWave course codes for Classy Sync, comma-separated; empty for none |
-   | `PLANNER_ENABLED`, `PLANNER_AI_URL`, `PLANNER_AI_MODEL` | `false`, `http://codex:8090/v1/chat/completions`, `gpt-6-luna` | Semester planner; the owners' dashboard setting wins over `PLANNER_ENABLED` |
-   | `ANALYTICS_ENABLED` | `true` | Usage analytics |
-   | `PUSH_SUBJECT` | `mailto:schedule@tryzarqa.com` | Contact sent with push notifications |
+   | `RateLimits__RequestCode`, `RateLimits__Verify`, `RateLimits__PublicTimetable` | 1000, 2000, 600 | Per IP per 5 minutes: sign-in code requests, code checks, public timetable reads |
+   | `RateLimits__WrongCodesPerHour` | 300 | Wrong sign-in codes per IP per rolling hour, across all IDs |
+   | `Sync__ExtraCodes` | `CS1102-L` | Extra EduWave course codes for Classy Sync, comma-separated; empty for none |
+   | `Planner__Enabled`, `Planner__AiUrl`, `Planner__AiModel` | `false`, `http://codex:8090/v1/chat/completions`, `gpt-6-luna` | Semester planner; the owners' dashboard setting wins over `Planner__Enabled` |
+   | `Analytics__Enabled` | `true` | Usage analytics |
+   | `Push__Subject` | `mailto:schedule@tryzarqa.com` | Contact sent with push notifications |
 
-   Only the variables in `deploy/docker-compose.yml` reach the app, and they win over `appsettings.json`. To add another setting, map it there and commit (edits to the server's copy are replaced on every deploy).
+   A setting left out of `deploy/.env` keeps its value from `appsettings.json` (committed) or the code's default, so a committed change there still takes effect. One set in `deploy/.env` wins over `appsettings.json`. To go back to the default, delete the line: an empty value is a value (`Sync__ExtraCodes=` means no extra codes).
 4. **Add the site to Zarqa's Caddy.** Append `deploy/Caddyfile.snippet` to `C:\Projects\LostraAi\deploy\Caddyfile`, deploy Zarqa as usual (or reload Caddy on the server), e.g.:
    ```bash
    ssh -i ~/.ssh/zarqa_vps deploy@173.249.40.122 "cd /opt/<zarqa> && docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile"
@@ -60,7 +60,7 @@ Use `owner` instead of `rsa` for an owner account. Running it again for an exist
 
 ## Everyday
 
-- **Update:** commit, then `./deploy/deploy.sh` (only committed code is shipped). It builds the new image while the site keeps running, stops the app, backs up the database to `/opt/uni-schedule/backups` (the newest 14 are kept), and starts the new version. If `/api/health` doesn't answer within a minute, it puts back the previous image (kept as `uni-schedule:previous`) and that backup, starts it, and fails.
+- **Update:** commit, then `./deploy/deploy.sh` (only committed code is shipped). It builds the new image while the site keeps running, stops the app, backs up the database to `/opt/uni-schedule/backups` (the newest 14 are kept), and starts the new version. If `/api/health` doesn't answer within a minute, it puts back the previous image (kept as `uni-schedule:previous`) and that backup, starts it, and fails. The check runs `curlimages/curl` in a throwaway container: if that can't run, the deploy stops before changing anything, or, if it breaks later, leaves the new version running and fails without rolling back.
 - **Logs / sign-in codes:**
   `ssh -i ~/.ssh/zarqa_vps deploy@173.249.40.122 "cd /opt/uni-schedule && docker compose -f deploy/docker-compose.yml --env-file deploy/.env logs -f --tail 100"`
 - **Backup the database:** every deploy makes one. By hand, stop the app first so SQLite isn't copied mid-write (the site is down for a few seconds):
@@ -74,7 +74,7 @@ Use `owner` instead of `rsa` for an owner account. Running it again for an exist
 
 - The `S1AuthBinding` migration ties sign-in codes to the browser that asked, so codes sent before the deploy stop working; students just ask for a new one. Students already signed in stay signed in.
 - Owners reload the unpacked Classy Sync extension once (`chrome://extensions` → Reload) to get its fixes.
-- Server `.env` files need no change: `RATE_LIMIT_WRONG_CODES_PER_HOUR` is optional and defaults to the server's 300.
+- Server `.env` files need no change. Optional settings such as `RateLimits__WrongCodesPerHour=300` can now be added to it (see step 3 above).
 
 ## Deploying from GitHub
 

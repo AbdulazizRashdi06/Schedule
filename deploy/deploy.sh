@@ -38,13 +38,24 @@ if ! docker network inspect "$NET" >/dev/null 2>&1; then
   exit 1
 fi
 
+# 0 healthy, 1 not healthy within a minute, 2 the check itself can't run (docker run fails with 125 or more,
+# e.g. the curl image is gone and can't be pulled), which says nothing about the app.
 healthy() {
+  local rc
   for _ in $(seq 1 30); do
-    if docker run --rm --network "$NET" curlimages/curl -fsS http://uni-schedule:8080/api/health >/dev/null 2>&1; then return 0; fi
+    rc=0
+    docker run --rm --network "$NET" curlimages/curl -fsS http://uni-schedule:8080/api/health >/dev/null 2>&1 || rc=$?
+    if [ "$rc" -eq 0 ]; then return 0; fi
+    if [ "$rc" -ge 125 ]; then return 2; fi
     sleep 2
   done
   return 1
 }
+# Make sure the check can run (pulling the curl image if needed) before anything is changed.
+if ! docker run --rm curlimages/curl --version >/dev/null 2>&1; then
+  echo "Can't run curlimages/curl for the health check (is Docker Hub reachable?). Nothing was changed." >&2
+  exit 1
+fi
 
 # Keep the image that is serving now as uni-schedule:previous, so the build doesn't leave it untagged (and prunable).
 CUR=$("${DC[@]}" ps -q uni-schedule 2>/dev/null | head -1 || true)
@@ -74,11 +85,18 @@ STARTED=yes
 "${DC[@]}" up -d --no-build --remove-orphans || STARTED=no
 
 echo "==> Waiting for /api/health"
-if [ "$STARTED" = yes ] && healthy; then
+HEALTH=1
+if [ "$STARTED" = yes ]; then HEALTH=0; healthy || HEALTH=$?; fi
+if [ "$HEALTH" -eq 0 ]; then
   echo "Healthy."
   # Only now drop untagged images; uni-schedule:previous stays for the next rollback.
   docker image prune -f >/dev/null
   exit 0
+fi
+if [ "$HEALTH" -eq 2 ]; then
+  # Don't roll back (and throw away the database) over a broken check: the new version may be fine.
+  echo "Couldn't run the health check, so the new version is left running. Check the site by hand." >&2
+  exit 1
 fi
 echo "Not healthy. Logs:" >&2
 "${DC[@]}" logs --tail 50 >&2 || true
@@ -97,8 +115,11 @@ if ! docker run --rm -e BACKUP="$BACKUP" -v uni-schedule_data:/d -v "$APP/backup
 fi
 docker tag uni-schedule:previous uni-schedule:latest
 "${DC[@]}" up -d --no-build --force-recreate --remove-orphans || true
-if healthy; then
+HEALTH=0; healthy || HEALTH=$?
+if [ "$HEALTH" -eq 0 ]; then
   echo "Rolled back: the previous version is serving again. This deploy FAILED." >&2
+elif [ "$HEALTH" -eq 2 ]; then
+  echo "Rolled back, but the health check couldn't run to confirm it. Check the site by hand. This deploy FAILED." >&2
 else
   echo "Rolled back, but the previous version isn't healthy either. Check the logs. Backup: $APP/backups/$BACKUP" >&2
 fi

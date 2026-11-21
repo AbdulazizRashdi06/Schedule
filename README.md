@@ -76,4 +76,4 @@ One row per section meeting time; the header row names the columns (any order, c
 | `Analytics__Enabled` | `true` | usage analytics |
 | `Push__Subject` | `mailto:schedule@tryzarqa.com` | contact sent with push notifications |
 
-In production these are set in the server's `deploy/.env`; see [deploy/README.md](deploy/README.md) for the names.
+In production any of these can go in the server's `deploy/.env` under the same name; one left out keeps the value in `appsettings.json` or the default here. See [deploy/README.md](deploy/README.md).
