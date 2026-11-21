@@ -23,7 +23,17 @@ async function classyFetchCourse(url, fields, code) {
     else if (!m[3]) h = +m[1]
     return String(h).padStart(2, '0') + ':' + m[2]
   }
-  const split = (cell) => cell.innerHTML.split(/<br\s*\/?>/i).map((s) => s.replace(/<[^>]+>/g, '').trim()).filter(Boolean)
+  // One entry per <br>, as plain text (so &amp; reads as &). Blank entries keep their place, so a blank room or time
+  // doesn't shift the later classes onto the wrong one; only blanks at the end are dropped.
+  const split = (cell) => {
+    const parts = cell.innerHTML.split(/<br\s*\/?>/i).map((s) => {
+      const t = document.createElement('template')
+      t.innerHTML = s
+      return t.content.textContent.replace(/\u00a0/g, ' ').trim()
+    })
+    while (parts.length && !parts[parts.length - 1]) parts.pop()
+    return parts
+  }
 
   const rows = []
   const table = doc.getElementById('ctl00_cphPageBody_gvCourseSections')
@@ -35,7 +45,7 @@ async function classyFetchCourse(url, fields, code) {
     const rooms = split(r.cells[6])
     for (let k = 0; k < Math.min(days.length, times.length); k++) {
       const d = days[k].match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)
-      if (!d) continue
+      if (!d || !times[k]) continue
       const [a, b] = times[k].split('-')
       rows.push({
         code,
@@ -44,7 +54,7 @@ async function classyFetchCourse(url, fields, code) {
         date: `${d[3]}-${d[2].padStart(2, '0')}-${d[1].padStart(2, '0')}`,
         start: to24(a),
         end: to24(b || a),
-        room: rooms[k] || rooms[0] || '',
+        room: rooms[k] ?? rooms[0] ?? '',
       })
     }
   }

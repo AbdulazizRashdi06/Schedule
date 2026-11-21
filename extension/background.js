@@ -4,12 +4,14 @@
 const CLASSY = 'https://schedule.tryzarqa.com'
 const PLAN_TABS = 'https://eduwave.gutech.edu.om/*AdvisorStudentPlan.aspx*'
 const GAP_MS = 1000
+const MAX_RUN_MS = 12 * 60 * 60 * 1000 // an unfinished sync older than this starts again, so old rows aren't sent as new
 
 const get = (keys) => chrome.storage.local.get(keys)
 const set = (o) => chrome.storage.local.set(o)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 let looping = false
 let stopping = false
+const stale = (run) => run && !looping && Date.now() - (run.startedAt || 0) > MAX_RUN_MS
 
 function badge(text, colour = '#0b1957') {
   chrome.action.setBadgeText({ text })
@@ -18,12 +20,15 @@ function badge(text, colour = '#0b1957') {
 
 async function classy(path, init = {}) {
   const { token } = await get('token')
+  if (!token) throw Object.assign(new Error('Connect to Classy first.'), { status: 401 })
   const res = await fetch(CLASSY + '/api' + path, {
     ...init,
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(init.headers || {}) },
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error || `Classy answered ${res.status}.`)
+  // The token was disconnected in Classy: forget it, so the popup offers Connect again.
+  if (res.status === 401) await chrome.storage.local.remove('token')
+  if (!res.ok) throw Object.assign(new Error(data.error || `Classy answered ${res.status}.`), { status: res.status })
   return data
 }
 
@@ -52,9 +57,10 @@ async function fetchCourse(form, code) {
 // ---- A sync ----
 
 async function start() {
-  const { token, form, run } = await get(['token', 'form', 'run'])
+  const { token, form, ...saved } = await get(['token', 'form', 'run'])
   if (!token) throw new Error('Connect to Classy first.')
   if (!form) throw new Error('Open Advisor Plan in EduWave (through its menu) first.')
+  const run = stale(saved.run) ? null : saved.run
   if (run && (run.status === 'running' || run.status === 'paused')) return resume()
   const list = await classy('/sync/courses')
   await set({
@@ -113,8 +119,11 @@ async function loop() {
     }
     if (run && run.status === 'running') await finish(run)
   } finally {
+    // A new sync started while a stopped one was finishing its last course: run it now.
+    const restart = stopping
     looping = false
     stopping = false
+    if (restart) get('run').then(({ run }) => run?.status === 'running' && loop())
   }
 }
 
@@ -128,7 +137,12 @@ async function finish(run) {
     await set({ run: null, last: { at: Date.now(), ok: true, result, failed: run.failed.length } })
     badge('')
   } catch (e) {
-    await set({ run: null, last: { at: Date.now(), ok: false, error: e.message } })
+    if (e.status === 401) {
+      // Keep the classes fetched so far: after Connect, Carry on sends them again.
+      run.status = 'paused'
+      run.message = 'Classy didn’t accept this browser’s connection. Press Connect to Classy, then Carry on.'
+      await set({ run })
+    } else await set({ run: null, last: { at: Date.now(), ok: false, error: e.message } })
     badge('!', '#b3261e')
   }
 }
@@ -139,7 +153,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg.type === 'form') {
     set({ form: { url: msg.url, fields: msg.fields, at: Date.now() } }).then(async () => {
       const { run } = await get('run')
-      if (run?.status === 'paused') resume()
+      if (run?.status === 'paused') start().catch(() => {}) // carries on, or starts again if it is too old
     })
   } else if (msg.type === 'connect') {
     connect().then(
@@ -198,6 +212,16 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (auto) start().catch(async (e) => set({ last: { at: Date.now(), ok: false, error: e.message } }))
 })
 
-get('run').then(({ run }) => {
-  if (run?.status === 'running') loop()
-})
+/** Carries on with a sync that was running when the browser closed, or starts a fresh one if it is too old. Once per wake-up. */
+let carried = null
+function carryOn() {
+  carried ??= get('run').then(({ run }) => {
+    if (run?.status !== 'running') return
+    if (!stale(run)) return loop()
+    start().catch((e) => set({ run: null, last: { at: Date.now(), ok: false, error: e.message } }))
+  })
+  return carried
+}
+
+chrome.runtime.onStartup.addListener(carryOn) // Chrome doesn't wake this worker at launch without it
+carryOn()

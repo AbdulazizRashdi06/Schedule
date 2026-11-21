@@ -2,7 +2,7 @@
 // Inject this whole file (for example with the browser pane's JavaScript tool), then:
 //   ewStart(['CS 1 107', 'LS 1 003', ...])  start fetching, one course a second, in the background
 //   ewStatus()                              { status, done, total, current, classes, failed, error }
-//   ewResume()                              carry on after a sign-out (sign in, reopen Advisor Plan, inject again, then resume)
+//   ewResume()                              carry on after a sign-out (sign in, reopen Advisor Plan in the same tab, inject again, then resume)
 //   ewLines()                               the compact lines, once done ("CODE|section|teacher|HH:MM-HH:MM|room|days")
 //   ewChunk(from, to)                       lines[from..to) joined with newlines, for copying out in pieces
 //   await ewDiff(oldHashesCsv)              { added: [lines], gone: n } against last run's fingerprints
@@ -13,8 +13,26 @@
   const form = document.forms[0]
   if (!form || !/AdvisorStudentPlan/i.test(location.pathname)) throw new Error('Open Advisor Plan through the EduWave menu first.')
 
-  const prev = window.__ew
+  // Progress lives in window.__ew, and is copied to this tab's sessionStorage after each course, so it survives
+  // reopening Advisor Plan in the same tab after a sign-out (a reload starts a new window object).
+  const saved = (() => {
+    try {
+      const s = JSON.parse(sessionStorage.getItem('__ew') || 'null')
+      if (s?.status === 'running') s.status = 'paused' // its loop stopped when the page went away
+      return s
+    } catch {
+      return null
+    }
+  })()
+  const prev = window.__ew ?? saved
   const st = (window.__ew = prev ?? { status: 'idle', codes: [], i: 0, rows: [], failed: [], error: '', fields: null })
+  const save = () => {
+    try {
+      sessionStorage.setItem('__ew', JSON.stringify({ ...st, fields: null }))
+    } catch {
+      /* storage full or blocked: progress then only lasts until the page changes */
+    }
+  }
   st.fields = [...new FormData(form)].filter(([, v]) => typeof v === 'string')
 
   const to24 = (s) => {
@@ -25,7 +43,17 @@
     else if (!m[3]) h = +m[1]
     return String(h).padStart(2, '0') + ':' + m[2]
   }
-  const split = (cell) => cell.innerHTML.split(/<br\s*\/?>/i).map((s) => s.replace(/<[^>]+>/g, '').trim()).filter(Boolean)
+  // One entry per <br>, as plain text (so &amp; reads as &). Blank entries keep their place, so a blank room or time
+  // doesn't shift the later classes onto the wrong one; only blanks at the end are dropped.
+  const split = (cell) => {
+    const parts = cell.innerHTML.split(/<br\s*\/?>/i).map((s) => {
+      const t = document.createElement('template')
+      t.innerHTML = s
+      return t.content.textContent.replace(/\u00a0/g, ' ').trim()
+    })
+    while (parts.length && !parts[parts.length - 1]) parts.pop()
+    return parts
+  }
 
   async function fetchCourse(code) {
     const body = new URLSearchParams()
@@ -49,9 +77,9 @@
       const rooms = split(r.cells[6])
       for (let k = 0; k < Math.min(days.length, times.length); k++) {
         const d = days[k].match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)
-        if (!d) continue
+        if (!d || !times[k]) continue
         const [a, b] = times[k].split('-')
-        rows.push({ code, section, teacher, day: Math.round((Date.UTC(+d[3], +d[2] - 1, +d[1]) - EPOCH) / 864e5), time: `${to24(a)}-${to24(b || a)}`, room: rooms[k] || rooms[0] || '' })
+        rows.push({ code, section, teacher, day: Math.round((Date.UTC(+d[3], +d[2] - 1, +d[1]) - EPOCH) / 864e5), time: `${to24(a)}-${to24(b || a)}`, room: rooms[k] ?? rooms[0] ?? '' })
       }
     }
     return rows
@@ -70,7 +98,8 @@
         } catch (e) {
           if (e.message === 'signed-out') {
             st.status = 'paused'
-            st.error = 'EduWave signed out. Sign in, open Advisor Plan through the menu, inject this file again, then ewResume().'
+            st.error = 'EduWave signed out. Sign in, open Advisor Plan through the menu in this tab, inject this file again, then ewResume().'
+            save()
             return
           }
           await new Promise((r) => setTimeout(r, 3000))
@@ -79,10 +108,12 @@
       if (rows) st.rows.push(...rows)
       else st.failed.push(code)
       st.i++
+      save()
       await new Promise((r) => setTimeout(r, GAP_MS))
     }
     st.status = 'done'
     st.current = ''
+    save()
   }
 
   /** "50w14" = day 50 and every 7 days after it, 14 days in all; single days stay plain. Joined with ".". */
@@ -110,6 +141,7 @@
   }
   window.ewResume = () => {
     if (st.status === 'running') return 'Already running.'
+    if (!st.codes.length) return 'Nothing to resume: the progress was lost (was Advisor Plan opened in another tab?). Run ewStart(codes) again.'
     loop()
     return `Resuming at ${st.i + 1} of ${st.codes.length}.`
   }
