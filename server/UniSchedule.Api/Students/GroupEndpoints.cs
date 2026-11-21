@@ -229,7 +229,8 @@ public static class GroupEndpoints
         invite.MapGet("", async (string code, HttpContext http, AppDb db, CancellationToken ct) =>
         {
             var g = await db.StudyGroups.Include(x => x.Members).FirstOrDefaultAsync(x => x.InviteCode == code, ct);
-            if (g is null) return Errors.NotFound("That invite link doesn't work any more. Ask for a new one.");
+            // A group with nobody left in it is gone, even if its row was left behind.
+            if (g is null || g.Members.Count == 0) return Errors.NotFound("That invite link doesn't work any more. Ask for a new one.");
             var id = http.User.Id();
             return Results.Ok(new { g.Id, g.Name, g.Kind, members = g.Members.Count, joined = g.Members.Any(m => m.StudentId == id), full = g.Members.Count >= MaxMembers });
         });
@@ -238,7 +239,8 @@ public static class GroupEndpoints
         {
             var id = http.User.Id();
             var g = await db.StudyGroups.Include(x => x.Members).FirstOrDefaultAsync(x => x.InviteCode == code, ct);
-            if (g is null) return Errors.NotFound("That invite link doesn't work any more. Ask for a new one.");
+            // A group with nobody left in it is gone, even if its row was left behind.
+            if (g is null || g.Members.Count == 0) return Errors.NotFound("That invite link doesn't work any more. Ask for a new one.");
             if (Clean(body.DisplayName, 30, "your name for the group", out var display) is { } p) return Errors.BadRequest(p);
             var already = g.Members.FirstOrDefault(m => m.StudentId == id);
             if (already is not null) already.DisplayName = display;

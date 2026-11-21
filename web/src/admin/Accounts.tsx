@@ -145,7 +145,7 @@ export default function Accounts() {
         open={!!removing}
         onClose={() => setRemoving(null)}
         title={`Remove ${removing?.username}?`}
-        body="They’ll be signed out and can no longer use the dashboard."
+        body="They’ll be signed out and can no longer use the dashboard. Classy Sync tokens they made stop working; make new ones if you still need them."
         confirmLabel="Remove"
         danger
         onConfirm={async () => {

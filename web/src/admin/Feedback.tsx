@@ -25,6 +25,13 @@ interface Report {
   resolvedAt: string | null
 }
 
+/** Open reports first, then the newest fixed ones; total and open count every report. */
+interface Reports {
+  total: number
+  open: number
+  reports: Report[]
+}
+
 const DEFAULT = 'Classy is in beta. How are you finding it? Tell us what to fix or add.'
 
 /** Push a "Rate Classy" pop-up to every student and read the answers. Answers are anonymous. */
@@ -33,11 +40,11 @@ export default function Feedback() {
   const [message, setMessage] = useState(DEFAULT)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [reports, setReports] = useState<Report[] | null>(null)
+  const [reports, setReports] = useState<Reports | null>(null)
   const load = () =>
     Promise.all([
       api.get<Prompt[]>('/admin/feedback').then(setPrompts, (e) => setError(errorText(e))),
-      api.get<Report[]>('/admin/feedback/reports').then(setReports, (e) => setError(errorText(e))),
+      api.get<Reports>('/admin/feedback/reports').then(setReports, (e) => setError(errorText(e))),
     ])
   useEffect(() => {
     void load()
@@ -81,11 +88,16 @@ export default function Feedback() {
 
       <section className="flex max-w-[720px] flex-col gap-3">
         <h2 className="text-[24px] font-extrabold">
-          Problem reports{reports && ` · ${reports.filter((r) => !r.resolvedAt).length} open`}
+          Problem reports{reports && ` · ${reports.open} open`}
         </h2>
-        {reports?.length === 0 && <p className="text-[15px] font-semibold text-muted">No reports yet. Students send them from Menu → Report a problem.</p>}
+        {reports?.total === 0 && <p className="text-[15px] font-semibold text-muted">No reports yet. Students send them from Menu → Report a problem.</p>}
+        {reports && reports.reports.length < reports.total && (
+          <p className="text-[14px] font-semibold text-muted">
+            Showing {reports.reports.length} of {reports.total}: {reports.open > reports.reports.length ? 'the newest open ones' : 'every open one, then the newest fixed ones'}.
+          </p>
+        )}
         <ul className="flex flex-col gap-2">
-          {reports?.map((r) => (
+          {reports?.reports.map((r) => (
             <li key={r.id} className={`flex items-start gap-3 rounded-[14px] bg-paper p-3 ${r.resolvedAt ? 'opacity-55' : ''}`}>
               <div className="min-w-0 flex-1">
                 <span className="label text-[11px] tracking-[0.12em]">

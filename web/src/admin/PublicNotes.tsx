@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, errorText } from '../lib/api'
+import { useSession } from '../lib/session'
 import { Button, ErrorText, Tag } from '../components/ui'
 import { Th } from './AdminLayout'
 
@@ -9,7 +10,8 @@ interface PublicNote {
   courseId?: number
   code?: string
   course?: string
-  author: string
+  /** The writer's university ID: owners only (null for RSA, since it's student data). */
+  author: string | null
   text: string
   date: string | null
   section: string | null
@@ -25,6 +27,7 @@ interface PublicNote {
 export default function PublicNotes({ courseId, semesterId }: { courseId?: number; semesterId?: number }) {
   const all = courseId === undefined
   const url = all ? `/admin/notes${semesterId ? `?semesterId=${semesterId}` : ''}` : `/admin/courses/${courseId}/notes`
+  const showAuthor = useSession().session?.role === 'owner'
   const [notes, setNotes] = useState<PublicNote[] | null>(null)
   const [error, setError] = useState('')
   const load = () => api.get<PublicNote[]>(url).then(setNotes, (e) => setError(errorText(e)))
@@ -54,7 +57,7 @@ export default function PublicNotes({ courseId, semesterId }: { courseId?: numbe
             <thead>
               <tr className="border-b-[2.5px] border-navy">
                 {all && <Th>Course</Th>}
-                <Th>Student</Th>
+                {showAuthor && <Th>Student</Th>}
                 <Th>Note</Th>
                 <Th>For</Th>
                 <Th right>Reports</Th>
@@ -73,7 +76,7 @@ export default function PublicNotes({ courseId, semesterId }: { courseId?: numbe
                       </Link>
                     </td>
                   )}
-                  <td className="px-2 py-3 font-mono font-bold">{n.author}</td>
+                  {showAuthor && <td className="px-2 py-3 font-mono font-bold">{n.author}</td>}
                   <td className="max-w-[380px] px-2 py-3 font-semibold break-words whitespace-pre-wrap">
                     {n.hidden && (
                       <Tag tone="plain" className="mr-1.5">

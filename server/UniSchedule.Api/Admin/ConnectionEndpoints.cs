@@ -72,6 +72,11 @@ public static partial class ConnectionEndpoints
         return null;
     }
 
+    /// <summary>Same scheme, host and port: where a saved header value may still be sent.</summary>
+    internal static bool SameServer(string a, string b) =>
+        Connections.Address(a) is { } x && Connections.Address(b) is { } y
+        && Uri.Compare(x, y, UriComponents.SchemeAndServer, UriFormat.Unescaped, StringComparison.OrdinalIgnoreCase) == 0;
+
     public static void MapConnections(this RouteGroupBuilder api)
     {
         // ---- Owners: set up, test and run ----
@@ -90,8 +95,14 @@ public static partial class ConnectionEndpoints
             if (Check(kind, body) is { } problem) return Errors.BadRequest(problem);
             var c = await db.Connections.FirstOrDefaultAsync(x => x.Kind == kind, ct);
             if (c is null) db.Connections.Add(c = new Connection { Kind = kind });
-            c.Url = body.Url?.Trim() ?? "";
-            c.HeaderName = body.HeaderName?.Trim() ?? "";
+            var url = body.Url?.Trim() ?? "";
+            var headerName = body.HeaderName?.Trim() ?? "";
+            // The saved value was given for one server and one header: it isn't sent anywhere else without being typed again.
+            if (c.HeaderSecret.Length > 0 && body.HeaderValue is null && body.ClearSecret != true && headerName.Length > 0
+                && (!SameServer(c.Url, url) || !headerName.Equals(c.HeaderName, StringComparison.OrdinalIgnoreCase)))
+                return Errors.BadRequest("Enter the header value again for the new address or header.");
+            c.Url = url;
+            c.HeaderName = headerName;
             if (body.ClearSecret == true || c.HeaderName.Length == 0) c.HeaderSecret = "";
             else if (body.HeaderValue is not null) c.HeaderSecret = Connections.Protect(protection, body.HeaderValue);
             c.ListPath = body.ListPath?.Trim() ?? "";
@@ -175,6 +186,8 @@ public static partial class ConnectionEndpoints
                 byId[id] = (s.Courses ?? []).Where(c => !string.IsNullOrWhiteSpace(c.Code)).ToList();
             }
             var ids = byId.Keys.ToList();
+            // One transaction: a push cut off part-way keeps the old enrollments instead of losing them.
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
             await db.Enrollments.Where(e => e.SemesterId == semester.Id && ids.Contains(e.UniversityId)).ExecuteDeleteAsync(ct);
             foreach (var (id, courses) in byId)
             foreach (var c in courses)
@@ -185,6 +198,7 @@ public static partial class ConnectionEndpoints
                 });
             token.LastUsedAt = now;
             await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
             return Results.Ok(new { students = byId.Count, courses = byId.Values.Sum(v => v.Count) });
         });
 
@@ -199,9 +213,9 @@ public static partial class ConnectionEndpoints
             try { courses = await Connections.StudentCoursesFor(db, fetcher, protection, semester, s.UniversityId, ct); }
             catch (ConnectionException) { return Errors.Unavailable("GUtech's system didn't answer. Try again later, or pick your courses yourself."); }
             if (courses.Count == 0) return Errors.NotFound("GUtech has no courses listed for you yet. Pick them yourself for now.");
-            var (imported, notFound, noSection) = await Connections.ImportPicks(db, s, semester, courses, ct);
+            var (imported, notFound, noSection, removed) = await Connections.ImportPicks(db, s, semester, courses, ct);
             if (imported == 0) return Errors.NotFound("None of your GUtech courses are in Classy yet. Pick them yourself for now.");
-            return Results.Ok(new { imported, notFound, noSection });
+            return Results.Ok(new { imported, notFound, noSection, removed });
         }).RequireAuthorization(Session.StudentPolicy);
     }
 }

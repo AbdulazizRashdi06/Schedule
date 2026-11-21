@@ -102,7 +102,7 @@ export default function EditCourses() {
         </div>
         {me?.canImport && options && (
           <div className="px-6 pt-4">
-            <ImportCourses onDone={load} />
+            <ImportCourses current={saved.size} unsaved={changes > 0} onDone={load} />
           </div>
         )}
 

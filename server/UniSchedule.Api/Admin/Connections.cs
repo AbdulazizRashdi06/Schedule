@@ -22,18 +22,30 @@ public sealed class HttpConnectionFetcher(HttpClient http) : IConnectionFetcher
     public const int MaxBytes = 20 * 1024 * 1024;
     /// <summary>How long the whole reply may take, body included (the client's own timeout stops once headers arrive).</summary>
     public TimeSpan Deadline { get; init; } = TimeSpan.FromSeconds(30);
+    public const int MaxRedirects = 5;
 
+    /// <summary>
+    /// Redirects are followed here, not by the handler (Program.cs turns that off), and only on the same server:
+    /// the header value is meant for that server alone.
+    /// </summary>
     public async Task<string> GetAsync(Uri url, string headerName, string headerValue, CancellationToken ct)
     {
-        using var req = new HttpRequestMessage(HttpMethod.Get, url);
-        req.Headers.Accept.ParseAdd("application/json");
-        if (headerName.Length > 0 && !req.Headers.TryAddWithoutValidation(headerName, headerValue))
-            throw new ConnectionException($"The header {headerName} can't be sent.");
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(Deadline);
         try
         {
-            using var res = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
+            var res = await Send(url, headerName, headerValue, deadline.Token);
+            for (var hops = 0; (int)res.StatusCode is 301 or 302 or 303 or 307 or 308; hops++)
+            {
+                var to = res.Headers.Location is { } location ? new Uri(url, location) : null;
+                res.Dispose();
+                if (to is null || hops == MaxRedirects) throw new ConnectionException("The API keeps redirecting.");
+                if (Uri.Compare(url, to, UriComponents.SchemeAndServer, UriFormat.Unescaped, StringComparison.OrdinalIgnoreCase) != 0)
+                    throw new ConnectionException($"The API redirected to another server ({to.Host}). Put that address in instead.");
+                url = to;
+                res = await Send(url, headerName, headerValue, deadline.Token);
+            }
+            using var _ = res;
             if (!res.IsSuccessStatusCode) throw new ConnectionException($"The API answered {(int)res.StatusCode} {res.ReasonPhrase}.");
             await using var stream = await res.Content.ReadAsStreamAsync(deadline.Token);
             using var buffer = new MemoryStream();
@@ -50,6 +62,15 @@ public sealed class HttpConnectionFetcher(HttpClient http) : IConnectionFetcher
         catch (HttpRequestException e) { throw new ConnectionException($"Couldn't reach the API ({e.Message})."); }
         // The connection closed part-way through the reply.
         catch (IOException e) { throw new ConnectionException($"The API's reply was cut off ({e.Message})."); }
+    }
+
+    async Task<HttpResponseMessage> Send(Uri url, string headerName, string headerValue, CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        req.Headers.Accept.ParseAdd("application/json");
+        if (headerName.Length > 0 && !req.Headers.TryAddWithoutValidation(headerName, headerValue))
+            throw new ConnectionException($"The header {headerName} can't be sent.");
+        return await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
     }
 }
 
@@ -228,13 +249,15 @@ public static class Connections
 
     /// <summary>
     /// Replaces this semester's picks with the courses GUtech lists. Codes match whatever the spacing; sections match
-    /// by number, and a course whose section isn't found is added without one so the student picks it.
+    /// by number. A course whose section isn't found keeps the section the student had, else is added without one so
+    /// the student picks it. Removed: the codes of the courses the student had that GUtech doesn't list.
     /// </summary>
-    public static async Task<(int Imported, List<string> NotFound, List<string> NoSection)> ImportPicks(AppDb db, Student s, Semester semester,
+    public static async Task<(int Imported, List<string> NotFound, List<string> NoSection, List<string> Removed)> ImportPicks(AppDb db, Student s, Semester semester,
         List<(string Code, string Section)> courses, CancellationToken ct)
     {
         var all = await db.Courses.Where(c => c.SemesterId == semester.Id).Include(c => c.Sections).ToListAsync(ct);
         var byKey = all.GroupBy(c => SyncEndpoints.CodeKey(c.Code)).ToDictionary(g => g.Key, g => g.First());
+        var old = await db.Picks.Where(p => p.StudentId == s.Id && p.Course.SemesterId == semester.Id).ToListAsync(ct);
         var notFound = new List<string>();
         var noSection = new List<string>();
         var picks = new Dictionary<int, int?>();
@@ -242,16 +265,25 @@ public static class Connections
         {
             if (!byKey.TryGetValue(SyncEndpoints.CodeKey(code), out var course)) { notFound.Add(code); continue; }
             var wanted = ScheduleImport.NormalizeSection(section);
-            var match = course.Sections.FirstOrDefault(x => x.Number == wanted) ?? (course.Sections.Count == 1 ? course.Sections[0] : null);
+            var match = course.Sections.FirstOrDefault(x => x.Number == wanted) ?? (course.Sections.Count == 1 ? course.Sections[0] : null)
+                ?? course.Sections.FirstOrDefault(x => old.Any(p => p.CourseId == course.Id && p.SectionId == x.Id));
             if (match is null) noSection.Add(course.Code);
             picks[course.Id] = match?.Id;
         }
-        if (picks.Count == 0) return (0, notFound, noSection);
-        var old = await db.Picks.Where(p => p.StudentId == s.Id && p.Course.SemesterId == semester.Id).ToListAsync(ct);
-        db.Picks.RemoveRange(old);
+        if (picks.Count == 0) return (0, notFound, noSection, []);
+        var imported = picks.Count;
+        var removed = old.Where(p => !picks.ContainsKey(p.CourseId)).ToList();
+        // A course the student already had keeps its pick row (and when they last opened it); only the section changes.
+        foreach (var p in old.Where(p => picks.ContainsKey(p.CourseId)))
+        {
+            if (p.SectionId != picks[p.CourseId]) { p.SectionId = picks[p.CourseId]; p.SectionRemoved = false; }
+            picks.Remove(p.CourseId);
+        }
+        db.Picks.RemoveRange(removed);
         foreach (var (courseId, sectionId) in picks) db.Picks.Add(new Pick { StudentId = s.Id, CourseId = courseId, SectionId = sectionId });
         await db.SaveChangesAsync(ct);
-        return (picks.Count, notFound, noSection);
+        var names = all.ToDictionary(c => c.Id, c => c.Code);
+        return (imported, notFound, noSection, removed.Select(p => names[p.CourseId]).Order().ToList());
     }
 }
 

@@ -42,6 +42,20 @@ public static partial class OwnerEndpoints
             : await db.AdminUsers.Where(a => a.Id == id).Select(a => a.Username).FirstAsync(ct);
     }
 
+    /// <summary>
+    /// An actor for a "by" field: a student owner's university ID is student data, so RSA sees "an owner" instead.
+    /// Dashboard usernames are shown as they are.
+    /// </summary>
+    internal static string? ShownActor(string? by, bool isOwner) =>
+        isOwner || by is null || StudentIds.Normalize(by) is null ? by : "an owner";
+
+    /// <summary>
+    /// An owner who leaves takes their Classy Sync tokens with them: they could have kept a copy. A GUtech IT token they
+    /// made has to be made again by another owner.
+    /// </summary>
+    static Task<int> RevokeTokensOf(AppDb db, string by, CancellationToken ct) =>
+        db.SyncTokens.Where(t => t.CreatedBy == by).ExecuteDeleteAsync(ct);
+
     public static void MapOwner(this RouteGroupBuilder api)
     {
         // ---- Accounts: RSA can manage RSA accounts only; owners can manage all ----
@@ -60,7 +74,7 @@ public static partial class OwnerEndpoints
             {
                 accounts = admins.Select(a => new
                 {
-                    a.Id, a.Username, role = a.Role == AdminRole.Owner ? "owner" : "rsa", a.MustChangePassword, a.CreatedAt, a.CreatedBy, a.LastSeenAt,
+                    a.Id, a.Username, role = a.Role == AdminRole.Owner ? "owner" : "rsa", a.MustChangePassword, a.CreatedAt, createdBy = ShownActor(a.CreatedBy, isOwner), a.LastSeenAt,
                     isMe = a.Id == me,
                     canManage = a.Id != me && (isOwner || a.Role == AdminRole.Rsa),
                 }),
@@ -104,8 +118,11 @@ public static partial class OwnerEndpoints
         {
             var (user, error) = await Manageable(id, http, db, ct);
             if (error is not null) return error;
-            db.AdminUsers.Remove(user!);
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            await RevokeTokensOf(db, user!.Username, ct);
+            db.AdminUsers.Remove(user);
             await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
             return Results.NoContent();
         });
 
@@ -197,6 +214,8 @@ public static partial class OwnerEndpoints
             await db.UsageHours.ExecuteDeleteAsync(ct);
             var semesters = await db.Semesters.ExecuteDeleteAsync(ct);
             var students = await db.Students.Where(s => !s.IsOwner).ExecuteDeleteAsync(ct);
+            // Their memberships went with them; a group nobody is left in goes too (its name is student data).
+            await db.StudyGroups.Where(g => !g.Members.Any()).ExecuteDeleteAsync(ct);
             await db.Students.ExecuteUpdateAsync(u => u
                 .SetProperty(s => s.MajorId, (int?)null).SetProperty(s => s.Year, (int?)null)
                 .SetProperty(s => s.SetupSemesterId, (int?)null).SetProperty(s => s.SetupStep, (string?)null)
@@ -211,8 +230,14 @@ public static partial class OwnerEndpoints
             if (http.User.IsStudent() && http.User.Id() == id) return Errors.BadRequest("You can't remove yourself.");
             var s = await db.Students.FindAsync([id], ct);
             if (s is null) return Errors.NotFound("That student doesn't exist.");
+            var groups = await db.GroupMembers.Where(m => m.StudentId == id).Select(m => m.GroupId).ToListAsync(ct);
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            if (s.IsOwner) await RevokeTokensOf(db, s.UniversityId, ct);
             db.Students.Remove(s);
             await db.SaveChangesAsync(ct);
+            // Groups they were the last one in go too, as when the last member leaves.
+            await db.StudyGroups.Where(g => groups.Contains(g.Id) && !g.Members.Any()).ExecuteDeleteAsync(ct);
+            await tx.CommitAsync(ct);
             return Results.NoContent();
         });
 
@@ -223,8 +248,11 @@ public static partial class OwnerEndpoints
             if (!body.IsOwner && AuthEndpoints.IsConfiguredOwner(config, s.UniversityId))
                 return Errors.Conflict("This owner is set in the server settings (OWNER_IDS); remove them there.");
             if (!body.IsOwner && http.User.IsStudent() && http.User.Id() == id) return Errors.BadRequest("You can't remove your own owner access.");
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            if (s.IsOwner && !body.IsOwner) await RevokeTokensOf(db, s.UniversityId, ct);
             s.IsOwner = body.IsOwner;
             await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
             return Results.NoContent();
         });
     }

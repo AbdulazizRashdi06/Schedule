@@ -58,9 +58,9 @@ export default function StudentDetail() {
   const actions: Record<Exclude<Action, null>, { title: string; body: string; label: string; danger?: boolean; run: () => Promise<unknown> }> = {
     major: { title: 'Reset major?', body: `${d.universityId} will pick their major, year and courses again at their next visit.`, label: 'Reset major', run: () => api.post(`/admin/students/${d.id}/reset`, { what: 'major' }) },
     picks: { title: 'Reset picks?', body: `${d.universityId} keeps their major and year but picks their courses again at their next visit.`, label: 'Reset picks', run: () => api.post(`/admin/students/${d.id}/reset`, { what: 'picks' }) },
-    remove: { title: 'Remove student?', body: `This deletes ${d.universityId} and their picks. They can sign up again with their ID.`, label: 'Remove', danger: true, run: () => api.del(`/admin/students/${d.id}`) },
+    remove: { title: 'Remove student?', body: `This deletes ${d.universityId} and their picks. They can sign up again with their ID.${d.isOwner ? ' Classy Sync tokens they made stop working.' : ''}`, label: 'Remove', danger: true, run: () => api.del(`/admin/students/${d.id}`) },
     owner: d.isOwner
-      ? { title: 'Remove owner access?', body: `${d.universityId} will no longer see the dashboard.`, label: 'Remove access', danger: true, run: () => api.put(`/admin/students/${d.id}/owner`, { isOwner: false }) }
+      ? { title: 'Remove owner access?', body: `${d.universityId} will no longer see the dashboard. Classy Sync tokens they made stop working; make new ones if you still need them.`, label: 'Remove access', danger: true, run: () => api.put(`/admin/students/${d.id}/owner`, { isOwner: false }) }
       : { title: 'Make owner?', body: `${d.universityId} will see the full dashboard, including every student. Only do this for partners running the app.`, label: 'Make owner', run: () => api.put(`/admin/students/${d.id}/owner`, { isOwner: true }) },
   }
   const a = action ? actions[action] : null

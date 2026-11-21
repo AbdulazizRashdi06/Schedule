@@ -36,7 +36,9 @@ builder.Services.AddHttpClient("push", c => c.Timeout = TimeSpan.FromSeconds(15)
 builder.Services.AddSingleton<PushSender>();
 if (!builder.Environment.IsEnvironment("Testing")) builder.Services.AddHostedService<NotificationWorker>();
 // Outside APIs (timetable, student courses) that owners connect in the dashboard.
-builder.Services.AddHttpClient<IConnectionFetcher, HttpConnectionFetcher>(c => c.Timeout = TimeSpan.FromSeconds(30));
+builder.Services.AddHttpClient<IConnectionFetcher, HttpConnectionFetcher>(c => c.Timeout = TimeSpan.FromSeconds(30))
+    // The fetcher follows redirects itself, only on the same server, so a saved header value isn't sent elsewhere.
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 if (!builder.Environment.IsEnvironment("Testing")) builder.Services.AddHostedService<ConnectionScheduler>();
 builder.Services.Configure<EmailOptions>(config.GetSection("Email"));
 if (string.Equals(config["Email:Provider"], "resend", StringComparison.OrdinalIgnoreCase))

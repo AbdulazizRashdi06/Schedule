@@ -151,11 +151,17 @@ public class SlotsAndNotesTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var rsa = await Staff("rsa-notes-nb", AdminRole.Rsa);
         var listed = (await Json(await rsa.GetAsync($"/api/admin/courses/{w.Course}/notes")))[0];
         Assert.Equal(1, listed.GetProperty("reports").GetInt32());
-        Assert.StartsWith("25-", listed.GetProperty("author").GetString());
+        // The author's university ID is student data: RSA doesn't get it, owners do.
+        Assert.Equal(JsonValueKind.Null, listed.GetProperty("author").ValueKind);
+        var owner = await Staff("owner-notes-nb-authors", AdminRole.Owner);
+        Assert.StartsWith("25-", (await Json(await owner.GetAsync($"/api/admin/courses/{w.Course}/notes")))[0].GetProperty("author").GetString());
         // The all-notes page lists it with its course, for the semester asked for.
         var sem = (await Json(await rsa.GetAsync("/api/admin/semesters"))).EnumerateArray().First(x => x.GetProperty("year").GetInt32() == 2063).GetProperty("id").GetInt32();
         var all = (await Json(await rsa.GetAsync($"/api/admin/notes?semesterId={sem}"))).EnumerateArray().ToList();
         Assert.Contains(all, n => n.GetProperty("id").GetInt32() == note && n.GetProperty("code").GetString() == "NB101");
+        Assert.All(all, n => Assert.Equal(JsonValueKind.Null, n.GetProperty("author").ValueKind));
+        Assert.Contains((await Json(await owner.GetAsync($"/api/admin/notes?semesterId={sem}"))).EnumerateArray(),
+            n => n.GetProperty("id").GetInt32() == note && n.GetProperty("author").GetString()!.StartsWith("25-"));
         Assert.All(all, n => Assert.NotEqual("my own reminder", n.GetProperty("text").GetString()));
         Assert.Equal(HttpStatusCode.NoContent, (await rsa.PutAsJsonAsync($"/api/admin/notes/{note}/hidden", new { hidden = true })).StatusCode);
 

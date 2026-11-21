@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using UniSchedule.Api.Data;
 
 namespace UniSchedule.Tests;
@@ -195,5 +197,45 @@ public class GroupTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.OK, (await bader.PutAsJsonAsync($"/api/me/groups/{id}/car", new { travelMinutes = 45, arriveEarlyMinutes = 15 })).StatusCode);
         var later = await Json(await ali.GetAsync($"/api/me/groups/{id}/rides?start=2026-10-18"));
         Assert.Equal("07:00", later.GetProperty("days")[0].GetProperty("ride").GetProperty("leaveHome").GetString());
+    }
+
+    [Fact]
+    public async Task Removing_students_also_removes_the_groups_they_leave_empty()
+    {
+        // Its own app: Delete all data would wipe the other tests' semesters.
+        using var app = new ApiFactory();
+        await app.AddAdmin("owner-groups-wipe", "owner-password-1", AdminRole.Owner, mustChange: false);
+        var owner = app.Client();
+        Assert.Equal(HttpStatusCode.OK, (await owner.PostAsJsonAsync("/api/auth/admin-login", new { username = "owner-groups-wipe", password = "owner-password-1" })).StatusCode);
+        async Task<HttpClient> Sign(string id)
+        {
+            var c = app.Client();
+            var code = (await Json(await c.PostAsJsonAsync("/api/auth/request-code", new { universityId = id }))).GetProperty("testCode").GetString();
+            Assert.Equal(HttpStatusCode.OK, (await c.PostAsJsonAsync("/api/auth/verify", new { universityId = id, code })).StatusCode);
+            return c;
+        }
+        async Task<int> Groups()
+        {
+            using var scope = app.Services.CreateScope();
+            return await scope.ServiceProvider.GetRequiredService<AppDb>().StudyGroups.CountAsync();
+        }
+        var ahmed = await Sign("25-8801");
+        var sara = await Sign("25-8802");
+        var other = await Sign("25-8803");
+        var solo = (await Json(await ahmed.PostAsJsonAsync("/api/me/groups", new { name = "Ahmed's car", kind = "car", displayName = "Ahmed" }))).GetProperty("inviteCode").GetString();
+        var shared = (await Json(await ahmed.PostAsJsonAsync("/api/me/groups", new { name = "Study", kind = "friends", displayName = "Ahmed" }))).GetProperty("inviteCode").GetString();
+        Assert.Equal(HttpStatusCode.OK, (await sara.PostAsJsonAsync($"/api/groups/invite/{shared}/join", new { displayName = "Sara" })).StatusCode);
+
+        var students = (await Json(await owner.GetAsync("/api/admin/students"))).GetProperty("students").EnumerateArray()
+            .ToDictionary(x => x.GetProperty("universityId").GetString()!, x => x.GetProperty("id").GetInt32());
+        Assert.Equal(HttpStatusCode.NoContent, (await owner.DeleteAsync($"/api/admin/students/{students["25-8801"]}")).StatusCode);
+        // Ahmed's own group went with him; the one Sara is still in stays.
+        Assert.Equal(1, await Groups());
+        Assert.Equal(HttpStatusCode.NotFound, (await other.GetAsync($"/api/groups/invite/{solo}")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await other.PostAsJsonAsync($"/api/groups/invite/{solo}/join", new { displayName = "Me" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await other.GetAsync($"/api/groups/invite/{shared}")).StatusCode);
+
+        Assert.Equal(HttpStatusCode.OK, (await owner.PostAsJsonAsync("/api/admin/delete-all-data", new { confirm = "DELETE ALL DATA" })).StatusCode);
+        Assert.Equal(0, await Groups());
     }
 }

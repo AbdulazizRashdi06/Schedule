@@ -333,4 +333,39 @@ public class PlannerTests
         var analysis = await w.Analysis(await w.Draft(w.Exam(start: "14:00", end: "15:00")));
         Assert.DoesNotContain(analysis.GetProperty("conflicts").EnumerateArray(), c => c.GetProperty("kind").GetString() == "daily-load");
     }
+
+    [Fact]
+    public async Task Renaming_a_family_keeps_its_workspace_and_reps() {
+        using var w = new World(); await w.Init();
+        var e = await w.Publish(await w.Draft(w.Exam()));
+        var eventId = e.GetProperty("id").GetInt32();
+        await Json(await w.Rep.PostAsJsonAsync($"{w.Base}/batches", new { name = "Year 2", majorId = w.Major, year = 2, targets = new[] { new PlannerTarget(w.Course, []) } }));
+        // CS is COMP's only major, so COMP is renamed.
+        await Json(await w.Owner.PutAsJsonAsync($"/api/admin/majors/{w.Major}", new { code = "CS", name = "Computer Science", family = "COMPUTING" }));
+        var opened = await Json(await w.Rep.PostAsJsonAsync("/api/rep/workspaces/open", new { semesterId = w.Semester }));
+        Assert.Equal(w.Workspace, opened.GetProperty("id").GetInt32());
+        Assert.Equal("family:COMPUTING", opened.GetProperty("family").GetString());
+        Assert.Equal(1, (await Json(await w.Rep.GetAsync(w.Base))).GetProperty("batches").GetArrayLength());
+        Assert.Equal("family:COMPUTING", (await Json(await w.Owner.GetAsync($"/api/admin/students/{w.RepId}/batch-rep"))).GetProperty("assignment").GetProperty("homeFamily").GetString());
+        Assert.Equal(HttpStatusCode.NoContent, (await w.Rep.PostAsJsonAsync($"{w.Base}/events/{eventId}/withdraw", new { version = 1, explanation = "Moved by lecturer" })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Moving_a_familys_last_major_into_another_family_merges_the_workspaces() {
+        using var w = new World(); await w.Init();
+        var e = await w.Publish(await w.Draft(w.Exam()));
+        var eventId = e.GetProperty("id").GetInt32();
+        await Json(await w.Rep.PostAsJsonAsync($"{w.Base}/batches", new { name = "Year 2", majorId = w.Major, year = 2, targets = new[] { new PlannerTarget(w.Course, []) } }));
+        var bus = (await Json(await w.Owner.PostAsJsonAsync("/api/rep/workspaces/open", new { semesterId = w.Semester, family = "family:BUS" }))).GetProperty("id").GetInt32();
+        // CS leaves COMP (its only major) for BUS, where a workspace already exists.
+        await Json(await w.Owner.PutAsJsonAsync($"/api/admin/majors/{w.Major}", new { code = "CS", name = "Computer Science", family = "BUS" }));
+        var opened = await Json(await w.Rep.PostAsJsonAsync("/api/rep/workspaces/open", new { semesterId = w.Semester }));
+        Assert.Equal(bus, opened.GetProperty("id").GetInt32());
+        var ws = await Json(await w.Rep.GetAsync($"/api/rep/workspaces/{bus}"));
+        Assert.Equal(1, ws.GetProperty("batches").GetArrayLength());
+        Assert.Contains(ws.GetProperty("history").EnumerateArray(), a => a.GetProperty("action").GetString() == "published");
+        Assert.Equal(HttpStatusCode.NotFound, (await w.Owner.GetAsync(w.Base)).StatusCode);
+        // The event it published from the old workspace is still the rep's to change.
+        Assert.Equal(HttpStatusCode.NoContent, (await w.Rep.PostAsJsonAsync($"/api/rep/workspaces/{bus}/events/{eventId}/withdraw", new { version = 1, explanation = "Moved by lecturer" })).StatusCode);
+    }
 }
