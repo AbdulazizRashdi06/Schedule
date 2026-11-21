@@ -41,7 +41,11 @@ public static class ScheduleImport
         raw.Split([';', ',', '/', '|', '+'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
-    public static ParsedSchedule Parse(List<ScheduleRow> rows)
+    /// <summary>
+    /// <paramref name="families"/>: major families (FamilyCodesAsync). A family named where a major belongs is an error,
+    /// since applying would make it a new major and the family's default courses would move to it.
+    /// </summary>
+    public static ParsedSchedule Parse(List<ScheduleRow> rows, IReadOnlySet<string>? families = null)
     {
         var errors = new List<RowIssue>();
         var warnings = new List<RowIssue>();
@@ -80,10 +84,14 @@ public static class ScheduleImport
             int? credits = int.TryParse(row.Credits, out var cr) && cr is > 0 and < 20 ? cr : null;
             var majors = SplitMajors(row.Majors);
             if (type == CourseType.Core && majors.Count == 0) rowErrors.Add("a core course needs a major");
+            if (type != CourseType.LS && families is not null)
+                foreach (var f in majors.Where(families.Contains)) rowErrors.Add($"\"{f}\" is a family of majors, not a major: list its majors instead");
             if (type == CourseType.Core && year is null) warnings.Add(new(row.Line, $"{row.Code}: core course has no year, so it won't be pre-ticked for anyone"));
             if (rowErrors.Count > 0)
             {
-                errors.Add(new(row.Line, string.Join("; ", rowErrors)));
+                // Named like the warnings, since the row number alone is easy to miscount.
+                var where = row.Code.Length == 0 ? "" : row.Section.Length == 0 ? $"{row.Code}: " : $"{row.Code} section {row.Section}: ";
+                errors.Add(new(row.Line, where + string.Join("; ", rowErrors)));
                 continue;
             }
             if (row.Room.Length == 0) warnings.Add(new(row.Line, $"{row.Code} section {row.Section}: no room"));
@@ -124,20 +132,31 @@ public static class ScheduleImport
             foreach (var d in days!)
             {
                 var m = new ParsedMeeting(d, time!.Value.Start, time.Value.End, row.Room, date);
-                if (!sec.Meetings.Contains(m)) sec.Meetings.Add(m);
-                else if (date is null) warnings.Add(new(row.Line, $"{row.Code} section {section}: duplicate {Timeslots.DayNames[d]} meeting skipped"));
+                if (sec.Meetings.Contains(m))
+                {
+                    if (date is null) warnings.Add(new(row.Line, $"{row.Code} section {section}: duplicate {Timeslots.DayNames[d]} meeting skipped"));
+                    continue;
+                }
+                // Kept (a class can be listed in two rooms), but said, as the section editor won't add such a pair.
+                if (sec.Meetings.Any(x => Overlap(x, m)))
+                    warnings.Add(new(row.Line, $"{row.Code} section {section}: two meetings overlap on {(date is null ? Timeslots.DayNames[d] : date.Value.ToString("d MMM"))}"));
+                sec.Meetings.Add(m);
             }
         }
         var list = courses.Values.Select(v => v.Course).OrderBy(c => c.Code).ToList();
         return new(list, errors, warnings, rows.Count);
     }
 
+    static bool Overlap(ParsedMeeting a, ParsedMeeting b) =>
+        a.Day == b.Day && a.Start < b.End && b.Start < a.End && (a.Date is null || b.Date is null || a.Date == b.Date);
+
     /// <summary>"2026-09-21", "21/09/2026", "21.09.2026" or EduWave's "Mon(21/09/2026)". Day first, as in Oman.</summary>
     public static DateOnly? ParseDate(string raw)
     {
-        var iso = Regex.Match(raw, @"(\d{4})-(\d{1,2})-(\d{1,2})");
+        // [0-9], not \d: \d also matches Arabic-Indic digits, which int.Parse can't read.
+        var iso = Regex.Match(raw, @"([0-9]{4})-([0-9]{1,2})-([0-9]{1,2})");
         if (iso.Success) return Make(int.Parse(iso.Groups[1].Value), int.Parse(iso.Groups[2].Value), int.Parse(iso.Groups[3].Value));
-        var dmy = Regex.Match(raw, @"(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4})");
+        var dmy = Regex.Match(raw, @"([0-9]{1,2})[/.\-]([0-9]{1,2})[/.\-]([0-9]{4})");
         return dmy.Success ? Make(int.Parse(dmy.Groups[3].Value), int.Parse(dmy.Groups[2].Value), int.Parse(dmy.Groups[1].Value)) : null;
 
         static DateOnly? Make(int y, int m, int d) => y is >= 2000 and <= 2100 && m is >= 1 and <= 12 && d >= 1 && d <= DateTime.DaysInMonth(y, m) ? new DateOnly(y, m, d) : null;
@@ -218,6 +237,14 @@ public static class ScheduleImport
             .AsSplitQuery()
             .ToListAsync(ct);
 
+    /// <summary>Family codes that no major uses as its code or name, for Parse.</summary>
+    public static async Task<IReadOnlySet<string>> FamilyCodesAsync(AppDb db, CancellationToken ct)
+    {
+        var majors = await db.Majors.ToListAsync(ct);
+        return majors.Where(m => m.Family is not null).Select(m => m.Family!).Where(f => FindMajor(majors, f) is null)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
     static Major? FindMajor(List<Major> majors, string token) =>
         majors.FirstOrDefault(m => string.Equals(m.Code, token, StringComparison.OrdinalIgnoreCase))
         ?? majors.FirstOrDefault(m => string.Equals(m.Name, token, StringComparison.OrdinalIgnoreCase));
@@ -275,9 +302,12 @@ public static class ScheduleImport
                 affectedSections.Add(sec.Id);
             }
         }
+        var withDefaults = (await db.CourseDefaults.Where(d => d.SemesterId == semesterId).Select(d => d.CourseId).Distinct().ToListAsync(ct)).ToHashSet();
         foreach (var course in existing.Where(c => !parsed.Courses.Any(pc => string.Equals(pc.Code, c.Code, StringComparison.OrdinalIgnoreCase))))
         {
-            removed.Add(new("course", course.Code, null, course.Name));
+            removed.Add(new("course", course.Code, null, withDefaults.Contains(course.Id)
+                ? $"{course.Name} · its default-course settings are kept for when it comes back"
+                : course.Name));
             affectedCourses.Add(course.Id);
         }
 
@@ -299,9 +329,11 @@ public static class ScheduleImport
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var majors = await db.Majors.ToListAsync(ct);
+        var families = await FamilyCodesAsync(db, ct);
         foreach (var token in parsed.Courses.Where(c => c.Type != CourseType.LS).SelectMany(c => c.Majors).Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            if (FindMajor(majors, token) is not null) continue;
+            // A family is never made a major (Parse refuses it); such a token is left out of the course's majors.
+            if (FindMajor(majors, token) is not null || families.Contains(token)) continue;
             var major = new Major { Code = token.Length <= 8 ? token.ToUpperInvariant() : token, Name = token };
             db.Majors.Add(major);
             majors.Add(major);
@@ -337,8 +369,9 @@ public static class ScheduleImport
         {
             // A course someone picked isn't deleted out from under them: it stays with no sections, so they see that its
             // section went (instead of the class silently vanishing) and keep their notes. A later upload that has the
-            // course again fills it back in.
-            if (await db.Picks.AnyAsync(p => p.CourseId == course.Id, ct))
+            // course again fills it back in. A course with default-course settings stays the same way, so the settings
+            // apply again when it comes back (until then a course with no sections isn't ticked for anyone).
+            if (await db.Picks.AnyAsync(p => p.CourseId == course.Id, ct) || await db.CourseDefaults.AnyAsync(d => d.CourseId == course.Id, ct))
                 foreach (var sec in course.Sections.ToList()) await DropSection(course, sec);
             else db.Courses.Remove(course);
         }
@@ -354,7 +387,7 @@ public static class ScheduleImport
             course.Type = pc.Type;
             course.Year = pc.Year;
             course.Credits = pc.Credits;
-            var wanted = pc.Type == CourseType.LS ? [] : pc.Majors.Select(m => FindMajor(majors, m)!).DistinctBy(m => m.Id).ToList();
+            var wanted = pc.Type == CourseType.LS ? [] : pc.Majors.Select(m => FindMajor(majors, m)).OfType<Major>().DistinctBy(m => m.Id).ToList();
             course.Majors.RemoveAll(cm => !wanted.Any(w => w.Id == cm.MajorId));
             foreach (var m in wanted.Where(w => !course.Majors.Any(cm => cm.MajorId == w.Id)))
                 course.Majors.Add(new CourseMajor { Major = m, MajorId = m.Id });

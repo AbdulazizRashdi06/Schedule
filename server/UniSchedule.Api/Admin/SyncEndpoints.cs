@@ -132,10 +132,13 @@ public static partial class SyncEndpoints
         if (failed.Count > Math.Max(3, known / 4)) return (null, $"{failed.Count} courses failed, so this sync wasn't kept. {retry}");
 
         var built = await BuildRows(db, semester.Id, rows, failed, ct);
-        var parsed = ScheduleImport.Parse(built);
+        var parsed = ScheduleImport.Parse(built, await ScheduleImport.FamilyCodesAsync(db, ct));
         var preview = await ScheduleImport.PreviewAsync(db, semester.Id, parsed, ct);
         // Error pages look like courses with no sections: don't keep a sync that empties the semester.
-        var gone = preview.Removed.Count(c => c.Kind == "course");
+        // A course already left with no sections (kept for its picks or default settings) isn't removed again.
+        var empty = (await db.Courses.Where(c => c.SemesterId == semester.Id && !c.Sections.Any()).Select(c => c.Code).ToListAsync(ct))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var gone = preview.Removed.Count(c => c.Kind == "course" && !empty.Contains(c.Code));
         if (gone > Math.Max(5, known / 4)) return (null, $"This sync would remove {gone} courses, so it wasn't kept. {retry}");
         await db.PendingSyncs.Where(p => p.SemesterId == semester.Id && p.AppliedAt == null).ExecuteDeleteAsync(ct);
         var pending = new PendingSync
@@ -228,7 +231,7 @@ public static partial class SyncEndpoints
             if (last is null) return Results.Ok(new { pending = (object?)null, lastApplied = (DateTimeOffset?)null });
             var lastApplied = await db.PendingSyncs.Where(p => p.SemesterId == id && p.AppliedAt != null).MaxAsync(p => p.AppliedAt, ct);
             if (last.AppliedAt is not null) return Results.Ok(new { pending = (object?)null, lastApplied });
-            var parsed = ScheduleImport.Parse(JsonSerializer.Deserialize<List<ScheduleRow>>(last.RowsJson) ?? []);
+            var parsed = ScheduleImport.Parse(JsonSerializer.Deserialize<List<ScheduleRow>>(last.RowsJson) ?? [], await ScheduleImport.FamilyCodesAsync(db, ct));
             var preview = await ScheduleImport.PreviewAsync(db, id, parsed, ct);
             return Results.Ok(new
             {
@@ -244,7 +247,7 @@ public static partial class SyncEndpoints
             var pending = await db.PendingSyncs.FirstOrDefaultAsync(p => p.Id == body.Id && p.SemesterId == id, ct);
             if (pending is null) return Errors.NotFound("That sync has been replaced by a newer one. Reload.");
             if (pending.AppliedAt is not null) return Errors.Conflict("That sync is already applied.");
-            var parsed = ScheduleImport.Parse(JsonSerializer.Deserialize<List<ScheduleRow>>(pending.RowsJson) ?? []);
+            var parsed = ScheduleImport.Parse(JsonSerializer.Deserialize<List<ScheduleRow>>(pending.RowsJson) ?? [], await ScheduleImport.FamilyCodesAsync(db, ct));
             if (parsed.Errors.Count > 0) return Errors.BadRequest($"{parsed.Errors.Count} rows have problems, so it can't be applied.");
             if (parsed.Courses.Count == 0) return Errors.BadRequest("The sync has no courses.");
             var preview = await ScheduleImport.PreviewAsync(db, id, parsed, ct);

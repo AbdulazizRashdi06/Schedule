@@ -80,9 +80,14 @@ public static class StudentEndpoints
     /// Courses ticked when setup starts: the major's own defaults for that year, else its family's,
     /// else the upload's core courses listed for that major and year.
     /// </summary>
-    public static async Task<List<int>> DefaultCourseIds(AppDb db, int semesterId, int majorId, int year, CancellationToken ct) =>
+    public static async Task<List<int>> DefaultCourseIds(AppDb db, int semesterId, int majorId, int year, CancellationToken ct)
+    {
         // A lab (CS 1 102-L) is ticked wherever its course is.
-        await Labs.WithLabsAsync(db, semesterId, await DefaultsWithoutLabs(db, semesterId, majorId, year, ct), ct);
+        var ids = await Labs.WithLabsAsync(db, semesterId, await DefaultsWithoutLabs(db, semesterId, majorId, year, ct), ct);
+        // A course an upload left with no sections (kept for its picks or settings) can't be taken, so it isn't ticked.
+        var offered = (await db.Courses.Where(c => ids.Contains(c.Id) && c.Sections.Any()).Select(c => c.Id).ToListAsync(ct)).ToHashSet();
+        return ids.Where(offered.Contains).ToList();
+    }
 
     static async Task<List<int>> DefaultsWithoutLabs(AppDb db, int semesterId, int majorId, int year, CancellationToken ct)
     {
@@ -284,7 +289,13 @@ public static class StudentEndpoints
             var s = await db.Students.FirstAsync(x => x.Id == http.User.Id(), ct);
             var current = await CurrentSemester(db, ct);
             if (current is null) return Errors.Conflict("No semester has been published yet.");
-            var picks = await db.Picks.Include(p => p.Course).Where(p => p.StudentId == s.Id && p.Course.SemesterId == current.Id).ToListAsync(ct);
+            var picks = await db.Picks.Include(p => p.Course).ThenInclude(c => c.Sections)
+                .Where(p => p.StudentId == s.Id && p.Course.SemesterId == current.Id).ToListAsync(ct);
+            // A course an upload left with no sections can't be taken: its pick is dropped rather than asking for a
+            // section, as setup shows it ("No sections offered this semester") and lets them carry on.
+            var dead = picks.Where(p => p.SectionId is null && p.Course.Sections.Count == 0).ToList();
+            db.Picks.RemoveRange(dead);
+            picks = picks.Except(dead).ToList();
             if (picks.Count == 0) return Errors.BadRequest("Pick at least one course.");
             var missing = picks.Where(p => p.SectionId is null).Select(p => p.Course.Code).ToList();
             if (missing.Count > 0) return Errors.BadRequest($"Pick a section for {string.Join(", ", missing)}.");

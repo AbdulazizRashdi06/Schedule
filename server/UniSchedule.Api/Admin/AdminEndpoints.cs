@@ -171,8 +171,9 @@ public static class AdminEndpoints
             if (!await db.Semesters.AnyAsync(s => s.Id == id, ct)) return Errors.NotFound("That semester doesn't exist.");
             if (body is null) return Errors.BadRequest("Send a list of { id, major, year }.");
             if (body.Count > 5000) return Errors.BadRequest("Too many rows.");
-            var courses = (await db.Courses.Where(c => c.SemesterId == id).Select(c => new { c.Id, c.Code }).ToListAsync(ct))
-                .ToDictionary(c => CodeKey(c.Code), c => c.Id);
+            // Grouped: two stored codes that differ only by spacing ("NB1101" and "NB 1 101" with a non-breaking space) mustn't crash.
+            var courses = (await db.Courses.Where(c => c.SemesterId == id).OrderBy(c => c.Id).Select(c => new { c.Id, c.Code }).ToListAsync(ct))
+                .GroupBy(c => CodeKey(c.Code)).ToDictionary(g => g.Key, g => g.First().Id);
             var majors = await db.Majors.ToListAsync(ct);
             var families = majors.Where(m => m.Family is not null).Select(m => m.Family!).ToHashSet();
             var problems = new List<string>();
@@ -185,6 +186,8 @@ public static class AdminEndpoints
                 if (!courses.TryGetValue(CodeKey(item.Id ?? ""), out var courseId)) { problems.Add($"{row}: no course \"{item.Id}\" in this semester."); continue; }
                 var major = majors.FirstOrDefault(m => m.Code == target);
                 if (major is null && !families.Contains(target)) { problems.Add($"{row}: \"{item.Major}\" is not a major or a family."); continue; }
+                // Don't quietly turn the family's defaults into the major's: say so, and the major can be renamed.
+                if (major is not null && families.Contains(target)) { problems.Add($"{row}: \"{target}\" is both a major and a family. Rename the major under Majors first."); continue; }
                 if (item.Year is not (>= 0 and <= 5)) { problems.Add($"{row}: year should be 0 (Foundation) to 5."); continue; }
                 var family = major is null ? target : null;
                 if (rows.Any(r => r.CourseId == courseId && r.MajorId == major?.Id && r.Family == family && r.Year == item.Year)) continue;
@@ -223,7 +226,7 @@ public static class AdminEndpoints
         admin.MapPost("/semesters/{id:int}/upload/preview", async (int id, HttpRequest req, AppDb db, CancellationToken ct) =>
         {
             if (!await db.Semesters.AnyAsync(s => s.Id == id, ct)) return Errors.NotFound("That semester doesn't exist.");
-            var (parsed, error) = await ReadUpload(req, ct);
+            var (parsed, error) = await ReadUpload(req, db, ct);
             if (error is not null) return error;
             return Results.Ok(await ScheduleImport.PreviewAsync(db, id, parsed!, ct));
         });
@@ -232,7 +235,7 @@ public static class AdminEndpoints
         {
             var semester = await db.Semesters.FindAsync([id], ct);
             if (semester is null) return Errors.NotFound("That semester doesn't exist.");
-            var (parsed, error) = await ReadUpload(req, ct);
+            var (parsed, error) = await ReadUpload(req, db, ct);
             if (error is not null) return error;
             if (parsed!.Errors.Count > 0) return Errors.BadRequest($"Fix the {parsed.Errors.Count} problem row{(parsed.Errors.Count == 1 ? "" : "s")} first.");
             if (parsed.Courses.Count == 0) return Errors.BadRequest("The file has no courses.");
@@ -308,7 +311,7 @@ public static class AdminEndpoints
             var section = await db.Sections.Include(s => s.Meetings).Include(s => s.Course).ThenInclude(c => c.Semester)
                 .FirstOrDefaultAsync(s => s.Id == id, ct);
             if (section is null) return Errors.NotFound("That section doesn't exist.");
-            var (meetings, problem) = ParseMeetings(body.Meetings);
+            var (meetings, problem) = ParseMeetings(body.Meetings, section.Meetings);
             if (problem is not null) return Errors.BadRequest(problem);
             var instructor = body.Instructor?.Trim() ?? "";
             var change = ScheduleImport.DescribeChange(section.Instructor, section.Meetings, instructor, meetings!.Select(ParsedMeeting.Of));
@@ -413,7 +416,7 @@ public static class AdminEndpoints
         {
             var major = await db.Majors.Include(m => m.Electives).FirstOrDefaultAsync(m => m.Id == id, ct);
             if (major is null) return Errors.NotFound("That major doesn't exist.");
-            var codes = (body.Codes ?? []).Select(c => c.Trim().ToUpperInvariant().Replace(" ", "")).Where(c => c.Length > 0)
+            var codes = (body.Codes ?? []).Select(CodeKey).Where(c => c.Length > 0)
                 .Distinct().ToList();
             if (codes.Count > 500) return Errors.BadRequest("Too many courses.");
             major.Electives.RemoveAll(e => !codes.Contains(e.CourseCode, StringComparer.OrdinalIgnoreCase));
@@ -479,7 +482,7 @@ public static class AdminEndpoints
 
     static (string? Code, string? Name, string? Problem) CleanMajor(MajorBody body)
     {
-        var code = body.Code?.Trim().ToUpperInvariant().Replace(" ", "");
+        var code = body.Code is null ? null : CodeKey(body.Code);
         var name = body.Name?.Trim();
         if (string.IsNullOrEmpty(code) || code.Length > 16) return (null, null, "Enter a short code like CS (up to 16 characters).");
         if (string.IsNullOrEmpty(name) || name.Length > 100) return (null, null, "Enter the major's name.");
@@ -492,15 +495,20 @@ public static class AdminEndpoints
     /// <summary>Blank takes the major out of its family. A family can't use a major's code, since defaults name either.</summary>
     static async Task<(string? Family, string? Problem)> CleanFamily(AppDb db, string? raw, CancellationToken ct)
     {
-        var family = raw?.Trim().ToUpperInvariant().Replace(" ", "");
+        var family = raw is null ? null : CodeKey(raw);
         if (string.IsNullOrEmpty(family)) return (null, null);
         if (family.Length > 16) return (null, "Keep the family code short, like COMP (up to 16 characters).");
         if (await db.Majors.AnyAsync(m => m.Code == family, ct)) return (null, $"{family} is already a major's code. Pick another family name.");
         return (family, null);
     }
 
-    public static (List<Meeting>? Meetings, string? Problem) ParseMeetings(List<MeetingBody>? input)
+    /// <summary>
+    /// <paramref name="stored"/>: the section's meetings now. Two of them that overlap may stay (an upload can list a
+    /// class in two rooms), so editing anything else still saves; only a new overlap is refused.
+    /// </summary>
+    public static (List<Meeting>? Meetings, string? Problem) ParseMeetings(List<MeetingBody>? input, IEnumerable<Meeting>? stored = null)
     {
+        var kept = (stored ?? []).Select(ParsedMeeting.Of).ToHashSet();
         if (input is null || input.Count == 0) return (null, "Add at least one meeting time.");
         if (input.Count > 400) return (null, "Too many meetings.");
         var list = new List<Meeting>();
@@ -519,7 +527,7 @@ public static class AdminEndpoints
             var room = m.Room?.Trim() ?? "";
             if (room.Length > 60) return (null, "The room name is too long.");
             var meeting = new Meeting { Day = day, Start = start, End = end, Room = room, Date = date };
-            if (list.Any(x => Clashes.Overlap(x, meeting))) return (null, $"Two meetings overlap on {(date is null ? Timeslots.DayNames[day] : date.Value.ToString("d MMM"))}.");
+            if (list.Any(x => Clashes.Overlap(x, meeting) && !(kept.Contains(ParsedMeeting.Of(x)) && kept.Contains(ParsedMeeting.Of(meeting))))) return (null, $"Two meetings overlap on {(date is null ? Timeslots.DayNames[day] : date.Value.ToString("d MMM"))}.");
             list.Add(meeting);
         }
         return (list, null);
@@ -529,7 +537,7 @@ public static class AdminEndpoints
         TimeOnly.TryParseExact(s?.Trim(), ["HH:mm", "H:mm"], CultureInfo.InvariantCulture, DateTimeStyles.None, out t);
 
     /// <summary>Reads a multipart "file" (.xlsx, .csv, .tsv) or a "text" field pasted from Excel.</summary>
-    static async Task<(ParsedSchedule? Parsed, IResult? Error)> ReadUpload(HttpRequest req, CancellationToken ct)
+    static async Task<(ParsedSchedule? Parsed, IResult? Error)> ReadUpload(HttpRequest req, AppDb db, CancellationToken ct)
     {
         if (!req.HasFormContentType) return (null, Errors.BadRequest("Choose a file to upload."));
         if (req.ContentLength > MaxUploadBytes) return (null, Errors.BadRequest("The file is too big (5 MB at most)."));
@@ -554,6 +562,9 @@ public static class AdminEndpoints
 
         if (read.Problems.Count > 0) return (null, Errors.BadRequest(string.Join(" ", read.Problems)));
         if (read.Rows.Count > 20_000) return (null, Errors.BadRequest("That file has too many rows."));
-        return (ScheduleImport.Parse(read.Rows), null);
+        var families = await ScheduleImport.FamilyCodesAsync(db, ct);
+        // The parsers turn what they can't read into row errors; this is only a net, so a slip is a 400 and not a 500.
+        try { return (ScheduleImport.Parse(read.Rows, families), null); }
+        catch (FormatException) { return (null, Errors.BadRequest("Some dates or times in the file couldn't be read. Type them like 2026-09-21 and 08:00.")); }
     }
 }
