@@ -19,6 +19,8 @@ public static partial class Timeslots
         ["sat"] = 6, ["saturday"] = 6, ["sa"] = 6,
     };
 
+    static readonly int LongestWord = Words.Keys.Max(k => k.Length);
+
     /// <summary>Returns the distinct days in week order, or null when a part isn't a day.</summary>
     public static List<int>? ParseDays(string? cell)
     {
@@ -42,25 +44,21 @@ public static partial class Timeslots
         var i = 0;
         while (i < token.Length)
         {
-            if (i + 1 < token.Length && Words.TryGetValue(token.Substring(i, 2), out var two))
-            {
-                result.Add(two);
-                i += 2;
-            }
-            else if (Words.TryGetValue(token[i].ToString(), out var one))
-            {
-                result.Add(one);
-                i++;
-            }
-            else return null;
+            // Longest name first, so "TuThu" is Tue+Thu and not Tue+Th+u (Sunday), and "FSat" is Fri+Sat.
+            var len = Math.Min(LongestWord, token.Length - i);
+            while (len > 0 && !Words.ContainsKey(token.Substring(i, len))) len--;
+            if (len == 0) return null;
+            result.Add(Words[token.Substring(i, len)]);
+            i += len;
         }
         return result;
     }
 
-    [GeneratedRegex(@"^\s*(\d{1,2})(?:[:.h]?(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?\s*$", RegexOptions.IgnoreCase)]
+    // [0-9], not \d: \d also matches Arabic-Indic digits, which int.Parse can't read.
+    [GeneratedRegex(@"^\s*([0-9]{1,2})(?:[:.h]?([0-9]{2}))?\s*(am|pm|a\.m\.|p\.m\.)?\s*$", RegexOptions.IgnoreCase)]
     private static partial Regex OneTime();
 
-    /// <summary>Parses "8:00 AM - 9:15 AM", "08:00-09:15", "0800–0915", "2-3:30" (afternoon assumed for 1–6 without am/pm).</summary>
+    /// <summary>Parses "8:00 AM - 9:15 AM", "08:00-09:15", "0800–0915", "2-3:30" (afternoon assumed for 1–6 without am/pm or a leading zero).</summary>
     public static (TimeOnly Start, TimeOnly End)? ParseRange(string? cell)
     {
         if (string.IsNullOrWhiteSpace(cell)) return null;
@@ -69,17 +67,25 @@ public static partial class Timeslots
         var a = ParsePart(parts[0]);
         var b = ParsePart(parts[1]);
         if (a is null || b is null) return null;
-        var (ah, am, ap) = a.Value;
-        var (bh, bm, bp) = b.Value;
+        var (ah, am, ap, apad) = a.Value;
+        var (bh, bm, bp, bpad) = b.Value;
         // "9:30 - 10:45 AM": the second half's am/pm applies to the first when it fits.
         ap ??= bp is not null && Apply(ah, bp) * 60 + am <= Apply(bh, bp) * 60 + bm ? bp : null;
-        var start = Resolve(ah, am, ap);
-        var end = Resolve(bh, bm, bp);
+        // "05:00" written with a leading zero is a 24-hour time (Classy's own export), so it isn't moved to the afternoon...
+        var start = Resolve(ah, am, ap, afternoon: !apad);
+        var end = Resolve(bh, bm, bp, afternoon: !bpad);
+        // ...unless only the afternoon makes sense, as in "11:30-01:00".
+        if ((apad || bpad) && (start is null || end is null || end <= start))
+        {
+            start = Resolve(ah, am, ap, afternoon: true);
+            end = Resolve(bh, bm, bp, afternoon: true);
+        }
         if (start is null || end is null || end <= start) return null;
         return (start.Value, end.Value);
     }
 
-    static (int H, int M, string? AmPm)? ParsePart(string s)
+    /// <summary><c>Padded</c>: the hour has a leading zero, like "05".</summary>
+    static (int H, int M, string? AmPm, bool Padded)? ParsePart(string s)
     {
         var m = OneTime().Match(s);
         if (!m.Success) return null;
@@ -89,7 +95,7 @@ public static partial class Timeslots
         h = int.Parse(digits, CultureInfo.InvariantCulture);
         min = m.Groups[2].Success ? int.Parse(m.Groups[2].Value, CultureInfo.InvariantCulture) : 0;
         var ampm = m.Groups[3].Success ? (m.Groups[3].Value.StartsWith('a') || m.Groups[3].Value.StartsWith('A') ? "am" : "pm") : null;
-        return (h, min, ampm);
+        return (h, min, ampm, digits.Length == 2 && digits[0] == '0');
     }
 
     static int Apply(int h, string? ampm) => ampm switch
@@ -99,7 +105,7 @@ public static partial class Timeslots
         _ => h,
     };
 
-    static TimeOnly? Resolve(int h, int m, string? ampm)
+    static TimeOnly? Resolve(int h, int m, string? ampm, bool afternoon)
     {
         if (m > 59) return null;
         if (ampm is not null)
@@ -107,7 +113,7 @@ public static partial class Timeslots
             if (h is < 1 or > 12) return null;
             h = Apply(h, ampm);
         }
-        else if (h is >= 1 and <= 6) h += 12; // classes don't start at 2 a.m.
+        else if (afternoon && h is >= 1 and <= 6) h += 12; // classes don't start at 2 a.m.
         if (h > 23) return null;
         return new TimeOnly(h, m);
     }
@@ -116,7 +122,7 @@ public static partial class Timeslots
     public static (TimeOnly Start, TimeOnly End)? ParseRangeLoose(string? cell)
     {
         if (cell is null) return null;
-        var fixedCell = Regex.Replace(cell, @"\b(\d{2})(\d{2})\b", "$1:$2");
+        var fixedCell = Regex.Replace(cell, @"\b([0-9]{2})([0-9]{2})\b", "$1:$2");
         return ParseRange(fixedCell);
     }
 

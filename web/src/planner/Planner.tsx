@@ -41,12 +41,14 @@ function PlannerWorkspace() {
     }, e => { if (active) setError(errorText(e)) })
     return () => { active = false }
   }, [semesterId, connectionRetry])
+  // Keyed on the semester (and a retry), not the catalog: turning the planner on or off mustn't reopen the workspace and lose open work.
+  const catalogSemesterId = catalog?.semesterId
   useEffect(() => {
-    if (!catalog?.semesterId || !family) return
+    if (!catalogSemesterId || !family) return
     let active = true; setWorkspace(null); setBoard(null); setEditing(null); setError('')
-    api.post<Workspace>('/rep/workspaces/open', { semesterId: catalog.semesterId, family }).then(w => { if (active) setWorkspace(w) }, e => { if (active) setError(errorText(e)) })
+    api.post<Workspace>('/rep/workspaces/open', { semesterId: catalogSemesterId, family }).then(w => { if (active) setWorkspace(w) }, e => { if (active) setError(errorText(e)) })
     return () => { active = false }
-  }, [catalog, family])
+  }, [catalogSemesterId, family, connectionRetry])
   const range = useMemo(() => {
     const d = dateValue(anchor)
     if (view === 'week') { const start = addDays(d, -d.getDay()); return { from: isoDate(start), to: isoDate(addDays(start, 6)) } }
@@ -156,7 +158,7 @@ function PlannerWorkspace() {
           <div hidden={panel !== 'ai'}><AiAssistant key={base} base={base} onUse={useAi} /></div>
           <div hidden={panel !== 'batches'}><BatchPanel key={base} base={base} board={board} catalog={catalog} onChanged={refresh} /></div>
           <div hidden={panel !== 'history'}><h2 className="text-[24px] font-extrabold">Activity history</h2>{board.history.length === 0 && <p className="mt-3 text-[14px] text-muted">Published changes and batch edits appear here.</p>}<ol className="mt-3 flex flex-col gap-3">{board.history.map(a => <li key={a.id} className="border-t border-navy/20 pt-3 text-[13px]"><p className="font-extrabold">{a.action.split('-').join(' ')} · {a.actor}</p><p>{new Date(a.at).toLocaleString('en', { timeZone: 'Asia/Muscat' })}</p>{a.explanation && <p className="mt-1">{a.explanation}</p>}{a.action === 'published' && a.eventId && <button type="button" onClick={async () => { try { const current = await api.get<{ version: number }>(`${base}/events/${a.eventId}`); focusEditor({ spec: JSON.parse(a.snapshotJson) as Spec, eventId: a.eventId!, baseEventVersion: current.version }) } catch (e) { setError(errorText(e)) } }} className="tint min-h-11 font-bold underline underline-offset-4">Propose restoring this version</button>}</li>)}</ol></div>
-          <div hidden={panel !== 'settings'}><WorkspaceSettings key={`${base}:${board.workspace.version}`} base={base} board={board} catalog={catalog} onChanged={refresh} onEnabled={value => setCatalog(c => c ? { ...c, enabled: value } : c)} />{editing?.eventId && <Withdraw base={base} eventId={editing.eventId} onChanged={async () => { setEditing(null); await refresh() }} />}</div>
+          <div hidden={panel !== 'settings'}><WorkspaceSettings key={`${base}:${board.workspace.version}`} base={base} board={board} catalog={catalog} onChanged={refresh} onEnabled={value => setCatalog(c => c ? { ...c, enabled: value } : c)} />{editing?.eventId && <Withdraw base={base} eventId={editing.eventId} version={editing.baseEventVersion ?? 0} spec={editing.spec} onChanged={async () => { setEditing(null); await refresh() }} />}</div>
         </aside>
       </div>
     </>}
@@ -180,7 +182,8 @@ function WorkspaceSettings({ base, board, catalog, onChanged, onEnabled }: { bas
   return <div className="flex flex-col gap-4"><h2 className="text-[24px] font-extrabold">Workspace settings</h2><p className="text-[13px] text-muted">Family workspace: {board.workspace.family.replace('family:', '').replace('major:', 'Major ')}</p><TextField label="Warn at exams per day" type="number" min={1} max={10} value={daily} onChange={e => setDaily(Number(e.target.value))} /><TextField label="Warn at exams in seven days" type="number" min={1} max={20} value={weekly} onChange={e => setWeekly(Number(e.target.value))} /><ErrorText>{error}</ErrorText><Button busy={busy} onClick={async () => { setBusy(true); setError(''); try { await api.put(`${base}/settings`, { version: board.workspace.version, dailyExamWarning: daily, weeklyExamWarning: weekly }); await onChanged() } catch (e) { setError(errorText(e)) } finally { setBusy(false) } }}>Save warning thresholds</Button>{catalog.isOwner && <label className="flex min-h-12 items-center gap-3 border-t border-navy/20 pt-4 text-[14px] font-extrabold"><input type="checkbox" checked={catalog.enabled} disabled={busy} className="size-5 accent-navy" onChange={async e => { const value = e.target.checked; setBusy(true); try { await api.put('/admin/planner/settings', { enabled: value }); onEnabled(value) } catch (e) { setError(errorText(e)) } finally { setBusy(false) } }} />Enable planner for assigned reps and students</label>}</div>
 }
 
-function Withdraw({ base, eventId, onChanged }: { base: string; eventId: number; onChanged: () => Promise<void> }) {
+// Sends the version the rep opened, so a change another rep published since is a conflict, not silently withdrawn.
+function Withdraw({ base, eventId, version, spec, onChanged }: { base: string; eventId: number; version: number; spec: Spec; onChanged: () => Promise<void> }) {
   const [explanation, setExplanation] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('')
-  return <section className="mt-6 flex flex-col gap-3 border-t border-navy/20 pt-4"><h3 className="text-[18px] font-extrabold">Withdraw selected event</h3><p className="text-[13px] text-muted">Removes this published event from student timetables. Withdrawing a class change restores the university occurrence.</p><TextField label="Reason for withdrawal" value={explanation} maxLength={1000} onChange={e => setExplanation(e.target.value)} /><ErrorText>{error}</ErrorText><Button variant="danger" busy={busy} disabled={!explanation.trim()} onClick={async () => { setBusy(true); try { const e = await api.get<{ version: number }>(`${base}/events/${eventId}`); await api.post(`${base}/events/${eventId}/withdraw`, { version: e.version, explanation }); await onChanged() } catch (e) { setError(errorText(e)) } finally { setBusy(false) } }}>Withdraw from student timetables</Button></section>
+  return <section className="mt-6 flex flex-col gap-3 border-t border-navy/20 pt-4"><h3 className="text-[18px] font-extrabold">Withdraw {spec.title || 'selected event'}</h3><p className="text-[13px] font-semibold">{spec.date} · {spec.start}–{spec.end}</p><p className="text-[13px] text-muted">Removes this published event from student timetables. Withdrawing a class change restores the university occurrence.</p><TextField label="Reason for withdrawal" value={explanation} maxLength={1000} onChange={e => setExplanation(e.target.value)} /><ErrorText>{error}</ErrorText><Button variant="danger" busy={busy} disabled={!explanation.trim()} onClick={async () => { setBusy(true); try { await api.post(`${base}/events/${eventId}/withdraw`, { version, explanation }); await onChanged() } catch (e) { setError(errorText(e)) } finally { setBusy(false) } }}>Withdraw from student timetables</Button></section>
 }

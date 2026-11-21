@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using UniSchedule.Api.Admin;
 using UniSchedule.Api.Data;
 using UniSchedule.Api.Schedule;
 
@@ -198,5 +199,83 @@ public sealed class ImportTests : IDisposable
         var p = await ScheduleImport.PreviewAsync(db, semester.Id, Parse(Base + "CS999,Bad,CS,Core,2,1,X,Funday,08:00-09:30,A1\n"), CancellationToken.None);
         Assert.False(p.CanApply);
         Assert.Equal(6, Assert.Single(p.Errors).Line);
+    }
+
+    [Fact]
+    public async Task A_dropped_course_with_default_settings_is_kept_until_it_comes_back()
+    {
+        await Apply(Base);
+        var cs210 = await db.Courses.SingleAsync(c => c.Code == "CS210");
+        var cs = await db.Majors.SingleAsync(m => m.Code == "CS");
+        db.CourseDefaults.Add(new CourseDefault { SemesterId = semester.Id, CourseId = cs210.Id, MajorId = cs.Id, Year = 2 });
+        await db.SaveChangesAsync();
+        var without = string.Join("\n", Base.Split('\n').Where(l => !l.StartsWith("CS210")));
+
+        var p = await ScheduleImport.PreviewAsync(db, semester.Id, Parse(without), CancellationToken.None);
+        Assert.Contains("default-course settings are kept", Assert.Single(p.Removed).Detail);
+        await Apply(without);
+        db.ChangeTracker.Clear();
+        // Kept with no sections, and the setting with it.
+        Assert.Empty(await db.Sections.Where(s => s.CourseId == cs210.Id).ToListAsync());
+        Assert.True(await db.CourseDefaults.AnyAsync(d => d.CourseId == cs210.Id));
+
+        // Back in the next upload: the same course again, with its sections and its setting.
+        await Apply(Base);
+        db.ChangeTracker.Clear();
+        Assert.Equal(cs210.Id, (await db.Courses.SingleAsync(c => c.Code == "CS210")).Id);
+        Assert.Single(await db.Sections.Where(s => s.CourseId == cs210.Id).ToListAsync());
+        Assert.Equal(2, (await db.CourseDefaults.SingleAsync(d => d.CourseId == cs210.Id)).Year);
+    }
+
+    [Fact]
+    public async Task A_code_with_a_non_breaking_space_is_the_same_course()
+    {
+        await Apply(Base);
+        var student = await StudentWith(("CS201", "1"));
+        var nbsp = Base.Replace("CS201,", "CS\u00A0201,");
+        var p = await ScheduleImport.PreviewAsync(db, semester.Id, Parse(nbsp), CancellationToken.None);
+        Assert.Empty(p.Added);
+        Assert.Empty(p.Removed);
+        await Apply(nbsp);
+        db.ChangeTracker.Clear();
+        var pick = await db.Picks.SingleAsync(x => x.StudentId == student.Id);
+        Assert.NotNull(pick.SectionId);
+        Assert.False(pick.SectionRemoved);
+        Assert.Equal(1, await db.Courses.CountAsync(c => c.Code.Contains("201")));
+    }
+
+    [Fact]
+    public async Task A_family_in_the_major_column_is_an_error_and_never_becomes_a_major()
+    {
+        db.Majors.AddRange(new Major { Code = "CS", Name = "Computer Science", Family = "COMP" }, new Major { Code = "AI", Name = "AI", Family = "COMP" });
+        await db.SaveChangesAsync();
+        var csv = Header + "CS301,Shared,COMP,Core,3,1,Dr. A,Sun,08:00-09:30,B105\n";
+        var families = await ScheduleImport.FamilyCodesAsync(db, CancellationToken.None);
+        var parsed = ScheduleImport.Parse(ScheduleFile.ReadText(csv).Rows, families);
+        var error = Assert.Single(parsed.Errors);
+        Assert.Equal(2, error.Line);
+        Assert.Contains("\"COMP\" is a family of majors", error.Message);
+        Assert.False((await ScheduleImport.PreviewAsync(db, semester.Id, parsed, CancellationToken.None)).CanApply);
+
+        // Even when applied without the check, no major named after the family is made.
+        await Apply(Header + "CS301,Shared,COMP;CS,Core,3,1,Dr. A,Sun,08:00-09:30,B105\n");
+        Assert.False(await db.Majors.AnyAsync(m => m.Code == "COMP"));
+        Assert.Equal(["CS"], await db.CourseMajors.Where(cm => cm.Course.Code == "CS301").Select(cm => cm.Major.Code).ToListAsync());
+    }
+
+    [Fact]
+    public async Task A_section_imported_with_overlapping_meetings_can_still_be_edited()
+    {
+        await Apply(Header + "CS201,Data Structures,CS,Core,2,1,Dr. A,Sun,08:00-09:30,R1\nCS201,Data Structures,CS,Core,2,1,Dr. A,Sun,08:00-09:30,R2\n");
+        var stored = (await db.Sections.Include(s => s.Meetings).SingleAsync(s => s.Course.Code == "CS201")).Meetings.ToList();
+        Assert.Equal(2, stored.Count);
+        var same = stored.Select(m => new AdminEndpoints.MeetingBody(m.Day, Timeslots.Format(m.Start), Timeslots.Format(m.End), m.Room)).ToList();
+        // Sending them back (say, with only the instructor changed) saves.
+        var (meetings, problem) = AdminEndpoints.ParseMeetings(same, stored);
+        Assert.Null(problem);
+        Assert.Equal(2, meetings!.Count);
+        // A new overlap is still refused.
+        (_, problem) = AdminEndpoints.ParseMeetings([.. same, new AdminEndpoints.MeetingBody(0, "09:00", "10:00", "R3")], stored);
+        Assert.Equal("Two meetings overlap on Sun.", problem);
     }
 }

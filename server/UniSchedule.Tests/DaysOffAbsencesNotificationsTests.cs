@@ -63,7 +63,7 @@ public class DaysOffAbsencesNotificationsTests(ApiFactory factory) : IClassFixtu
         var owner = factory.Client();
         Assert.Equal(HttpStatusCode.OK, (await owner.PostAsJsonAsync("/api/auth/admin-login", new { username = name, password = "owner-password-1" })).StatusCode);
         var csv = "code,name,major,type,year,section,instructor,date,days,time,room\nHX101,Holiday Things,HXM,Core,1,1,Dr. H,,Sun,08:00-09:30,R1\n";
-        var sem = (await Json(await owner.PostAsJsonAsync("/api/admin/semesters", new { term = "Fall", year = 2095 + setups }))).GetProperty("id").GetInt32();
+        var sem = (await Json(await owner.PostAsJsonAsync("/api/admin/semesters", new { term = "Fall", year = 2070 + setups }))).GetProperty("id").GetInt32();
         using var file = new MultipartFormDataContent { { new ByteArrayContent(System.Text.Encoding.UTF8.GetBytes(csv)), "file", "c.csv" } };
         Assert.Equal(HttpStatusCode.OK, (await owner.PostAsync($"/api/admin/semesters/{sem}/upload/apply", file)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/semesters/{sem}/weeks", new { week1Start = "2026-09-06", lastWeek = 15 })).StatusCode);
@@ -152,6 +152,59 @@ public class DaysOffAbsencesNotificationsTests(ApiFactory factory) : IClassFixtu
         // Unmarking removes it.
         Assert.Equal(HttpStatusCode.NoContent, (await s.PutAsJsonAsync("/api/me/absences", new { courseId = course, date = "2026-10-11", start = "08:00", missed = false })).StatusCode);
         Assert.Equal(0, (await Json(await s.GetAsync("/api/me/absences"))).GetProperty("absences").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Absences_are_only_for_sessions_the_timetable_has()
+    {
+        var (owner, s, studentId, sem, course, _) = await Setup();
+        Assert.Equal(HttpStatusCode.OK, (await owner.PostAsJsonAsync($"/api/admin/semesters/{sem}/days-off", new { date = "2026-10-18", name = "Test Day" })).StatusCode);
+        Task<HttpResponseMessage> Mark(string date, string start, bool missed = true) =>
+            s.PutAsJsonAsync("/api/me/absences", new { courseId = course, date, start, missed });
+
+        // HX101 meets Sundays at 08:00 from 6 Sep: not on a Saturday, not at another time, not on the day off, not
+        // before week 1, and not years ago.
+        foreach (var (date, start) in new[] { ("2026-10-10", "08:00"), ("2026-10-11", "09:00"), ("2026-10-18", "08:00"), ("2026-08-30", "08:00"), ("2001-02-04", "08:00") })
+            Assert.Equal(HttpStatusCode.BadRequest, (await Mark(date, start)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await Mark("2026-10-11", "08:00")).StatusCode);
+        // Unmarking anything is fine, so an old row can always be cleared.
+        Assert.Equal(HttpStatusCode.NoContent, (await Mark("2026-10-10", "08:00", missed: false)).StatusCode);
+        Assert.Single((await Json(await s.GetAsync("/api/me/absences"))).GetProperty("absences").EnumerateArray());
+
+        // At most so many per course, however they got there.
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+            var me = await db.Students.Where(x => x.UniversityId == studentId).Select(x => x.Id).FirstAsync();
+            db.Absences.AddRange(Enumerable.Range(1, Absences.MaxPerCourse - 1).Select(i => new Absence
+            {
+                StudentId = me, CourseId = course, Date = new DateOnly(2001, 1, 1).AddDays(i), Start = new(8, 0), CreatedAt = DateTimeOffset.UtcNow,
+            }));
+            await db.SaveChangesAsync();
+        }
+        Assert.Equal(HttpStatusCode.BadRequest, (await Mark("2026-10-04", "08:00")).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await Mark("2026-10-11", "08:00", missed: false)).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await Mark("2026-10-04", "08:00")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Marking_the_same_session_at_once_saves_it_once_without_errors()
+    {
+        var (_, s, _, _, course, _) = await Setup();
+        var replies = await Task.WhenAll(Enumerable.Range(0, 20).Select(_ =>
+            s.PutAsJsonAsync("/api/me/absences", new { courseId = course, date = "2026-09-13", start = "08:00", missed = true })));
+        Assert.All(replies, r => Assert.Equal(HttpStatusCode.NoContent, r.StatusCode));
+        Assert.Single((await Json(await s.GetAsync("/api/me/absences"))).GetProperty("absences").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task A_null_pick_is_refused_rather_than_failing()
+    {
+        var (_, s, _, _, _, _) = await Setup();
+        var body = new StringContent("{\"picks\":[null]}", System.Text.Encoding.UTF8, "application/json");
+        Assert.Equal(HttpStatusCode.BadRequest, (await s.PutAsync("/api/me/picks", body)).StatusCode);
+        // Nothing changed.
+        Assert.Single((await Json(await s.GetAsync("/api/me/picks"))).EnumerateArray());
     }
 
     [Fact]
@@ -259,7 +312,7 @@ public class DaysOffAbsencesNotificationsTests(ApiFactory factory) : IClassFixtu
         var (p256dh, auth) = DeviceKeys();
         Assert.Equal(HttpStatusCode.NoContent, (await s.PostAsJsonAsync("/api/me/push", new { endpoint = $"https://fcm.googleapis.com/fcm/send/out-{studentId}", keys = new { p256dh, auth } })).StatusCode);
         var me = await db.Students.Where(x => x.UniversityId == studentId).Select(x => x.Id).FirstAsync();
-        var (who, note) = (await Notifications.PublishAnnouncement(db, default))!.Value;
+        var (who, note, _, _) = (await Notifications.PublishAnnouncement(db, default))!.Value;
         Assert.Contains(me, who);
         Assert.Equal(who.Count, who.Distinct().Count());
         Assert.Equal(new Note($"{name} is out", "Set up your courses in about a minute.", "/setup", "published", 3 * 86_400), note);

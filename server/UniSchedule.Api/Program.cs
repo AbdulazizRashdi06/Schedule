@@ -36,7 +36,9 @@ builder.Services.AddHttpClient("push", c => c.Timeout = TimeSpan.FromSeconds(15)
 builder.Services.AddSingleton<PushSender>();
 if (!builder.Environment.IsEnvironment("Testing")) builder.Services.AddHostedService<NotificationWorker>();
 // Outside APIs (timetable, student courses) that owners connect in the dashboard.
-builder.Services.AddHttpClient<IConnectionFetcher, HttpConnectionFetcher>(c => c.Timeout = TimeSpan.FromSeconds(30));
+builder.Services.AddHttpClient<IConnectionFetcher, HttpConnectionFetcher>(c => c.Timeout = TimeSpan.FromSeconds(30))
+    // The fetcher follows redirects itself, only on the same server, so a saved header value isn't sent elsewhere.
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 if (!builder.Environment.IsEnvironment("Testing")) builder.Services.AddHostedService<ConnectionScheduler>();
 builder.Services.Configure<EmailOptions>(config.GetSection("Email"));
 if (string.Equals(config["Email:Provider"], "resend", StringComparison.OrdinalIgnoreCase))
@@ -60,19 +62,23 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         o.Events.OnRedirectToAccessDenied = ctx => { ctx.Response.StatusCode = StatusCodes.Status403Forbidden; return Task.CompletedTask; };
     });
 builder.Services.AddAuthorizationBuilder()
+    // Anyone signed in, except staff who still have to change their temporary password.
+    .AddPolicy(Session.SignedInPolicy, p => p.RequireAuthenticatedUser().RequireAssertion(c => !c.User.HasClaim(x => x.Type == Session.MustChangeClaim)))
     .AddPolicy(Session.RepPolicy, p => p.RequireClaim(Session.RoleClaim, "owner", "batch-rep").RequireAssertion(c => !c.User.HasClaim(x => x.Type == Session.MustChangeClaim)))
     .AddPolicy(Session.StudentPolicy, p => p.RequireClaim(Session.KindClaim, "student"))
     // Staff with a temporary password may only change it.
     .AddPolicy(Session.StaffPolicy, p => p.RequireClaim(Session.RoleClaim, "owner", "rsa").RequireAssertion(c => !c.User.HasClaim(x => x.Type == Session.MustChangeClaim)))
     .AddPolicy(Session.OwnerPolicy, p => p.RequireClaim(Session.RoleClaim, "owner").RequireAssertion(c => !c.User.HasClaim(x => x.Type == Session.MustChangeClaim)));
 
+builder.Services.AddSingleton<WrongCodeLimiter>();
+builder.Services.AddSingleton<AuthEndpoints.AdminLoginTries>();
 builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     o.OnRejected = async (ctx, ct) =>
         await ctx.HttpContext.Response.WriteAsJsonAsync(new { error = "Too many tries. Wait a minute and try again." }, ct);
     // Per client IP, per 5 minutes: only a flood guard. Everyone on campus Wi-Fi shares one IP, so the caps are high;
-    // each university ID has its own tighter limits (one code a minute, four per 15 minutes, five wrong tries per code).
+    // each university ID has its own tighter limits (see LoginCodes) and WrongCodeLimiter caps wrong codes per IP per hour.
     // RateLimits:RequestCode / RateLimits:Verify override the defaults.
     static RateLimitPartition<string> PerIp(HttpContext http, string key, int fallback) =>
         RateLimitPartition.GetFixedWindowLimiter(http.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
@@ -124,6 +130,17 @@ app.Use(async (http, next) =>
         // failing, so it's left out rather than counted as an error.
         if (!http.RequestAborted.IsCancellationRequested) UsageAnalytics.Record(http, started, failed);
     }
+});
+// Another site (even a subdomain of ours) can't make a signed-in browser change things here.
+app.Use(async (http, next) =>
+{
+    if (CrossSite.IsForeign(http.Request))
+    {
+        http.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await http.Response.WriteAsJsonAsync(new { error = "That request came from another site." });
+        return;
+    }
+    await next(http);
 });
 app.UseAuthentication();
 app.UseAuthorization();

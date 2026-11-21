@@ -62,6 +62,97 @@ public class ScheduleFileTests
         Assert.Equal("A101", row.Room);
     }
 
+    /// <summary>Real Excel date and time cells, stored as numbers with a built-in format, as Excel saves them.</summary>
+    [Fact]
+    public void Reads_excel_date_and_time_cells_by_value()
+    {
+        using var book = new XLWorkbook();
+        var sheet = book.AddWorksheet("Fall");
+        string[] header = ["Course Code", "Section", "Date", "Start", "End", "Major"];
+        for (var c = 0; c < header.Length; c++) sheet.Cell(1, c + 1).Value = header[c];
+        // 5 Sep and 21 Sep 2026 in the short-date format (14, shown month-first); 8:00 AM and 1:30 PM as h:mm AM/PM (18),
+        // h:mm:ss AM/PM (19) and h:mm:ss (21).
+        (double Date, int TimeFormat)[] rows = [(46270, 18), (46286, 19), (46286, 21)];
+        for (var r = 0; r < rows.Length; r++)
+        {
+            sheet.Cell(r + 2, 1).Value = "CS101";
+            sheet.Cell(r + 2, 2).Value = r + 1;
+            sheet.Cell(r + 2, 3).Value = rows[r].Date;
+            sheet.Cell(r + 2, 3).Style.NumberFormat.NumberFormatId = 14;
+            sheet.Cell(r + 2, 4).Value = 8.0 / 24;
+            sheet.Cell(r + 2, 5).Value = 13.5 / 24;
+            sheet.Cell(r + 2, 4).Style.NumberFormat.NumberFormatId = rows[r].TimeFormat;
+            sheet.Cell(r + 2, 5).Style.NumberFormat.NumberFormatId = rows[r].TimeFormat;
+            sheet.Cell(r + 2, 6).Value = "CS";
+        }
+        using var ms = new MemoryStream();
+        book.SaveAs(ms);
+        ms.Position = 0;
+        var read = ScheduleFile.Read(ms, "fall.xlsx");
+        Assert.Equal(["2026-09-05", "2026-09-21", "2026-09-21"], read.Rows.Select(r => r.Date));
+        Assert.All(read.Rows, r => Assert.Equal("08:00 - 13:30", r.Time));
+
+        var parsed = ScheduleImport.Parse(read.Rows);
+        Assert.Empty(parsed.Errors);
+        var meetings = Assert.Single(parsed.Courses).Sections.SelectMany(s => s.Meetings).ToList();
+        Assert.Equal([new DateOnly(2026, 9, 5), new DateOnly(2026, 9, 21), new DateOnly(2026, 9, 21)], meetings.Select(m => m.Date));
+        Assert.All(meetings, m => Assert.Equal((new TimeOnly(8, 0), new TimeOnly(13, 30)), (m.Start, m.End)));
+    }
+
+    [Theory]
+    [InlineData("٢٠٢٦-٠٩-٢١")] // Arabic-Indic digits
+    [InlineData("２０２６-０９-２１")] // full-width digits
+    [InlineData("٢١/٠٩/٢٠٢٦")]
+    public void Dates_in_non_ascii_digits_are_unreadable_not_a_crash(string raw)
+    {
+        Assert.Null(ScheduleImport.ParseDate(raw));
+        var parsed = ScheduleImport.Parse(ScheduleFile.ReadText($"code,section,date,time,type\nLS101,1,{raw},08:00-09:30,LS\n").Rows);
+        Assert.Contains("can't read date", Assert.Single(parsed.Errors).Message);
+    }
+
+    [Fact]
+    public void Codes_lose_every_kind_of_space()
+    {
+        var r = ScheduleFile.ReadText("code,section,days,time,type\n\"CS\u00A0201\",1,Sun,08:00-09:30,LS\n\"cs\t2 01\",2,Mon,08:00-09:30,LS\n");
+        Assert.Equal(["CS201", "CS201"], r.Rows.Select(x => x.Code));
+        Assert.Single(ScheduleImport.Parse(r.Rows).Courses);
+    }
+
+    [Fact]
+    public void Row_numbers_count_blank_rows_and_the_rows_above_the_header()
+    {
+        var csv = ScheduleFile.ReadText("code,section,days,time,major\n\n\nCS202,1,Sun,08:00-09:30,CS\n\nCS201,1,Funday,08:00-09:30,CS\n");
+        Assert.Equal([4, 6], csv.Rows.Select(r => r.Line));
+        var error = Assert.Single(ScheduleImport.Parse(csv.Rows).Errors);
+        Assert.Equal(6, error.Line);
+        // The error names the row too.
+        Assert.StartsWith("CS201 section 1: ", error.Message);
+
+        using var book = new XLWorkbook();
+        var sheet = book.AddWorksheet("Fall");
+        string[][] data = [["code", "section", "days", "time", "major"], ["CS202", "1", "Sun", "08:00-09:30", "CS"], [], ["CS201", "1", "Funday", "08:00-09:30", "CS"]];
+        for (var r = 0; r < data.Length; r++)
+            for (var c = 0; c < data[r].Length; c++)
+                sheet.Cell(r + 3, c + 1).Value = data[r][c];
+        using var ms = new MemoryStream();
+        book.SaveAs(ms);
+        ms.Position = 0;
+        // Rows 1 and 2 are empty, so the header is on sheet row 3 and the bad row on row 6.
+        var xlsx = ScheduleFile.Read(ms, "fall.xlsx");
+        Assert.Equal(6, Assert.Single(ScheduleImport.Parse(xlsx.Rows).Errors).Line);
+    }
+
+    [Fact]
+    public void Overlapping_meetings_of_a_section_are_kept_with_a_warning()
+    {
+        var parsed = ScheduleImport.Parse(ScheduleFile.ReadText("code,section,days,time,room,major\n" +
+            "CS201,1,Sun,08:00-09:30,R1,CS\nCS201,1,Sun,08:00-09:30,R2,CS\nCS201,1,Mon,08:00-09:30,R1,CS\n").Rows);
+        Assert.Equal(3, Assert.Single(parsed.Courses).Sections.Single().Meetings.Count);
+        var w = Assert.Single(parsed.Warnings, w => w.Message.Contains("overlap"));
+        Assert.Equal(3, w.Line);
+        Assert.Equal("CS201 section 1: two meetings overlap on Sun", w.Message);
+    }
+
     [Theory]
     [InlineData("fall-2026.csv")]
     [InlineData("spring-2027.csv")]

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using ClosedXML.Excel;
 
@@ -46,11 +47,28 @@ public static class ScheduleFile
             var sheet = book.Worksheets.First();
             var used = sheet.RangeUsed();
             if (used is null) return new([], ["The spreadsheet is empty."]);
-            var table = used.Rows().Select(r => r.Cells(1, used.ColumnCount()).Select(c => c.GetFormattedString().Trim()).ToList()).ToList();
-            return FromTable(table);
+            var table = used.Rows().Select(r => r.Cells(1, used.ColumnCount()).Select(CellText).ToList()).ToList();
+            // Row numbers as the sheet shows them, even when the header isn't on row 1.
+            return FromTable(table, used.RangeAddress.FirstAddress.RowNumber);
         }
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
         return ReadText(reader.ReadToEnd());
+    }
+
+    /// <summary>
+    /// A real Excel date or time is read by its value, not as Excel shows it: the display format is often
+    /// month-first or a pattern like "h:mm tt". Dates come out as 2026-09-21 and times as 13:30.
+    /// </summary>
+    static string CellText(IXLCell c)
+    {
+        if (c.DataType == XLDataType.TimeSpan) return c.GetTimeSpan().ToString(@"hh\:mm", CultureInfo.InvariantCulture);
+        if (c.DataType != XLDataType.DateTime) return c.GetFormattedString().Trim();
+        var d = c.GetDateTime();
+        // Excel keeps a time on its own as a fraction of day 0 (30 Dec 1899).
+        if (d.Year < 1900) return d.ToString("HH:mm", CultureInfo.InvariantCulture);
+        return d.TimeOfDay == TimeSpan.Zero
+            ? d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            : d.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
     }
 
     public static ReadResult ReadText(string text)
@@ -61,12 +79,14 @@ public static class ScheduleFile
         return FromTable(SplitDelimited(lines, delimiter));
     }
 
-    static ReadResult FromTable(List<List<string>> table)
+    /// <summary><paramref name="firstLine"/>: the line number of the table's first row.</summary>
+    static ReadResult FromTable(List<List<string>> table, int firstLine = 1)
     {
-        table = table.Where(r => r.Any(c => c.Length > 0)).ToList();
-        if (table.Count == 0) return new([], ["The file is empty."]);
+        // Blank rows are skipped but keep their place, so "Row N" in a message is the row the admin sees.
+        var lines = table.Select((r, i) => (Cells: r, Line: i + firstLine)).Where(x => x.Cells.Any(c => c.Length > 0)).ToList();
+        if (lines.Count == 0) return new([], ["The file is empty."]);
 
-        var header = table[0].Select(h => h.Trim().ToLowerInvariant().Replace("_", " ")).ToList();
+        var header = lines[0].Cells.Select(h => h.Trim().ToLowerInvariant().Replace("_", " ")).ToList();
         var index = new Dictionary<string, int>();
         foreach (var (key, names) in Columns)
         {
@@ -87,13 +107,14 @@ public static class ScheduleFile
             index.TryGetValue(key, out var i) && i < row.Count ? row[i].Trim() : "";
 
         var rows = new List<ScheduleRow>();
-        for (var r = 1; r < table.Count; r++)
+        for (var r = 1; r < lines.Count; r++)
         {
-            var row = table[r];
+            var row = lines[r].Cells;
             var time = Cell(row, "time");
             if (time.Length == 0 && Cell(row, "start").Length > 0) time = $"{Cell(row, "start")} - {Cell(row, "end")}";
-            rows.Add(new ScheduleRow(r + 1,
-                Cell(row, "code").ToUpperInvariant().Replace(" ", ""), Cell(row, "name"), Cell(row, "major"), Cell(row, "type"),
+            rows.Add(new ScheduleRow(lines[r].Line,
+                // Every kind of space goes (a non-breaking one pasted from the web too), so "CS 201" and "CS201" are one course.
+                string.Concat(Cell(row, "code").Where(c => !char.IsWhiteSpace(c))).ToUpperInvariant(), Cell(row, "name"), Cell(row, "major"), Cell(row, "type"),
                 Cell(row, "year"), Cell(row, "credits"), Cell(row, "section"), Cell(row, "instructor"),
                 Cell(row, "days"), time, Cell(row, "room"), Cell(row, "date")));
         }

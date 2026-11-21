@@ -157,8 +157,10 @@ export default function Families() {
   const save = async () => {
     if (!family) return
     const scope = new Set([family, ...memberCodes])
+    // A saved row naming a major or family that's gone would make the server refuse the whole list, so it's left out.
+    const known = new Set([...(majors ?? []).map((m) => m.code.toUpperCase()), ...families])
     const rows = [
-      ...saved.filter((r) => !scope.has(r.major.toUpperCase())),
+      ...saved.filter((r) => !scope.has(r.major.toUpperCase()) && known.has(r.major.toUpperCase())),
       ...Object.entries(boards).flatMap(([t, b]) => Object.entries(b).flatMap(([y, list]) => list.map((id) => ({ id, major: t, year: Number(y) })))),
     ]
     setBusy(true)

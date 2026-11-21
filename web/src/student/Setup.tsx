@@ -493,7 +493,7 @@ function PickSteps({ me, view, go }: { me: Me; view: View; go: (v: View, persist
         />
         {me.canImport && (
           <div className="px-6 pt-4">
-            <ImportCourses onDone={load} />
+            <ImportCourses current={picks.size} onDone={load} />
           </div>
         )}
         {cores.length === 0 ? <p className="px-6 pt-5 text-[16px] font-semibold text-muted">No core courses are listed for {yearName(me.year ?? 0)} this semester.</p> : list(cores)}

@@ -16,7 +16,7 @@ interface MajorRow {
 interface Electives {
   major: { id: number; code: string; name: string }
   semesterId: number | null
-  electives: { code: string; name: string; source: 'upload' | 'open' | 'allowed' | 'no' }[]
+  electives: { code: string; name: string; source: 'upload' | 'open' | 'allowed' | 'family' | 'no' }[]
   otherAllowed: string[]
 }
 
@@ -220,7 +220,8 @@ function MajorPanel({ major, families, semesterId, onChanged }: { major: MajorRo
           <Notice>No electives in this semester’s schedule.</Notice>
         ) : (
           data.electives.map((e) => {
-            const fixed = e.source === 'upload' || e.source === 'open'
+            // "family": another major of the family is allowed it, so this major's students can take it too.
+            const fixed = e.source === 'upload' || e.source === 'open' || e.source === 'family'
             const on = fixed || allowed.has(e.code)
             return (
               <button
@@ -241,6 +242,7 @@ function MajorPanel({ major, families, semesterId, onChanged }: { major: MajorRo
                 </span>
                 {e.source === 'upload' && <Tag tone="plain">From upload</Tag>}
                 {e.source === 'open' && <Tag tone="plain">Open to all</Tag>}
+                {e.source === 'family' && <Tag tone="plain">Via {major.family}</Tag>}
               </button>
             )
           })

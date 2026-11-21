@@ -209,6 +209,8 @@ public class AuthFlowTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var login = await Json(await c.PostAsJsonAsync("/api/auth/admin-login", new { username = "RSA-new", password = "temp-pass-1" }));
         Assert.True(login.GetProperty("mustChangePassword").GetBoolean());
         Assert.Equal(HttpStatusCode.Forbidden, (await c.GetAsync("/api/admin/stats")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await c.GetAsync("/api/rooms/free")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await c.GetAsync("/api/majors")).StatusCode);
 
         var tooShort = await c.PostAsJsonAsync("/api/auth/change-password", new { currentPassword = "temp-pass-1", newPassword = "short" });
         Assert.Equal(HttpStatusCode.BadRequest, tooShort.StatusCode);
@@ -216,6 +218,7 @@ public class AuthFlowTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.NoContent, ok.StatusCode);
 
         Assert.Equal(HttpStatusCode.OK, (await c.GetAsync("/api/admin/stats")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await c.GetAsync("/api/majors")).StatusCode);
         // RSA never sees student data and can't create owners.
         Assert.Equal(HttpStatusCode.Forbidden, (await c.GetAsync("/api/admin/students")).StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await c.PostAsJsonAsync("/api/admin/accounts", new { username = "boss", role = "owner" })).StatusCode);

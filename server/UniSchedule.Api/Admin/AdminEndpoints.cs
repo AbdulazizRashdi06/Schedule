@@ -2,7 +2,9 @@ using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using UniSchedule.Api.Auth;
 using UniSchedule.Api.Data;
+using UniSchedule.Api.Planner;
 using UniSchedule.Api.Schedule;
+using UniSchedule.Api.Students;
 
 namespace UniSchedule.Api.Admin;
 
@@ -96,6 +98,8 @@ public static class AdminEndpoints
                 start = SemesterWeeks.Sunday(start.Value);
             }
             if (body.LastWeek is not null and not (>= 1 and <= 40)) return Errors.BadRequest("The last week should be between 1 and 40.");
+            // The last week counts on from week 1, so it means nothing without it.
+            if (body.LastWeek is not null && start is null) return Errors.BadRequest("Enter week 1's start date as well as the last week.");
             semester.Week1Start = start;
             semester.LastWeek = body.LastWeek;
             await db.SaveChangesAsync(ct);
@@ -114,24 +118,29 @@ public static class AdminEndpoints
 
         // ---- Public notes on a course: staff can hide or delete them (private notes stay private) ----
 
-        admin.MapGet("/courses/{id:int}/notes", async (int id, AppDb db, CancellationToken ct) =>
-            Results.Ok(await db.ClassNotes.Where(n => n.CourseId == id && n.IsPublic)
+        // The author's university ID is student data: owners see it, RSA gets null.
+        admin.MapGet("/courses/{id:int}/notes", async (int id, HttpContext http, AppDb db, CancellationToken ct) =>
+        {
+            var isOwner = http.User.IsOwner();
+            return Results.Ok(await db.ClassNotes.Where(n => n.CourseId == id && n.IsPublic)
                 .OrderByDescending(n => n.ReportCount).ThenByDescending(n => n.CreatedAt)
                 .Select(n => new
                 {
-                    n.Id, author = n.Student.UniversityId, n.Text, date = n.Date, section = n.Section == null ? null : n.Section.Number,
+                    n.Id, author = isOwner ? n.Student.UniversityId : null, n.Text, date = n.Date, section = n.Section == null ? null : n.Section.Number,
                     reports = n.ReportCount, hidden = n.HiddenAt != null, n.CreatedAt,
-                }).ToListAsync(ct)));
+                }).ToListAsync(ct));
+        });
 
         // Every public note in a semester (the current one by default), newest first.
-        admin.MapGet("/notes", async (int? semesterId, AppDb db, CancellationToken ct) =>
+        admin.MapGet("/notes", async (int? semesterId, HttpContext http, AppDb db, CancellationToken ct) =>
         {
+            var isOwner = http.User.IsOwner();
             var sid = semesterId ?? await db.Semesters.Where(s => s.IsCurrent).Select(s => (int?)s.Id).FirstOrDefaultAsync(ct);
             return Results.Ok(await db.ClassNotes.Where(n => n.IsPublic && n.Course.SemesterId == sid)
                 .OrderByDescending(n => n.CreatedAt).Take(1000)
                 .Select(n => new
                 {
-                    n.Id, courseId = n.CourseId, code = n.Course.Code, course = n.Course.Name, author = n.Student.UniversityId, n.Text,
+                    n.Id, courseId = n.CourseId, code = n.Course.Code, course = n.Course.Name, author = isOwner ? n.Student.UniversityId : null, n.Text,
                     date = n.Date, section = n.Section == null ? null : n.Section.Number,
                     reports = n.ReportCount, hidden = n.HiddenAt != null, n.CreatedAt,
                 }).ToListAsync(ct));
@@ -171,8 +180,9 @@ public static class AdminEndpoints
             if (!await db.Semesters.AnyAsync(s => s.Id == id, ct)) return Errors.NotFound("That semester doesn't exist.");
             if (body is null) return Errors.BadRequest("Send a list of { id, major, year }.");
             if (body.Count > 5000) return Errors.BadRequest("Too many rows.");
-            var courses = (await db.Courses.Where(c => c.SemesterId == id).Select(c => new { c.Id, c.Code }).ToListAsync(ct))
-                .ToDictionary(c => CodeKey(c.Code), c => c.Id);
+            // Grouped: two stored codes that differ only by spacing ("NB1101" and "NB 1 101" with a non-breaking space) mustn't crash.
+            var courses = (await db.Courses.Where(c => c.SemesterId == id).OrderBy(c => c.Id).Select(c => new { c.Id, c.Code }).ToListAsync(ct))
+                .GroupBy(c => CodeKey(c.Code)).ToDictionary(g => g.Key, g => g.First().Id);
             var majors = await db.Majors.ToListAsync(ct);
             var families = majors.Where(m => m.Family is not null).Select(m => m.Family!).ToHashSet();
             var problems = new List<string>();
@@ -185,6 +195,8 @@ public static class AdminEndpoints
                 if (!courses.TryGetValue(CodeKey(item.Id ?? ""), out var courseId)) { problems.Add($"{row}: no course \"{item.Id}\" in this semester."); continue; }
                 var major = majors.FirstOrDefault(m => m.Code == target);
                 if (major is null && !families.Contains(target)) { problems.Add($"{row}: \"{item.Major}\" is not a major or a family."); continue; }
+                // Don't quietly turn the family's defaults into the major's: say so, and the major can be renamed.
+                if (major is not null && families.Contains(target)) { problems.Add($"{row}: \"{target}\" is both a major and a family. Rename the major under Majors first."); continue; }
                 if (item.Year is not (>= 0 and <= 5)) { problems.Add($"{row}: year should be 0 (Foundation) to 5."); continue; }
                 var family = major is null ? target : null;
                 if (rows.Any(r => r.CourseId == courseId && r.MajorId == major?.Id && r.Family == family && r.Year == item.Year)) continue;
@@ -198,6 +210,8 @@ public static class AdminEndpoints
             foreach (var (lab, parent) in labParents)
                 rows.AddRange(rows.Where(r => r.CourseId == parent).ToList()
                     .Select(r => new CourseDefault { SemesterId = id, CourseId = lab, MajorId = r.MajorId, Family = r.Family, Year = r.Year }));
+            // One transaction: a save cut off part-way keeps the old defaults instead of leaving none.
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
             await db.CourseDefaults.Where(d => d.SemesterId == id).ExecuteDeleteAsync(ct);
             db.CourseDefaults.AddRange(rows);
             // A course placed in another year takes that year (the one it's used in most; the lower on a tie).
@@ -206,6 +220,7 @@ public static class AdminEndpoints
                 course.Year = years[course.Id];
             await db.SaveChangesAsync(ct);
             await Labs.AlignAsync(db, id, ct);
+            await tx.CommitAsync(ct);
             return Results.Ok(new { saved = rows.Count });
         });
 
@@ -223,7 +238,7 @@ public static class AdminEndpoints
         admin.MapPost("/semesters/{id:int}/upload/preview", async (int id, HttpRequest req, AppDb db, CancellationToken ct) =>
         {
             if (!await db.Semesters.AnyAsync(s => s.Id == id, ct)) return Errors.NotFound("That semester doesn't exist.");
-            var (parsed, error) = await ReadUpload(req, ct);
+            var (parsed, error) = await ReadUpload(req, db, ct);
             if (error is not null) return error;
             return Results.Ok(await ScheduleImport.PreviewAsync(db, id, parsed!, ct));
         });
@@ -232,7 +247,7 @@ public static class AdminEndpoints
         {
             var semester = await db.Semesters.FindAsync([id], ct);
             if (semester is null) return Errors.NotFound("That semester doesn't exist.");
-            var (parsed, error) = await ReadUpload(req, ct);
+            var (parsed, error) = await ReadUpload(req, db, ct);
             if (error is not null) return error;
             if (parsed!.Errors.Count > 0) return Errors.BadRequest($"Fix the {parsed.Errors.Count} problem row{(parsed.Errors.Count == 1 ? "" : "s")} first.");
             if (parsed.Courses.Count == 0) return Errors.BadRequest("The file has no courses.");
@@ -308,7 +323,7 @@ public static class AdminEndpoints
             var section = await db.Sections.Include(s => s.Meetings).Include(s => s.Course).ThenInclude(c => c.Semester)
                 .FirstOrDefaultAsync(s => s.Id == id, ct);
             if (section is null) return Errors.NotFound("That section doesn't exist.");
-            var (meetings, problem) = ParseMeetings(body.Meetings);
+            var (meetings, problem) = ParseMeetings(body.Meetings, section.Meetings);
             if (problem is not null) return Errors.BadRequest(problem);
             var instructor = body.Instructor?.Trim() ?? "";
             var change = ScheduleImport.DescribeChange(section.Instructor, section.Meetings, instructor, meetings!.Select(ParsedMeeting.Of));
@@ -342,7 +357,7 @@ public static class AdminEndpoints
             if (problem is not null) return Errors.BadRequest(problem);
             if (await db.Majors.AnyAsync(m => m.Code == code, ct)) return Errors.Conflict($"A major with code {code} already exists.");
             if (await db.Majors.AnyAsync(m => m.Family == code, ct)) return Errors.Conflict($"{code} is already a family name.");
-            var (family, familyProblem) = await CleanFamily(db, body.Family, ct);
+            var (family, familyProblem) = await CleanFamily(db, body.Family, code!, null, ct);
             if (familyProblem is not null) return Errors.BadRequest(familyProblem);
             var major = new Major { Code = code!, Name = name!, Family = family };
             db.Majors.Add(major);
@@ -357,16 +372,22 @@ public static class AdminEndpoints
             var (code, name, problem) = CleanMajor(body);
             if (problem is not null) return Errors.BadRequest(problem);
             if (await db.Majors.AnyAsync(m => m.Code == code && m.Id != id, ct)) return Errors.Conflict($"A major with code {code} already exists.");
-            if (await db.Majors.AnyAsync(m => m.Family == code, ct)) return Errors.Conflict($"{code} is already a family name.");
+            // Its own family doesn't count: a major stuck with its code as its family can still be edited.
+            if (await db.Majors.AnyAsync(m => m.Family == code && m.Id != id, ct)) return Errors.Conflict($"{code} is already a family name.");
+            var oldFamily = major.Family;
+            var oldKey = PlannerJson.Family(major);
             if (body.Family is not null)
             {
-                var (family, familyProblem) = await CleanFamily(db, body.Family, ct);
+                var (family, familyProblem) = await CleanFamily(db, body.Family, code!, id, ct);
                 if (familyProblem is not null) return Errors.BadRequest(familyProblem);
                 major.Family = family;
             }
             major.Code = code!;
             major.Name = name!;
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            await MoveFamily(db, major, oldFamily, oldKey, ct);
             await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
             return Results.Ok(new { major.Id, major.Code, major.Name, major.Family });
         });
 
@@ -378,8 +399,13 @@ public static class AdminEndpoints
                 return Errors.Conflict("Courses in an uploaded schedule use this major. Remove it from the schedule first.");
             if (await db.Students.AnyAsync(s => s.MajorId == id, ct))
                 return Errors.Conflict("Students have picked this major.");
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            // The family's last major: its defaults name nobody now, and would block saving the defaults grid.
+            if (major.Family is { } family && !await db.Majors.AnyAsync(m => m.Family == family && m.Id != id, ct))
+                await db.CourseDefaults.Where(d => d.Family == family).ExecuteDeleteAsync(ct);
             db.Majors.Remove(major);
             await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
             return Results.NoContent();
         });
 
@@ -394,6 +420,10 @@ public static class AdminEndpoints
                 .OrderBy(c => c.Code)
                 .Select(c => new { c.Code, c.Name, majors = c.Majors.Select(m => m.MajorId).ToList() }).ToListAsync(ct);
             var extra = major.Electives.Select(e => e.CourseCode).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            // Students get what their whole family may take, so the other majors of the family count too.
+            var family = await StudentEndpoints.FamilyMajorIds(db, id, ct);
+            var viaFamily = (await db.MajorElectives.Where(e => family.Contains(e.MajorId) && e.MajorId != id).Select(e => e.CourseCode).ToListAsync(ct))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
             return Results.Ok(new
             {
                 major = new { major.Id, major.Code, major.Name },
@@ -401,8 +431,10 @@ public static class AdminEndpoints
                 electives = electives.Select(c => new
                 {
                     c.Code, c.Name,
-                    // "upload": the schedule lists this major; "open": no majors listed, so anyone may take it.
-                    source = c.majors.Contains(id) ? "upload" : c.majors.Count == 0 ? "open" : extra.Contains(c.Code) ? "allowed" : "no",
+                    // "upload": the schedule lists this major (or another major of its family); "open": no majors listed,
+                    // so anyone may take it; "family": another major of the family is allowed it, so this one's students are too.
+                    source = c.majors.Any(family.Contains) ? "upload" : c.majors.Count == 0 ? "open" : extra.Contains(c.Code) ? "allowed"
+                        : viaFamily.Contains(c.Code) ? "family" : "no",
                 }),
                 // Allowed codes not offered this semester stay allowed for later semesters.
                 otherAllowed = extra.Where(code => electives.All(c => !c.Code.Equals(code, StringComparison.OrdinalIgnoreCase))).Order().ToList(),
@@ -413,7 +445,7 @@ public static class AdminEndpoints
         {
             var major = await db.Majors.Include(m => m.Electives).FirstOrDefaultAsync(m => m.Id == id, ct);
             if (major is null) return Errors.NotFound("That major doesn't exist.");
-            var codes = (body.Codes ?? []).Select(c => c.Trim().ToUpperInvariant().Replace(" ", "")).Where(c => c.Length > 0)
+            var codes = (body.Codes ?? []).Select(CodeKey).Where(c => c.Length > 0)
                 .Distinct().ToList();
             if (codes.Count > 500) return Errors.BadRequest("Too many courses.");
             major.Electives.RemoveAll(e => !codes.Contains(e.CourseCode, StringComparer.OrdinalIgnoreCase));
@@ -425,8 +457,9 @@ public static class AdminEndpoints
 
         // ---- Stats (counts only) ----
 
-        admin.MapGet("/stats", async (int? semesterId, AppDb db, TimeProvider clock, CancellationToken ct) =>
+        admin.MapGet("/stats", async (int? semesterId, HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) =>
         {
+            var isOwner = http.User.IsOwner();
             var current = await db.Semesters.Where(s => s.IsCurrent).FirstOrDefaultAsync(ct);
             var sid = semesterId ?? current?.Id;
             var currentId = current?.Id;
@@ -472,14 +505,14 @@ public static class AdminEndpoints
                         .GroupBy(n => new { n.CourseId, n.Course.Code })
                         .Select(g => new { courseId = g.Key.CourseId, code = g.Key.Code, notes = g.Count() }).ToListAsync(ct),
                 },
-                recentUploads = uploads.Select(u => new { at = u.At, u.FileName, u.By, u.Added, u.Updated, u.Removed }),
+                recentUploads = uploads.Select(u => new { at = u.At, u.FileName, by = OwnerEndpoints.ShownActor(u.By, isOwner), u.Added, u.Updated, u.Removed }),
             });
         });
     }
 
     static (string? Code, string? Name, string? Problem) CleanMajor(MajorBody body)
     {
-        var code = body.Code?.Trim().ToUpperInvariant().Replace(" ", "");
+        var code = body.Code is null ? null : CodeKey(body.Code);
         var name = body.Name?.Trim();
         if (string.IsNullOrEmpty(code) || code.Length > 16) return (null, null, "Enter a short code like CS (up to 16 characters).");
         if (string.IsNullOrEmpty(name) || name.Length > 100) return (null, null, "Enter the major's name.");
@@ -489,18 +522,65 @@ public static class AdminEndpoints
     /// <summary>"cs 1 101", "CS1101" and "CS  1 101" all match "CS 1 101".</summary>
     static string CodeKey(string code) => string.Concat(code.Where(c => !char.IsWhiteSpace(c))).ToUpperInvariant();
 
-    /// <summary>Blank takes the major out of its family. A family can't use a major's code, since defaults name either.</summary>
-    static async Task<(string? Family, string? Problem)> CleanFamily(AppDb db, string? raw, CancellationToken ct)
+    /// <summary>
+    /// Blank takes the major out of its family. A family can't use a major's code, since defaults name either:
+    /// not another major's, and not the <paramref name="code"/> this major will have (<paramref name="id"/>: the major being edited).
+    /// </summary>
+    static async Task<(string? Family, string? Problem)> CleanFamily(AppDb db, string? raw, string code, int? id, CancellationToken ct)
     {
-        var family = raw?.Trim().ToUpperInvariant().Replace(" ", "");
+        var family = raw is null ? null : CodeKey(raw);
         if (string.IsNullOrEmpty(family)) return (null, null);
         if (family.Length > 16) return (null, "Keep the family code short, like COMP (up to 16 characters).");
-        if (await db.Majors.AnyAsync(m => m.Code == family, ct)) return (null, $"{family} is already a major's code. Pick another family name.");
+        if (family == code) return (null, "A family can't use the major's own code. Pick another family name.");
+        if (await db.Majors.AnyAsync(m => m.Code == family && m.Id != id, ct)) return (null, $"{family} is already a major's code. Pick another family name.");
         return (family, null);
     }
 
-    public static (List<Meeting>? Meetings, string? Problem) ParseMeetings(List<MeetingBody>? input)
+    /// <summary>
+    /// After a major's family changed: when no other major is left in the old family, what's stored under the old name
+    /// moves with this major, so it keeps working. Its default courses go to the new family (or become the major's own),
+    /// unless the new place already has defaults for that semester and year. Its planner workspaces and batch reps go to
+    /// the new planner family; a workspace that already exists there takes in the old one's batches, drafts and history.
+    /// </summary>
+    static async Task MoveFamily(AppDb db, Major major, string? oldFamily, string oldKey, CancellationToken ct)
     {
+        var others = db.Majors.Where(m => m.Id != major.Id);
+        if (oldFamily is not null && oldFamily != major.Family && !await others.AnyAsync(m => m.Family == oldFamily, ct))
+        {
+            var moving = await db.CourseDefaults.Where(d => d.Family == oldFamily).ToListAsync(ct);
+            var there = major.Family is null ? db.CourseDefaults.Where(d => d.MajorId == major.Id) : db.CourseDefaults.Where(d => d.Family == major.Family);
+            var taken = (await there.Select(d => new { d.SemesterId, d.Year }).ToListAsync(ct)).ToHashSet();
+            foreach (var d in moving)
+            {
+                if (taken.Contains(new { d.SemesterId, d.Year })) { db.CourseDefaults.Remove(d); continue; }
+                if (major.Family is null) d.MajorId = major.Id;
+                d.Family = major.Family;
+            }
+        }
+
+        var newKey = PlannerJson.Family(major);
+        if (newKey == oldKey || (await others.ToListAsync(ct)).Any(m => PlannerJson.Family(m) == oldKey)) return;
+        foreach (var rep in await db.BatchRepAssignments.Where(r => r.HomeFamily == oldKey).ToListAsync(ct)) rep.HomeFamily = newKey;
+        foreach (var old in await db.PlannerWorkspaces.Where(w => w.Family == oldKey).ToListAsync(ct))
+        {
+            var into = await db.PlannerWorkspaces.FirstOrDefaultAsync(w => w.SemesterId == old.SemesterId && w.Family == newKey, ct);
+            if (into is null) { old.Family = newKey; continue; }
+            await db.PlannerBatches.Where(x => x.WorkspaceId == old.Id).ExecuteUpdateAsync(u => u.SetProperty(x => x.WorkspaceId, into.Id), ct);
+            await db.PlannerProposals.Where(x => x.WorkspaceId == old.Id).ExecuteUpdateAsync(u => u.SetProperty(x => x.WorkspaceId, into.Id), ct);
+            // Activities too: the first "published" one says which workspace may change an event.
+            await db.PlannerActivities.Where(x => x.WorkspaceId == old.Id).ExecuteUpdateAsync(u => u.SetProperty(x => x.WorkspaceId, into.Id), ct);
+            await db.PlannerAiJobs.Where(x => x.WorkspaceId == old.Id).ExecuteUpdateAsync(u => u.SetProperty(x => x.WorkspaceId, into.Id), ct);
+            db.PlannerWorkspaces.Remove(old);
+        }
+    }
+
+    /// <summary>
+    /// <paramref name="stored"/>: the section's meetings now. Two of them that overlap may stay (an upload can list a
+    /// class in two rooms), so editing anything else still saves; only a new overlap is refused.
+    /// </summary>
+    public static (List<Meeting>? Meetings, string? Problem) ParseMeetings(List<MeetingBody>? input, IEnumerable<Meeting>? stored = null)
+    {
+        var kept = (stored ?? []).Select(ParsedMeeting.Of).ToHashSet();
         if (input is null || input.Count == 0) return (null, "Add at least one meeting time.");
         if (input.Count > 400) return (null, "Too many meetings.");
         var list = new List<Meeting>();
@@ -519,7 +599,7 @@ public static class AdminEndpoints
             var room = m.Room?.Trim() ?? "";
             if (room.Length > 60) return (null, "The room name is too long.");
             var meeting = new Meeting { Day = day, Start = start, End = end, Room = room, Date = date };
-            if (list.Any(x => Clashes.Overlap(x, meeting))) return (null, $"Two meetings overlap on {(date is null ? Timeslots.DayNames[day] : date.Value.ToString("d MMM"))}.");
+            if (list.Any(x => Clashes.Overlap(x, meeting) && !(kept.Contains(ParsedMeeting.Of(x)) && kept.Contains(ParsedMeeting.Of(meeting))))) return (null, $"Two meetings overlap on {(date is null ? Timeslots.DayNames[day] : date.Value.ToString("d MMM"))}.");
             list.Add(meeting);
         }
         return (list, null);
@@ -529,7 +609,7 @@ public static class AdminEndpoints
         TimeOnly.TryParseExact(s?.Trim(), ["HH:mm", "H:mm"], CultureInfo.InvariantCulture, DateTimeStyles.None, out t);
 
     /// <summary>Reads a multipart "file" (.xlsx, .csv, .tsv) or a "text" field pasted from Excel.</summary>
-    static async Task<(ParsedSchedule? Parsed, IResult? Error)> ReadUpload(HttpRequest req, CancellationToken ct)
+    static async Task<(ParsedSchedule? Parsed, IResult? Error)> ReadUpload(HttpRequest req, AppDb db, CancellationToken ct)
     {
         if (!req.HasFormContentType) return (null, Errors.BadRequest("Choose a file to upload."));
         if (req.ContentLength > MaxUploadBytes) return (null, Errors.BadRequest("The file is too big (5 MB at most)."));
@@ -554,6 +634,9 @@ public static class AdminEndpoints
 
         if (read.Problems.Count > 0) return (null, Errors.BadRequest(string.Join(" ", read.Problems)));
         if (read.Rows.Count > 20_000) return (null, Errors.BadRequest("That file has too many rows."));
-        return (ScheduleImport.Parse(read.Rows), null);
+        var families = await ScheduleImport.FamilyCodesAsync(db, ct);
+        // The parsers turn what they can't read into row errors; this is only a net, so a slip is a 400 and not a 500.
+        try { return (ScheduleImport.Parse(read.Rows, families), null); }
+        catch (FormatException) { return (null, Errors.BadRequest("Some dates or times in the file couldn't be read. Type them like 2026-09-21 and 08:00.")); }
     }
 }

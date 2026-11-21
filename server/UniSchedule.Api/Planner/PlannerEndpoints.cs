@@ -30,6 +30,8 @@ public static class PlannerEndpoints
     {
         var w = await db.PlannerWorkspaces.FindAsync([id], ct);
         if (w is null || http.User.IsOwner()) return w;
+        // Reps plan only in published semesters: one staff haven't published yet is still a draft.
+        if (!await db.Semesters.AnyAsync(s => s.Id == w.SemesterId && s.PublishedAt != null, ct)) return null;
         var student = http.User.Id();
         return await db.BatchRepAssignments.AnyAsync(r => r.StudentId == student && r.HomeFamily == w.Family, ct) ? w : null;
     }
@@ -81,7 +83,9 @@ public static class PlannerEndpoints
             catch (DbUpdateConcurrencyException) { return Errors.Conflict("Another rep changed this item. Refresh it before saving."); }
         });
         rep.MapGet("/bootstrap", async (int? semesterId, HttpContext http, AppDb db, IConfiguration config, CancellationToken ct) => {
-            var semesters = await db.Semesters.OrderByDescending(s => s.Year).ThenBy(s => s.Name).ToListAsync(ct);
+            // Owners see every semester; reps only published ones.
+            var all = http.User.IsOwner();
+            var semesters = await db.Semesters.Where(s => all || s.PublishedAt != null).OrderByDescending(s => s.Year).ThenBy(s => s.Name).ToListAsync(ct);
             var semester = semesters.FirstOrDefault(s => s.Id == semesterId) ?? semesters.FirstOrDefault(s => s.IsCurrent) ?? semesters.FirstOrDefault();
             var majors = await db.Majors.OrderBy(m => m.Code).ToListAsync(ct);
             var assignment = http.User.IsStudent() ? await RepInfo(db, http.User.Id(), ct) : null;
@@ -92,7 +96,8 @@ public static class PlannerEndpoints
                 courses = courses.Select(Dto.Of), weeks = semester is null ? null : await SemesterWeeks.ForAsync(db, semester, ct) });
         });
         rep.MapPost("/workspaces/open", async (OpenBody body, HttpContext http, AppDb db, CancellationToken ct) => {
-            if (!await db.Semesters.AnyAsync(s => s.Id == body.SemesterId, ct)) return Errors.BadRequest("Choose a semester.");
+            var all = http.User.IsOwner();
+            if (!await db.Semesters.AnyAsync(s => s.Id == body.SemesterId && (all || s.PublishedAt != null), ct)) return Errors.BadRequest("Choose a semester.");
             var assignment = http.User.IsStudent() ? await db.BatchRepAssignments.FindAsync([http.User.Id()], ct) : null;
             var family = http.User.IsOwner() ? body.Family ?? assignment?.HomeFamily : assignment?.HomeFamily;
             var majors = await db.Majors.ToListAsync(ct);
@@ -122,7 +127,7 @@ public static class PlannerEndpoints
         });
         work.MapGet("/calendar", async (int workspaceId, string from, string to, HttpContext http, AppDb db, CancellationToken ct) => {
             var w = await Workspace(http, db, workspaceId, ct); if (w is null) return Errors.NotFound();
-            if (!PlannerEngine.Date(from, out var a) || !PlannerEngine.Date(to, out var z) || z < a || z.DayNumber - a.DayNumber > 150) return Errors.BadRequest("Choose a calendar range of up to 150 days.");
+            if (!PlannerEngine.Date(from, out var a) || !PlannerEngine.Date(to, out var z) || !PlannerEngine.Sane(a) || !PlannerEngine.Sane(z) || z < a || z.DayNumber - a.DayNumber > 150) return Errors.BadRequest("Choose a calendar range of up to 150 days.");
             return Results.Ok(await PlannerEngine.Calendar(db, w.SemesterId, a, z, w.Id, ct));
         });
         work.MapPost("/batches", async (int workspaceId, BatchBody body, HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) => {
@@ -144,8 +149,22 @@ public static class PlannerEndpoints
             var b = await db.PlannerBatches.FirstOrDefaultAsync(b => b.Id == id && b.WorkspaceId == w.Id, ct); if (b is null) return Errors.NotFound();
             if (b.Version != body.Version) return Errors.Conflict("Another rep changed this batch. Refresh first.");
             if (string.IsNullOrWhiteSpace(body.Name) || body.Name.Length > 80 || body.Targets is null || body.Targets.Length > 100) return Errors.BadRequest("Name the batch and choose up to 100 courses.");
-            if (body.Targets.Length > 0 && await PlannerEngine.ValidateTargets(db, w.SemesterId, body.Targets, ct) is { } p) return Errors.BadRequest(p);
-            b.Name = body.Name.Trim(); b.TargetsJson = PlannerJson.Write(body.Targets); b.MajorId = body.MajorId; b.Year = body.Year; b.Version++;
+            // An upload can delete a course or section a batch listed; leave those out rather than refuse every save.
+            var ids = body.Targets.Where(t => t is not null).Select(t => t.CourseId).ToList();
+            var existing = (await db.Courses.Where(c => c.SemesterId == w.SemesterId && ids.Contains(c.Id)).Select(c => new { c.Id, Sections = c.Sections.Select(x => x.Id).ToList() }).ToListAsync(ct))
+                .ToDictionary(c => c.Id, c => c.Sections);
+            var kept = new List<PlannerTarget>();
+            foreach (var t in body.Targets)
+            {
+                if (t?.SectionIds is null) { kept.Add(t!); continue; } // Not a valid target: ValidateTargets says so.
+                if (!existing.TryGetValue(t.CourseId, out var sections)) continue;
+                var sectionIds = t.SectionIds.Where(sections.Contains).ToArray();
+                if (t.SectionIds.Length > 0 && sectionIds.Length == 0) continue; // Every section it named is gone.
+                kept.Add(t with { SectionIds = sectionIds });
+            }
+            var targets = kept.ToArray();
+            if (targets.Length > 0 && await PlannerEngine.ValidateTargets(db, w.SemesterId, targets, ct) is { } p) return Errors.BadRequest(p);
+            b.Name = body.Name.Trim(); b.TargetsJson = PlannerJson.Write(targets); b.MajorId = body.MajorId; b.Year = body.Year; b.Version++;
             await Activity(db, http, w, "batch-updated", b.TargetsJson, clock, ct); await db.SaveChangesAsync(ct); return Results.Ok(Batch(b));
         });
         work.MapDelete("/batches/{id:int}", async (int workspaceId, int id, int version, HttpContext http, AppDb db, CancellationToken ct) => {
@@ -169,6 +188,14 @@ public static class PlannerEndpoints
             var p = await db.PlannerProposals.FirstOrDefaultAsync(p => p.Id == id && p.WorkspaceId == w.Id && p.Status == "draft", ct); if (p is null) return Errors.NotFound();
             if (body.Version != p.Version) return Errors.Conflict("Another rep changed this draft. Refresh it first.");
             if (body.Spec is null || await PlannerEngine.Validate(db, w.SemesterId, body.Spec, ct) is { } problem) return Errors.BadRequest("Review the date, times, targets and original class before saving.");
+            // Rebasing: after another rep published a change to the event, the rep reviews its current version and saves on top
+            // of it. Versions start at 1, so 0 (left out) keeps the draft's base.
+            if (p.EventId is int eventId && body.BaseEventVersion != 0 && body.BaseEventVersion != p.BaseEventVersion) {
+                var current = await db.PlannerEvents.FirstOrDefaultAsync(e => e.Id == eventId && e.SemesterId == w.SemesterId, ct);
+                if (current is null || current.Version != body.BaseEventVersion) return Errors.Conflict("The published event changed. Refresh it first.");
+                if (!await OwnsEvent(http, db, w, current.Id, ct)) return Errors.Forbidden("Another family published this event. Ask their rep to change it.");
+                p.BaseEventVersion = current.Version;
+            }
             p.PayloadJson = PlannerJson.Write(body.Spec); p.UpdatedAt = clock.GetUtcNow(); p.UpdatedBy = await OwnerEndpoints.ActorName(http, db, ct); p.Version++;
             await db.SaveChangesAsync(ct); return Results.Ok(Proposal(p));
         });
@@ -195,14 +222,16 @@ public static class PlannerEndpoints
             if ((analysis.Conflicts.Count > 0 || analysis.CoverageWarnings.Count > 0) && string.IsNullOrWhiteSpace(body.Explanation)) return Errors.BadRequest("Explain why you're publishing despite these warnings.");
             if (body.Explanation?.Length > 1000) return Errors.BadRequest("Keep the explanation under 1,000 characters.");
             var e = p.EventId is int eid ? await db.PlannerEvents.FindAsync([eid], ct) : null;
-            if (p.EventId is not null && (e is null || e.Version != p.BaseEventVersion)) return Errors.Conflict("Another rep published a change to this event. Refresh first.");
+            if (p.EventId is not null && (e is null || e.Version != p.BaseEventVersion)) return Errors.Conflict("Another rep changed this event since this draft was made. Review its current version, then save the draft again.");
             if (e is not null && !await OwnsEvent(http, db, w, e.Id, ct)) return Errors.Forbidden("Another family published this event. Ask their rep to change it.");
             if (spec.Source is { } source) {
-                var sourceDates = PlannerEngine.Dates(spec).Select(d => DateOnly.Parse(source.Date).AddDays(d.DayNumber - DateOnly.Parse(spec.Date).DayNumber)).ToHashSet();
+                var span = await SemesterSpan.ForAsync(db, await db.Semesters.FirstAsync(s => s.Id == w.SemesterId, ct), ct);
+                DateOnly Day(string iso) => DateOnly.ParseExact(iso, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+                var sourceDates = PlannerEngine.Dates(spec, span).Select(d => Day(source.Date).AddDays(d.DayNumber - Day(spec.Date).DayNumber)).ToHashSet();
                 var active = await db.PlannerEvents.Where(x => x.SemesterId == w.SemesterId && !x.Withdrawn && x.Id != p.EventId).ToListAsync(ct);
                 foreach (var existing in active.Select(x => PlannerJson.Read<EventSpec>(x.PayloadJson)))
                     if (existing.Source is { } other && other.Fingerprint == source.Fingerprint
-                        && PlannerEngine.Dates(existing).Any(d => sourceDates.Contains(DateOnly.Parse(other.Date).AddDays(d.DayNumber - DateOnly.Parse(existing.Date).DayNumber))))
+                        && PlannerEngine.Dates(existing, span).Any(d => sourceDates.Contains(Day(other.Date).AddDays(d.DayNumber - Day(existing.Date).DayNumber))))
                         return Errors.Conflict("This university occurrence already has a published adjustment. Edit or withdraw that adjustment instead.");
             }
             if (e is null) { e = new() { SemesterId = w.SemesterId }; db.PlannerEvents.Add(e); }
@@ -223,6 +252,7 @@ public static class PlannerEndpoints
             var e = await db.PlannerEvents.FirstOrDefaultAsync(e => e.Id == id && e.SemesterId == w.SemesterId, ct); if (e is null) return Errors.NotFound();
             if (!await OwnsEvent(http, db, w, e.Id, ct)) return Errors.Forbidden("Another family published this event. Ask their rep to withdraw it.");
             if (e.Version != body.Version) return Errors.Conflict("This event changed. Refresh first.");
+            if (e.Withdrawn) return Errors.Conflict("This event is already withdrawn.");
             if (string.IsNullOrWhiteSpace(body.Explanation) || body.Explanation.Length > 1000) return Errors.BadRequest("Explain the withdrawal (up to 1,000 characters).");
             e.Withdrawn = true; e.Version++; e.UpdatedAt = clock.GetUtcNow();
             await Activity(db, http, w, "withdrawn", e.PayloadJson, clock, ct, e.Id, explanation: body.Explanation);
@@ -252,7 +282,7 @@ public static class PlannerEndpoints
     static async Task<IResult> Search(int workspaceId, SearchBody body, HttpContext http, AppDb db, CancellationToken ct)
     {
         var w = await Workspace(http, db, workspaceId, ct); if (w is null) return Errors.NotFound();
-        if (!PlannerEngine.Date(body.From, out var from) || !PlannerEngine.Date(body.To, out var to) || to < from || to.DayNumber - from.DayNumber > 90 || body.Duration is < 15 or > 600 || body.Kind is not ("exam" or "class") || body.Weekdays is null || body.Weekdays.Length == 0 || body.Weekdays.Any(d => d is < 0 or > 6) || !PlannerEngine.Time(body.Start, out var start) || !PlannerEngine.Time(body.End, out var end) || end <= start || body.Room is null || body.Room.Length > 100) return Errors.BadRequest("Choose a search range of up to 90 days, weekdays, hours and a duration of 15–600 minutes.");
+        if (!PlannerEngine.Date(body.From, out var from) || !PlannerEngine.Date(body.To, out var to) || !PlannerEngine.Sane(from) || !PlannerEngine.Sane(to) || to < from || to.DayNumber - from.DayNumber > 90 || body.Duration is < 15 or > 600 || body.Kind is not ("exam" or "class") || body.Weekdays is null || body.Weekdays.Length == 0 || body.Weekdays.Any(d => d is < 0 or > 6) || !PlannerEngine.Time(body.Start, out var start) || !PlannerEngine.Time(body.End, out var end) || end <= start || body.Room is null || body.Room.Length > 100) return Errors.BadRequest("Choose a search range of up to 90 days, weekdays, hours and a duration of 15–600 minutes.");
         if (await PlannerEngine.ValidateTargets(db, w.SemesterId, body.Targets, ct) is { } problem) return Errors.BadRequest(problem);
         if (body.RepeatUntil is not null && (body.Kind != "class" || !PlannerEngine.Date(body.RepeatUntil, out var repeat) || repeat < to || repeat.DayNumber - from.DayNumber > 190)) return Errors.BadRequest("Recurring class searches must end after the search range and within 190 days.");
         var results = new List<object>();
@@ -260,19 +290,22 @@ public static class PlannerEndpoints
         // Load once; evaluate candidate overlaps in memory, then run the complete analysis for the top results.
         var until = PlannerEngine.Date(body.RepeatUntil, out var recurringEnd) ? recurringEnd : to;
         var entries = await PlannerEngine.Calendar(db, w.SemesterId, from.AddDays(-6), until.AddDays(6), w.Id, ct);
+        // The same days off the timetable has: no classes then, but not a free slot either.
+        var span = await SemesterSpan.ForAsync(db, await db.Semesters.FirstAsync(s => s.Id == w.SemesterId, ct), ct);
+        DateOnly Day(string iso) => DateOnly.ParseExact(iso, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
         for (var d = from; d <= to; d = d.AddDays(1))
         {
-            if (!body.Weekdays.Contains((int)d.DayOfWeek)) continue;
+            if (!body.Weekdays.Contains((int)d.DayOfWeek) || span.DaysOff.ContainsKey(d)) continue;
             for (var minute = start.Hour * 60 + start.Minute; minute + body.Duration <= end.Hour * 60 + end.Minute; minute += 15)
             {
                 string Clock(int m) => $"{m / 60:00}:{m % 60:00}";
                 var spec = new EventSpec(body.Kind, "add", body.Kind == "exam" ? "Exam" : "Extra class", PlannerEngine.Iso(d), Clock(minute), Clock(minute + body.Duration), body.Room, body.Targets, body.RepeatUntil);
-                var dates = PlannerEngine.Dates(spec).Select(PlannerEngine.Iso).ToHashSet();
+                var dates = PlannerEngine.Dates(spec, span).Select(PlannerEngine.Iso).ToHashSet();
                 var overlaps = entries.Count(e => !e.Stale && e.Status != "cancelled-draft" && dates.Contains(e.Date) && string.CompareOrdinal(e.Start, spec.End) < 0 && string.CompareOrdinal(spec.Start, e.End) < 0 && (PlannerEngine.SharedTargets(body.Targets, e.Targets) || (body.Room.Length > 0 && e.Room.Equals(body.Room, StringComparison.OrdinalIgnoreCase))));
                 var exams = entries.Where(e => e.Kind == "exam" && PlannerEngine.SharedTargets(body.Targets, e.Targets)).ToList();
-                var nearby = exams.Where(e => Math.Abs(DateOnly.Parse(e.Date).DayNumber - d.DayNumber) <= 6).Select(PlannerEngine.ExamIdentity).Distinct().Count();
+                var nearby = exams.Where(e => Math.Abs(Day(e.Date).DayNumber - d.DayNumber) <= 6).Select(PlannerEngine.ExamIdentity).Distinct().Count();
                 var sameDay = exams.Where(e => e.Date == spec.Date).Select(PlannerEngine.ExamIdentity).Distinct().Count();
-                var gap = exams.Count == 0 ? 14 : Math.Min(14, exams.Min(e => Math.Abs(DateOnly.Parse(e.Date).DayNumber - d.DayNumber)));
+                var gap = exams.Count == 0 ? 14 : Math.Min(14, exams.Min(e => Math.Abs(Day(e.Date).DayNumber - d.DayNumber)));
                 ranked.Add((spec, new("", [], []), overlaps * 10000 + sameDay * 1000 + nearby * 100 - gap));
             }
         }

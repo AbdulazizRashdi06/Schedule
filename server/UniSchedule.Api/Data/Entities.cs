@@ -78,7 +78,9 @@ public class AdminUser
     public string PasswordHash { get; set; } = "";
     public AdminRole Role { get; set; }
     public bool MustChangePassword { get; set; } = true;
+    /// <summary>Wrong passwords since <see cref="FailedSince"/>; tries older than 15 minutes don't count.</summary>
     public int FailedLogins { get; set; }
+    public DateTimeOffset? FailedSince { get; set; }
     public DateTimeOffset? LockedUntil { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public string? CreatedBy { get; set; }
@@ -92,6 +94,8 @@ public class LoginCode
     public int Id { get; set; }
     public string UniversityId { get; set; } = "";
     public string CodeHash { get; set; } = "";
+    /// <summary>SHA-256 of the browser's sign-in cookie: only the browser that asked for the code can use it.</summary>
+    public string ClientHash { get; set; } = "";
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }
     public DateTimeOffset? UsedAt { get; set; }

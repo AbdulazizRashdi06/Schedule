@@ -119,6 +119,9 @@ namespace UniSchedule.Api.Data.Migrations
                     b.Property<int>("FailedLogins")
                         .HasColumnType("INTEGER");
 
+                    b.Property<long?>("FailedSince")
+                        .HasColumnType("INTEGER");
+
                     b.Property<long?>("LastSeenAt")
                         .HasColumnType("INTEGER");
 
@@ -569,6 +572,10 @@ namespace UniSchedule.Api.Data.Migrations
 
                     b.Property<int>("Attempts")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("ClientHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("CodeHash")
                         .IsRequired()

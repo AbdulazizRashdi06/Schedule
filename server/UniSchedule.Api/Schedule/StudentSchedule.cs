@@ -6,9 +6,8 @@ using UniSchedule.Api.Planner;
 namespace UniSchedule.Api.Schedule;
 
 /// <summary>
-/// When a semester's weekly classes meet: from week 1 to the last week, except on days off. Week 1 and the last week are
-/// the ones staff set; without them, from the term's usual start (1 September, 1 February or 1 June) for
-/// <see cref="DefaultWeeks"/> weeks.
+/// When a semester's weekly classes meet: from week 1 to the last week, except on days off. The weeks come from
+/// <see cref="SemesterWeeks.TeachingAsync"/>, the same place the week labels students see come from.
 /// </summary>
 /// <param name="WeeksKnown">Week 1 is set or comes from dated classes, so week numbers mean something.</param>
 /// <param name="LastWeek">The last teaching week's number, when known.</param>
@@ -19,12 +18,11 @@ public sealed record SemesterSpan(DateOnly First, DateOnly Last, Dictionary<Date
 
     public static async Task<SemesterSpan> ForAsync(AppDb db, Semester s, CancellationToken ct)
     {
-        // Not guessed from dated classes (one dated lab would make the whole semester a week long), nor from when it was
-        // published (a semester published in week 5 still had weeks 1 to 4).
-        var first = SemesterWeeks.Sunday(s.Week1Start ?? new DateOnly(s.Year, s.Term == "Fall" ? 9 : s.Term == "Summer" ? 6 : 2, 1));
-        var weeks = s.Week1Start is not null && s.LastWeek is int set ? set : DefaultWeeks;
-        return new(first, first.AddDays(weeks * 7 - 1), await UniSchedule.Api.Schedule.DaysOff.ForAsync(db, s.Id, ct),
-            s.Week1Start is not null, s.Week1Start is not null ? s.LastWeek : null);
+        // Not guessed from dated classes while there are weekly ones too (one dated lab would make the whole semester a
+        // week long), nor from when it was published (a semester published in week 5 still had weeks 1 to 4).
+        var t = await SemesterWeeks.TeachingAsync(db, s, ct);
+        return new(t.First, t.First.AddDays(t.Count * 7 - 1), await UniSchedule.Api.Schedule.DaysOff.ForAsync(db, s.Id, ct),
+            t.Known, t.Known ? t.Count : null);
     }
 
     /// <summary>"week 3" for a date in the teaching weeks, when they're known.</summary>
@@ -68,7 +66,8 @@ public static class StudentSchedule
     /// </summary>
     public static async Task<List<Item>> ForAsync(AppDb db, int semesterId, IReadOnlyCollection<int> studentIds, bool slots, bool planner, CancellationToken ct)
     {
-        var picks = await db.Picks.Where(p => studentIds.Contains(p.StudentId) && p.Course.SemesterId == semesterId && p.SectionId != null)
+        // Picks without a section too: they have no classes, but a whole-course planner event (an exam) still reaches them.
+        var picks = await db.Picks.Where(p => studentIds.Contains(p.StudentId) && p.Course.SemesterId == semesterId)
             .Include(p => p.Course).Include(p => p.Section).ThenInclude(x => x!.Meetings)
             .AsSplitQuery().ToListAsync(ct);
         var plan = planner ? await PlannerEngine.PublishedAsync(db, semesterId, ct) : null;
@@ -76,7 +75,7 @@ public static class StudentSchedule
         foreach (var mine in picks.GroupBy(p => p.StudentId))
         {
             var (events, excluded) = plan?.For(mine.ToList()) ?? ([], []);
-            foreach (var p in mine)
+            foreach (var p in mine.Where(p => p.Section is not null))
             foreach (var m in p.Section!.Meetings)
             {
                 var skip = excluded.TryGetValue(PlannerEngine.Fingerprint(p.Section, m), out var dates)

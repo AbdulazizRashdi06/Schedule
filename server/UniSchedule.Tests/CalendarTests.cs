@@ -46,6 +46,20 @@ public class CalendarTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task Two_first_requests_at_once_get_the_same_working_link()
+    {
+        for (var run = 0; run < 10; run++)
+        {
+            var s = await Student();
+            var replies = await Task.WhenAll(s.GetAsync("/api/me/calendar"), s.GetAsync("/api/me/calendar"));
+            var urls = new List<string>();
+            foreach (var r in replies) urls.Add((await Json(r)).GetProperty("url").GetString()!);
+            Assert.Equal(urls[0], urls[1]);
+            Assert.Equal(HttpStatusCode.OK, (await factory.Client().GetAsync(new Uri(urls[0]).PathAndQuery)).StatusCode);
+        }
+    }
+
+    [Fact]
     public async Task The_feed_has_classes_and_slots_and_the_link_can_be_reset()
     {
         var (major, courses) = await Setup();

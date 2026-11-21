@@ -65,6 +65,15 @@ public static class PersonalEndpoints
             .ToList();
     }
 
+    /// <summary>Whether a published planner event of this class reaches the student on <paramref name="date"/>.</summary>
+    static async Task<bool> PlannerSession(AppDb db, IConfiguration config, Pick pick, DateOnly date, CancellationToken ct)
+    {
+        if (!await Planner.PlannerEngine.Enabled(db, config, ct)) return false;
+        var iso = Planner.PlannerEngine.Iso(date);
+        var (events, _) = await Planner.PlannerEngine.StudentView(db, pick.Course.SemesterId, [pick], ct);
+        return events.Any(e => e.CourseId == pick.CourseId && e.Date == iso);
+    }
+
     public static void MapPersonal(this RouteGroupBuilder api)
     {
         var me = api.MapGroup("/me").RequireAuthorization(Session.StudentPolicy);
@@ -126,7 +135,7 @@ public static class PersonalEndpoints
             return Results.Ok(notes.OrderByDescending(n => n.CreatedAt).Select(n => NoteDto(n, id, reported)));
         });
 
-        me.MapPost("/notes", async (NoteBody body, HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) =>
+        me.MapPost("/notes", async (NoteBody body, HttpContext http, AppDb db, TimeProvider clock, IConfiguration config, CancellationToken ct) =>
         {
             var id = http.User.Id();
             var text = body.Text?.Trim() ?? "";
@@ -135,7 +144,7 @@ public static class PersonalEndpoints
             var now = clock.GetUtcNow();
             if (await db.ClassNotes.CountAsync(n => n.StudentId == id && n.CreatedAt > now.AddHours(-1), ct) >= NotesPerHour)
                 return Errors.TooMany("That's a lot of notes in one hour. Try again a bit later.");
-            var pick = await db.Picks.Include(p => p.Section).ThenInclude(s => s!.Meetings)
+            var pick = await db.Picks.Include(p => p.Course).Include(p => p.Section).ThenInclude(s => s!.Meetings)
                 .FirstOrDefaultAsync(p => p.StudentId == id && p.CourseId == body.CourseId, ct);
             if (pick is null) return Errors.Forbidden("You can only write notes on your own classes.");
             DateOnly? date = null;
@@ -143,10 +152,13 @@ public static class PersonalEndpoints
             {
                 date = ScheduleImport.ParseDate(body.Date);
                 if (date is null) return Errors.BadRequest("Pick a date.");
-                if (pick.Section is null) return Errors.BadRequest("Pick a section for this class first.");
                 var day = (int)date.Value.DayOfWeek;
-                if (!pick.Section.Meetings.Any(m => m.Date == date || (m.Date is null && m.Day == day)))
-                    return Errors.BadRequest("Your section has no class on that date.");
+                var classDay = pick.Section?.Meetings.Any(m => m.Date == date || (m.Date is null && m.Day == day)) == true;
+                // A batch rep's exam, extra or moved class is a session too, even on a day the section doesn't meet.
+                if (!classDay && !await PlannerSession(db, config, pick, date.Value, ct))
+                    return pick.Section is null
+                        ? Errors.BadRequest("Pick a section for this class first.")
+                        : Errors.BadRequest("Your section has no class on that date.");
             }
             var note = new ClassNote
             {

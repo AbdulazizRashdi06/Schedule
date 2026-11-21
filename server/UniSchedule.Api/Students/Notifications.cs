@@ -22,6 +22,8 @@ public static class Notifications
     const string PrivateKey = "push.vapid.private";
     /// <summary>Changes up to this time have been announced.</summary>
     public const string ChangesSince = "push.changes.since";
+    /// <summary>Reminders due up to this time have been sent (kept so a restart picks up where the last process stopped).</summary>
+    public const string RemindersSince = "push.reminders.since";
     /// <summary>Set when a semester is published (its name), removed once students were told it's out.</summary>
     public const string PublishPending = "push.publish.pending";
     static readonly TimeSpan Oman = TimeSpan.FromHours(4);
@@ -204,40 +206,50 @@ public static class Notifications
 
     /// <summary>
     /// "A new semester is out", once a semester was published (<see cref="PublishPending"/> holds its name): for every
-    /// student with a device. Null when nothing is waiting to be announced.
+    /// student with a device. Null when nothing is waiting to be announced. <c>Name</c> and <c>At</c> are the pending
+    /// row as read, so the worker can claim exactly that one.
     /// </summary>
-    public static async Task<(List<int> StudentIds, Note Note)?> PublishAnnouncement(AppDb db, CancellationToken ct)
+    public static async Task<(List<int> StudentIds, Note Note, string Name, DateTimeOffset At)?> PublishAnnouncement(AppDb db, CancellationToken ct)
     {
-        var pending = await db.AppSettings.Where(x => x.Key == PublishPending).Select(x => x.Value).FirstOrDefaultAsync(ct);
+        var pending = await db.AppSettings.Where(x => x.Key == PublishPending).Select(x => new { x.Value, x.UpdatedAt }).FirstOrDefaultAsync(ct);
         if (pending is null) return null;
         var who = await db.PushSubscriptions.Select(p => p.StudentId).Distinct().ToListAsync(ct);
-        return (who, new Note($"{pending} is out", "Set up your courses in about a minute.", "/setup", "published", 3 * 86_400));
+        return (who, new Note($"{pending.Value} is out", "Set up your courses in about a minute.", "/setup", "published", 3 * 86_400), pending.Value, pending.UpdatedAt);
     }
 
     /// <summary>
     /// Alerts for classes that changed after <paramref name="since"/> (up to <paramref name="until"/>): one per student and
     /// changed class, for students who picked it, have a device and didn't mute changes.
     /// </summary>
-    public static async Task<List<(int StudentId, Note Note)>> ChangeAlerts(AppDb db, DateTimeOffset since, DateTimeOffset until, CancellationToken ct)
+    public static async Task<List<(int StudentId, Note Note)>> ChangeAlerts(AppDb db, DateTimeOffset since, DateTimeOffset until, CancellationToken ct) =>
+        (await Changes(db, since, until, ct)).Alerts;
+
+    /// <summary>
+    /// <see cref="ChangeAlerts"/>, plus the newest change time this read saw (null when none). Announcing stops there, not
+    /// at <paramref name="until"/>: an upload stamps its changes before it commits, so changes stamped inside this window
+    /// can still turn up after it was read.
+    /// </summary>
+    public static async Task<(List<(int StudentId, Note Note)> Alerts, DateTimeOffset? Newest)> Changes(AppDb db, DateTimeOffset since, DateTimeOffset until, CancellationToken ct)
     {
         var semester = await StudentEndpoints.CurrentSemester(db, ct);
-        if (semester is null) return [];
+        if (semester is null) return ([], null);
         // Times are stored as numbers (AppDb), so the database compares them: only this window's changes are read. The
         // stored number includes the offset, and every stored time is UTC, so compare in UTC too.
         (since, until) = (since.ToUniversalTime(), until.ToUniversalTime());
         var changed = await db.Sections.Where(s => s.Course.SemesterId == semester.Id && s.ChangedAt != null && s.ChangedAt > since && s.ChangedAt <= until)
-            .Select(s => new { s.Id, s.CourseId, s.Course.Code, s.Course.Name, s.ChangeSummary }).ToListAsync(ct);
-        if (changed.Count == 0) return [];
+            .Select(s => new { s.Id, s.CourseId, s.Course.Code, s.Course.Name, s.ChangeSummary, s.ChangedAt }).ToListAsync(ct);
+        if (changed.Count == 0) return ([], null);
+        var newest = changed.Max(s => s.ChangedAt);
         var sectionIds = changed.Select(s => s.Id).ToList();
         var who = await db.Picks.Where(p => p.SectionId != null && sectionIds.Contains(p.SectionId.Value) && !p.Student.MuteChanges
                 && db.PushSubscriptions.Any(x => x.StudentId == p.StudentId))
             .Select(p => new { p.StudentId, SectionId = p.SectionId!.Value }).ToListAsync(ct);
-        return who.Select(w =>
+        return (who.Select(w =>
         {
             var s = changed.First(c => c.Id == w.SectionId);
             return (w.StudentId, new Note($"{s.Code} changed", string.IsNullOrWhiteSpace(s.ChangeSummary) ? $"{s.Name}: check the new time and room." : $"{s.Name}: {s.ChangeSummary}",
                 $"/course/{s.CourseId}", $"change-{s.Id}", 3 * 86_400));
-        }).ToList();
+        }).ToList(), newest);
     }
 }
 
@@ -290,12 +302,36 @@ public sealed class PushSender(IHttpClientFactory http, IConfiguration config, I
 /// </summary>
 public sealed class NotificationWorker(IServiceScopeFactory scopes, PushSender push, TimeProvider clock, ILogger<NotificationWorker> log) : BackgroundService
 {
+    /// <summary>How far back a restarted worker sends reminders it missed; older ones would only be out of date.</summary>
+    public static readonly TimeSpan CatchUp = TimeSpan.FromMinutes(15);
+
     protected override async Task ExecuteAsync(CancellationToken stop)
     {
-        var last = clock.GetUtcNow();
+        var last = await RemindersFromAsync(clock.GetUtcNow(), stop);
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
         while (await timer.WaitForNextTickAsync(stop))
             last = await RoundAsync(last, clock.GetUtcNow(), stop);
+    }
+
+    /// <summary>
+    /// Where the first round's reminders start: where the last process got to (saved every round), so reminders due while
+    /// the server restarted still go out and none go out twice, but never more than <see cref="CatchUp"/> back.
+    /// </summary>
+    public async Task<DateTimeOffset> RemindersFromAsync(DateTimeOffset now, CancellationToken stop)
+    {
+        try
+        {
+            using var scope = scopes.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+            var saved = await db.AppSettings.Where(x => x.Key == Notifications.RemindersSince).Select(x => x.Value).FirstOrDefaultAsync(stop);
+            if (saved is null || !DateTimeOffset.TryParse(saved, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var from)) return now;
+            return from < now - CatchUp ? now - CatchUp : from > now ? now : from;
+        }
+        catch (Exception e) when (!stop.IsCancellationRequested)
+        {
+            log.LogError(e, "Couldn't read where reminders stopped");
+            return now;
+        }
     }
 
     /// <summary>One round: reminders due in (last, now], then change alerts, then a semester announcement. Returns where the next round's reminders start.</summary>
@@ -310,6 +346,11 @@ public sealed class NotificationWorker(IServiceScopeFactory scopes, PushSender p
                 await push.SendAsync(db, [student], note, stop);
             // The reminders went out: whatever fails below must not send them again next round.
             last = now;
+            var mark = await db.AppSettings.FirstOrDefaultAsync(x => x.Key == Notifications.RemindersSince, stop);
+            if (mark is null) db.AppSettings.Add(mark = new AppSetting { Key = Notifications.RemindersSince, UpdatedBy = "system" });
+            mark.Value = now.ToString("O");
+            mark.UpdatedAt = now;
+            await db.SaveChangesAsync(stop);
         }
         catch (Exception e) when (!stop.IsCancellationRequested)
         {
@@ -327,10 +368,16 @@ public sealed class NotificationWorker(IServiceScopeFactory scopes, PushSender p
             else
             {
                 var since = DateTimeOffset.Parse(setting.Value, System.Globalization.CultureInfo.InvariantCulture);
-                foreach (var (student, note) in await Notifications.ChangeAlerts(db, since, now, stop))
+                var (alerts, newest) = await Notifications.Changes(db, since, now, stop);
+                foreach (var (student, note) in alerts)
                     await push.SendAsync(db, [student], note, stop);
-                setting.Value = now.ToString("O");
-                setting.UpdatedAt = now;
+                // Only up to the newest change read, not to now: one stamped earlier but committed after this read is
+                // still ahead of the mark next round.
+                if (newest is { } upTo && upTo > since)
+                {
+                    setting.Value = upTo.ToString("O");
+                    setting.UpdatedAt = now;
+                }
             }
             await db.SaveChangesAsync(stop);
         }
@@ -343,12 +390,13 @@ public sealed class NotificationWorker(IServiceScopeFactory scopes, PushSender p
         {
             using var scope = scopes.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDb>();
-            // A semester was published: tell everyone with a device, once.
-            if (await Notifications.PublishAnnouncement(db, stop) is { } announce)
-            {
-                if (announce.StudentIds.Count > 0) await push.SendAsync(db, announce.StudentIds, announce.Note, stop);
-                await db.AppSettings.Where(x => x.Key == Notifications.PublishPending).ExecuteDeleteAsync(stop);
-            }
+            // A semester was published: tell everyone with a device, once. It's claimed before sending, and only if it's
+            // still the one read: a semester published meanwhile stays pending for the next round, and a restart part-way
+            // through doesn't send it to everyone again.
+            if (await Notifications.PublishAnnouncement(db, stop) is { } announce
+                && await db.AppSettings.Where(x => x.Key == Notifications.PublishPending && x.Value == announce.Name && x.UpdatedAt == announce.At).ExecuteDeleteAsync(stop) == 1
+                && announce.StudentIds.Count > 0)
+                await push.SendAsync(db, announce.StudentIds, announce.Note, stop);
         }
         catch (Exception e) when (!stop.IsCancellationRequested)
         {

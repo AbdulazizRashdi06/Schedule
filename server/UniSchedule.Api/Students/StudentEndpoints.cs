@@ -80,9 +80,14 @@ public static class StudentEndpoints
     /// Courses ticked when setup starts: the major's own defaults for that year, else its family's,
     /// else the upload's core courses listed for that major and year.
     /// </summary>
-    public static async Task<List<int>> DefaultCourseIds(AppDb db, int semesterId, int majorId, int year, CancellationToken ct) =>
+    public static async Task<List<int>> DefaultCourseIds(AppDb db, int semesterId, int majorId, int year, CancellationToken ct)
+    {
         // A lab (CS 1 102-L) is ticked wherever its course is.
-        await Labs.WithLabsAsync(db, semesterId, await DefaultsWithoutLabs(db, semesterId, majorId, year, ct), ct);
+        var ids = await Labs.WithLabsAsync(db, semesterId, await DefaultsWithoutLabs(db, semesterId, majorId, year, ct), ct);
+        // A course an upload left with no sections (kept for its picks or settings) can't be taken, so it isn't ticked.
+        var offered = (await db.Courses.Where(c => ids.Contains(c.Id) && c.Sections.Any()).Select(c => c.Id).ToListAsync(ct)).ToHashSet();
+        return ids.Where(offered.Contains).ToList();
+    }
 
     static async Task<List<int>> DefaultsWithoutLabs(AppDb db, int semesterId, int majorId, int year, CancellationToken ct)
     {
@@ -153,7 +158,7 @@ public static class StudentEndpoints
 
         api.MapGet("/majors", async (AppDb db, CancellationToken ct) =>
             await db.Majors.OrderBy(m => m.Name).Select(m => new { m.Id, m.Code, m.Name }).ToListAsync(ct))
-            .RequireAuthorization();
+            .RequireAuthorization(Session.SignedInPolicy);
 
         me.MapPut("/profile", async (ProfileBody body, HttpContext http, AppDb db, CancellationToken ct) =>
         {
@@ -241,13 +246,14 @@ public static class StudentEndpoints
             return Results.Ok(picks);
         });
 
-        me.MapPut("/picks", async (PicksBody body, HttpContext http, AppDb db, CancellationToken ct) =>
+        me.MapPut("/picks", async (PicksBody body, HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) =>
         {
             var s = await db.Students.FirstAsync(x => x.Id == http.User.Id(), ct);
             var current = await CurrentSemester(db, ct);
             if (current is null) return Errors.Conflict("No semester has been published yet.");
             if (s.MajorId is null) return Errors.Conflict("Pick your major first.");
             var wanted = body.Picks ?? [];
+            if (wanted.Any(p => p is null)) return Errors.BadRequest("Each pick needs a course.");
             if (wanted.Select(p => p.CourseId).Distinct().Count() != wanted.Count) return Errors.BadRequest("Each course can only be picked once.");
 
             var allowed = (await Options(db, current.Id, s.MajorId.Value, ct, s.Id)).ToDictionary(c => c.Id);
@@ -266,7 +272,8 @@ public static class StudentEndpoints
                 if (pick.SectionId != w.SectionId)
                 {
                     pick.SectionId = w.SectionId;
-                    pick.SeenAt = null;
+                    // A section picked now is seen as it is now: only later edits mark it changed.
+                    pick.SeenAt = w.SectionId is null ? null : clock.GetUtcNow();
                     if (w.SectionId is not null) pick.SectionRemoved = false;
                 }
             }
@@ -284,7 +291,13 @@ public static class StudentEndpoints
             var s = await db.Students.FirstAsync(x => x.Id == http.User.Id(), ct);
             var current = await CurrentSemester(db, ct);
             if (current is null) return Errors.Conflict("No semester has been published yet.");
-            var picks = await db.Picks.Include(p => p.Course).Where(p => p.StudentId == s.Id && p.Course.SemesterId == current.Id).ToListAsync(ct);
+            var picks = await db.Picks.Include(p => p.Course).ThenInclude(c => c.Sections)
+                .Where(p => p.StudentId == s.Id && p.Course.SemesterId == current.Id).ToListAsync(ct);
+            // A course an upload left with no sections can't be taken: its pick is dropped rather than asking for a
+            // section, as setup shows it ("No sections offered this semester") and lets them carry on.
+            var dead = picks.Where(p => p.SectionId is null && p.Course.Sections.Count == 0).ToList();
+            db.Picks.RemoveRange(dead);
+            picks = picks.Except(dead).ToList();
             if (picks.Count == 0) return Errors.BadRequest("Pick at least one course.");
             var missing = picks.Where(p => p.SectionId is null).Select(p => p.Course.Code).ToList();
             if (missing.Count > 0) return Errors.BadRequest($"Pick a section for {string.Join(", ", missing)}.");

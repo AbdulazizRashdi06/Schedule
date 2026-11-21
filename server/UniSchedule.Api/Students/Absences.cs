@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using UniSchedule.Api.Admin;
 using UniSchedule.Api.Auth;
 using UniSchedule.Api.Data;
+using UniSchedule.Api.Planner;
 using UniSchedule.Api.Schedule;
 
 namespace UniSchedule.Api.Students;
@@ -16,6 +17,8 @@ public static class Absences
     /// <summary>The attendance limit owners set, as a whole percentage of classes ("25"). Unset: no limit shown.</summary>
     public const string LimitSetting = "attendance.limit";
     static readonly TimeSpan Oman = TimeSpan.FromHours(4);
+    /// <summary>Most sessions one student can mark missed in one course: well above any real semester's count.</summary>
+    public const int MaxPerCourse = 200;
 
     public record AbsenceBody(int CourseId, string? Date, string? Start, bool Missed);
     public record LimitBody(int? Percent);
@@ -41,8 +44,8 @@ public static class Absences
             });
         });
 
-        // Marks one session missed, or not. Only for the student's own classes, and not for days still to come.
-        me.MapPut("", async (AbsenceBody body, HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) =>
+        // Marks one session missed, or not. Only for sessions of the student's own classes, and not for days still to come.
+        me.MapPut("", async (AbsenceBody body, HttpContext http, AppDb db, TimeProvider clock, IConfiguration config, CancellationToken ct) =>
         {
             var id = http.User.Id();
             var current = await StudentEndpoints.CurrentSemester(db, ct);
@@ -54,12 +57,36 @@ public static class Absences
             if (date > DateOnly.FromDateTime(clock.GetUtcNow().ToOffset(Oman).DateTime))
                 return Errors.BadRequest("You can only mark a class missed once it's on.");
 
-            var existing = await db.Absences.FirstOrDefaultAsync(a => a.StudentId == id && a.CourseId == body.CourseId && a.Date == date && a.Start == start, ct);
-            if (body.Missed && existing is null)
-                db.Absences.Add(new Absence { StudentId = id, CourseId = body.CourseId, Date = date.Value, Start = start, CreatedAt = clock.GetUtcNow() });
-            else if (!body.Missed && existing is not null)
-                db.Absences.Remove(existing);
-            await db.SaveChangesAsync(ct);
+            var same = db.Absences.Where(a => a.StudentId == id && a.CourseId == body.CourseId && a.Date == date && a.Start == start);
+            // Unmarking is always allowed, so a session that later moved or was cancelled can still be cleared. One
+            // statement, so it doesn't depend on an earlier read when two taps cross.
+            if (!body.Missed)
+            {
+                await same.ExecuteDeleteAsync(ct);
+                return Results.NoContent();
+            }
+            if (await same.AnyAsync(ct)) return Results.NoContent();
+
+            // Only a session the timetable really has then: a class or a batch rep's class (exams don't count, as in the
+            // app), with days off and cancelled or moved classes taken out.
+            var span = await SemesterSpan.ForAsync(db, current, ct);
+            var items = await StudentSchedule.ForAsync(db, current.Id, [id], slots: false, await PlannerEngine.Enabled(db, config, ct), ct);
+            if (!items.Any(i => i.CourseId == body.CourseId && i.Start == start && i.EventKind != "exam" && span.Happens(i, date.Value)))
+                return Errors.BadRequest("This class has no session then.");
+            if (await db.Absences.CountAsync(a => a.StudentId == id && a.CourseId == body.CourseId, ct) >= MaxPerCourse)
+                return Errors.BadRequest("That's more sessions than this class has.");
+
+            db.Absences.Add(new Absence { StudentId = id, CourseId = body.CourseId, Date = date.Value, Start = start, CreatedAt = clock.GetUtcNow() });
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException)
+            {
+                // Another tap marked it at the same moment: it's marked, which is what was asked.
+                db.ChangeTracker.Clear();
+                if (!await same.AnyAsync(ct)) throw;
+            }
             return Results.NoContent();
         });
 

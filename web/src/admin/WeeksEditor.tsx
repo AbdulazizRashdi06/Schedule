@@ -42,7 +42,7 @@ export default function WeeksEditor({ semesterId, name }: { semesterId: number; 
       <div className="flex flex-col gap-1">
         <h3 className="text-[18px] font-extrabold">Teaching weeks · {name}</h3>
         <span className="text-[14px] font-semibold text-muted">
-          Students see “Week 1”, “Week 2”… from this date. {weeks && !weeks.set && 'Worked out from the class dates until you set it.'}
+          Students see “Week 1”, “Week 2”… from this date. {weeks && !weeks.set && (weeks.week1Start ? 'Worked out from the class dates until you set it.' : 'Not numbered until you set it.')}
         </span>
       </div>
       <form
@@ -51,6 +51,7 @@ export default function WeeksEditor({ semesterId, name }: { semesterId: number; 
           e.preventDefault()
           const n = last.trim() ? Number(last) : null
           if (n !== null && !Number.isInteger(n)) return setError('The last week is a whole number, like 14.')
+          if (n !== null && !start) return setError('Enter week 1’s start date as well as the last week.')
           save({ week1Start: start || null, lastWeek: n })
         }}
       >

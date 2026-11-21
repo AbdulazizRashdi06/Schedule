@@ -21,6 +21,8 @@ public static class Session
     public const string StaffPolicy = "staff";
     public const string OwnerPolicy = "owner";
     public const string RepPolicy = "batch-rep";
+    /// <summary>Anyone signed in who doesn't still have to change a temporary password.</summary>
+    public const string SignedInPolicy = "signed-in";
 
     /// <summary>The account's <see cref="AdminUser.SessionVersion"/> when the cookie was made. Missing = 0.</summary>
     public const string VersionClaim = "session-version";

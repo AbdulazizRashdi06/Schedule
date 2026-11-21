@@ -9,6 +9,8 @@ public static class FeedbackEndpoints
 {
     public const int MaxMessage = 300;
     public const int MaxComment = 1000;
+    /// <summary>How many problem reports the dashboard lists at once.</summary>
+    public const int MaxReportsListed = 300;
 
     public record PromptBody(string? Message);
     public record AnswerBody(int PromptId, int? Rating, string? Comment, bool? Dismissed);
@@ -68,8 +70,9 @@ public static class FeedbackEndpoints
         // ---- Staff: no student IDs, so ratings stay anonymous ----
         var admin = api.MapGroup("/admin/feedback").RequireAuthorization(Session.StaffPolicy);
 
-        admin.MapGet("", async (AppDb db, CancellationToken ct) =>
+        admin.MapGet("", async (HttpContext http, AppDb db, CancellationToken ct) =>
         {
+            var isOwner = http.User.IsOwner();
             var prompts = await db.FeedbackPrompts.OrderByDescending(p => p.Id).ToListAsync(ct);
             var answers = await db.FeedbackResponses.ToListAsync(ct);
             return Results.Ok(prompts.Select(p =>
@@ -78,7 +81,7 @@ public static class FeedbackEndpoints
                 var rated = mine.Where(r => r.Rating is not null).ToList();
                 return new
                 {
-                    p.Id, p.Message, p.By, p.CreatedAt, p.ClosedAt, open = p.ClosedAt == null,
+                    p.Id, p.Message, by = OwnerEndpoints.ShownActor(p.By, isOwner), p.CreatedAt, p.ClosedAt, open = p.ClosedAt == null,
                     ratings = rated.Count, notNow = mine.Count(r => r.Dismissed),
                     average = rated.Count == 0 ? (double?)null : Math.Round(rated.Average(r => r.Rating!.Value), 2),
                     stars = Enumerable.Range(1, 5).Select(s => rated.Count(r => r.Rating == s)).ToArray(),
@@ -100,9 +103,20 @@ public static class FeedbackEndpoints
             return Results.Ok(new { prompt.Id });
         });
 
+        // Open reports come first, so an old one isn't pushed off the list by newer ones; the counts cover every report.
         admin.MapGet("/reports", async (AppDb db, CancellationToken ct) =>
-            Results.Ok(await db.ProblemReports.OrderByDescending(r => r.Id).Take(300)
-                .Select(r => new { r.Id, r.Text, r.Page, r.At, r.ResolvedAt }).ToListAsync(ct)));
+        {
+            var open = await db.ProblemReports.Where(r => r.ResolvedAt == null).OrderByDescending(r => r.Id).Take(MaxReportsListed)
+                .Select(r => new { r.Id, r.Text, r.Page, r.At, r.ResolvedAt }).ToListAsync(ct);
+            var resolved = await db.ProblemReports.Where(r => r.ResolvedAt != null).OrderByDescending(r => r.Id).Take(MaxReportsListed - open.Count)
+                .Select(r => new { r.Id, r.Text, r.Page, r.At, r.ResolvedAt }).ToListAsync(ct);
+            return Results.Ok(new
+            {
+                total = await db.ProblemReports.CountAsync(ct),
+                open = await db.ProblemReports.CountAsync(r => r.ResolvedAt == null, ct),
+                reports = open.Concat(resolved).OrderByDescending(r => r.Id),
+            });
+        });
 
         admin.MapPost("/reports/{id:int}/resolve", async (int id, AppDb db, TimeProvider clock, CancellationToken ct) =>
         {

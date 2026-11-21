@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using UniSchedule.Api.Data;
 
 namespace UniSchedule.Tests;
@@ -175,5 +177,98 @@ public class FamilyDefaultsTests(ApiFactory factory) : IClassFixture<ApiFactory>
         // Saving the same year again changes nothing.
         Assert.Equal(HttpStatusCode.NoContent, (await s.PutAsJsonAsync("/api/me/profile", new { year = 2 })).StatusCode);
         Assert.Equal([courses["FY201"], courses["FYLS"]], (await Picked(s)).Order());
+    }
+
+    [Fact]
+    public async Task A_major_cannot_take_its_own_code_as_its_family_and_one_that_did_can_still_be_edited()
+    {
+        var (owner, _, cs, _, _) = await Setup("FG", 2047);
+        Assert.Equal(HttpStatusCode.BadRequest, (await owner.PutAsJsonAsync($"/api/admin/majors/{cs}", new { code = "FGX", name = "Computer Science", family = "FGX" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await owner.PostAsJsonAsync("/api/admin/majors", new { code = "FGZ", name = "Zed", family = "FGZ" })).StatusCode);
+        // Its old code is free once it has a new one.
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/majors/{cs}", new { code = "FGCS2", name = "Computer Science", family = "FGCS" })).StatusCode);
+
+        // One left like that by the old rules can still be renamed and taken out of it.
+        using (var scope = factory.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<AppDb>().Majors.Where(m => m.Id == cs).ExecuteUpdateAsync(u => u.SetProperty(m => m.Family, "FGCS2"));
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/majors/{cs}", new { code = "FGCS2", name = "Renamed", family = "" })).StatusCode);
+    }
+
+    [Fact]
+    public async Task Renaming_or_leaving_a_family_takes_its_defaults_along_and_the_grid_still_saves()
+    {
+        var (owner, semester, cs, ai, courses) = await Setup("FH", 2048);
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/semesters/{semester}/defaults", new[] { new { id = "FH101", major = "FHCOMP", year = 1 } })).StatusCode);
+        async Task<List<string>> Listed() => (await Json(await owner.GetAsync($"/api/admin/semesters/{semester}/defaults"))).EnumerateArray()
+            .Select(d => $"{d.GetProperty("id").GetString()}|{d.GetProperty("major").GetString()}|{d.GetProperty("year").GetInt32()}").ToList();
+        async Task SaveBack()
+        {
+            var rows = (await Json(await owner.GetAsync($"/api/admin/semesters/{semester}/defaults"))).EnumerateArray()
+                .Select(d => new { id = d.GetProperty("id").GetString(), major = d.GetProperty("major").GetString(), year = d.GetProperty("year").GetInt32() }).ToList();
+            var saved = await owner.PutAsJsonAsync($"/api/admin/semesters/{semester}/defaults", rows);
+            Assert.True(saved.IsSuccessStatusCode, await saved.Content.ReadAsStringAsync());
+        }
+        Task<HttpResponseMessage> Move(int major, string code, string family) => owner.PutAsJsonAsync($"/api/admin/majors/{major}", new { code, name = code, family });
+
+        // One member moves first: FHCOMP still has AI, so its defaults stay.
+        Assert.Equal(HttpStatusCode.OK, (await Move(cs, "FHCS", "FHCOMPUTING")).StatusCode);
+        Assert.Equal(["FH101|FHCOMP|1"], await Listed());
+        // The last one: the defaults follow to the new name.
+        Assert.Equal(HttpStatusCode.OK, (await Move(ai, "FHAI", "FHCOMPUTING")).StatusCode);
+        Assert.Equal(["FH101|FHCOMPUTING|1"], await Listed());
+        await SaveBack();
+        Assert.Equal([courses["FH101"]], await Picked(await Student(ai, 1)));
+
+        // Leaving the family for none: the last member keeps them as its own.
+        Assert.Equal(HttpStatusCode.OK, (await Move(cs, "FHCS", "")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Move(ai, "FHAI", "")).StatusCode);
+        Assert.Equal(["FH101|FHAI|1"], await Listed());
+        await SaveBack();
+
+        // Deleting a family's last major drops the family's defaults.
+        var solo = (await Json(await owner.PostAsJsonAsync("/api/admin/majors", new { code = "FHSOLO", name = "Solo", family = "FHONE" }))).GetProperty("id").GetInt32();
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/semesters/{semester}/defaults", new[] { new { id = "FH101", major = "FHAI", year = 1 }, new { id = "FH201", major = "FHONE", year = 2 } })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await owner.DeleteAsync($"/api/admin/majors/{solo}")).StatusCode);
+        Assert.Equal(["FH101|FHAI|1"], await Listed());
+        await SaveBack();
+    }
+
+    [Fact]
+    public async Task Joining_a_family_that_has_defaults_adopts_them()
+    {
+        var (owner, semester, cs, ai, _) = await Setup("FJ", 2049);
+        // AI on its own family with year 1 defaults; CS alone in FJCOMP with its own.
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/majors/{ai}", new { code = "FJAI", name = "AI", family = "FJDATA" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/semesters/{semester}/defaults", new[] { new { id = "FJ101", major = "FJCOMP", year = 1 }, new { id = "FJ102", major = "FJDATA", year = 1 } })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/majors/{cs}", new { code = "FJCS", name = "CS", family = "FJDATA" })).StatusCode);
+        var listed = (await Json(await owner.GetAsync($"/api/admin/semesters/{semester}/defaults"))).EnumerateArray()
+            .Select(d => $"{d.GetProperty("id").GetString()}|{d.GetProperty("major").GetString()}|{d.GetProperty("year").GetInt32()}").ToList();
+        Assert.Equal(["FJ102|FJDATA|1"], listed);
+    }
+
+    [Fact]
+    public async Task The_electives_panel_counts_what_the_family_allows()
+    {
+        var c = await Owner("owner-family-fi");
+        var csv = "code,name,major,type,year,section,instructor,days,time,room\n" +
+            "FI101,Programming,FICS,Core,1,1,A,Sun,08:00-09:30,R1\n" +
+            "FI102,Intro to AI,FIAI,Core,1,1,B,Mon,08:00-09:30,R2\n" +
+            "FIO1,Other,FIOTH,Core,1,1,B,Mon,10:00-11:30,R2\n" +
+            "FIE1,Listed for CS,FICS,Elective,,1,C,Tue,08:00-09:30,R3\n" +
+            "FIE2,Listed for another,FIOTH,Elective,,1,D,Wed,08:00-09:30,R4\n" +
+            "FIE3,Closed,FIOTH,Elective,,1,D,Thu,08:00-09:30,R4\n";
+        var sem = (await Json(await c.PostAsJsonAsync("/api/admin/semesters", new { term = "Fall", year = 2052 }))).GetProperty("id").GetInt32();
+        using var file = new MultipartFormDataContent { { new ByteArrayContent(System.Text.Encoding.UTF8.GetBytes(csv)), "file", "fi.csv" } };
+        Assert.Equal(HttpStatusCode.OK, (await c.PostAsync($"/api/admin/semesters/{sem}/upload/apply", file)).StatusCode);
+        var majors = (await Json(await c.GetAsync("/api/admin/majors"))).EnumerateArray().ToDictionary(m => m.GetProperty("code").GetString()!, m => m.GetProperty("id").GetInt32());
+        foreach (var code in new[] { "FICS", "FIAI" })
+            Assert.Equal(HttpStatusCode.OK, (await c.PutAsJsonAsync($"/api/admin/majors/{majors[code]}", new { code, name = code, family = "FICOMP" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await c.PutAsJsonAsync($"/api/admin/majors/{majors["FICS"]}/electives", new { codes = new[] { "FIE2" } })).StatusCode);
+
+        var panel = (await Json(await c.GetAsync($"/api/admin/majors/{majors["FIAI"]}/electives?semesterId={sem}"))).GetProperty("electives").EnumerateArray()
+            .ToDictionary(e => e.GetProperty("code").GetString()!, e => e.GetProperty("source").GetString());
+        Assert.Equal("upload", panel["FIE1"]);
+        Assert.Equal("family", panel["FIE2"]);
+        Assert.Equal("no", panel["FIE3"]);
     }
 }

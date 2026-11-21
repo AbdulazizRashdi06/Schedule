@@ -104,9 +104,10 @@ public static class GroupEndpoints
         {
             var id = http.User.Id();
             if (await Mine(db, groupId, id, ct) is not { } g) return Errors.NotFound("That group doesn't exist.");
-            if (g.Members.Count == 1) db.StudyGroups.Remove(g);
-            else db.GroupMembers.Remove(g.Members.First(m => m.StudentId == id));
+            db.GroupMembers.Remove(g.Members.First(m => m.StudentId == id));
             await db.SaveChangesAsync(ct);
+            // Checked after leaving, in one statement, so when the last two leave at once the second one out still deletes it.
+            await db.StudyGroups.Where(x => x.Id == groupId && !x.Members.Any()).ExecuteDeleteAsync(ct);
             return Results.NoContent();
         });
 
@@ -187,7 +188,9 @@ public static class GroupEndpoints
                 .Where(d => (int)d.DayOfWeek <= 4 || busy.Values.Any(x => x.ContainsKey(d)))
                 .Select(d =>
                 {
-                    // A rider's own times are only shown to others if they chose to show their classes.
+                    // A rider's own first and last class are only shown to others if they chose to show their classes. The
+                    // car's times come from everyone's classes, so when a hidden rider rides alone (or sets the earliest
+                    // start or latest end) their times can be read from it; /week already shows when members are busy.
                     var riders = members.Where(m => busy[m.StudentId].ContainsKey(d))
                         .Select(m => (m.DisplayName, First: busy[m.StudentId][d].Min(b => b.Start), Last: busy[m.StudentId][d].Max(b => b.End),
                             Shown: m.StudentId == me || m.ShowClasses, Me: m.StudentId == me)).ToList();
@@ -229,7 +232,8 @@ public static class GroupEndpoints
         invite.MapGet("", async (string code, HttpContext http, AppDb db, CancellationToken ct) =>
         {
             var g = await db.StudyGroups.Include(x => x.Members).FirstOrDefaultAsync(x => x.InviteCode == code, ct);
-            if (g is null) return Errors.NotFound("That invite link doesn't work any more. Ask for a new one.");
+            // A group with nobody left in it is gone, even if its row was left behind.
+            if (g is null || g.Members.Count == 0) return Errors.NotFound("That invite link doesn't work any more. Ask for a new one.");
             var id = http.User.Id();
             return Results.Ok(new { g.Id, g.Name, g.Kind, members = g.Members.Count, joined = g.Members.Any(m => m.StudentId == id), full = g.Members.Count >= MaxMembers });
         });
@@ -238,7 +242,8 @@ public static class GroupEndpoints
         {
             var id = http.User.Id();
             var g = await db.StudyGroups.Include(x => x.Members).FirstOrDefaultAsync(x => x.InviteCode == code, ct);
-            if (g is null) return Errors.NotFound("That invite link doesn't work any more. Ask for a new one.");
+            // A group with nobody left in it is gone, even if its row was left behind.
+            if (g is null || g.Members.Count == 0) return Errors.NotFound("That invite link doesn't work any more. Ask for a new one.");
             if (Clean(body.DisplayName, 30, "your name for the group", out var display) is { } p) return Errors.BadRequest(p);
             var already = g.Members.FirstOrDefault(m => m.StudentId == id);
             if (already is not null) already.DisplayName = display;
