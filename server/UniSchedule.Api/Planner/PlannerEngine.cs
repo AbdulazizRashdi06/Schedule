@@ -12,8 +12,11 @@ public static class PlannerEngine
     public static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
     public static bool Date(string? value, out DateOnly date) => DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
     public static bool Time(string? value, out TimeOnly time) => TimeOnly.TryParseExact(value, "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out time);
-    public static string Iso(DateOnly date) => date.ToString("yyyy-MM-dd");
-    public static string Fingerprint(Section s, Meeting m) => Hash($"{s.CourseId}|{s.Id}|{m.Day}|{m.Start}|{m.End}|{m.Room}|{m.Date}");
+    public static string Iso(DateOnly date) => date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    // Invariant, so stored fingerprints keep matching whatever locale the server runs with (and match the ones already stored).
+    public static string Fingerprint(Section s, Meeting m) => Hash(string.Create(CultureInfo.InvariantCulture, $"{s.CourseId}|{s.Id}|{m.Day}|{m.Start}|{m.End}|{m.Room}|{m.Date}"));
+    /// <summary>A date the planner works with: far enough from the ends of the calendar that a week either side still exists.</summary>
+    public static bool Sane(DateOnly date) => date.Year is >= 2000 and <= 2100;
     public static DateOnly OmanToday(TimeProvider clock) => DateOnly.FromDateTime(clock.GetUtcNow().ToOffset(TimeSpan.FromHours(4)).DateTime);
 
     public static async Task<bool> Enabled(AppDb db, IConfiguration config, CancellationToken ct) =>
@@ -39,6 +42,7 @@ public static class PlannerEngine
         if (spec.Kind is not ("exam" or "class") || spec.Action is not ("add" or "replace" or "cancel")) return "Choose an exam or class and a valid action.";
         if (string.IsNullOrWhiteSpace(spec.Title) || spec.Title.Length > 120) return "Give this event a title (up to 120 characters).";
         if (!Date(spec.Date, out var date) || !Time(spec.Start, out var start) || !Time(spec.End, out var end) || end <= start) return "Choose a date and an end time later than the start.";
+        if (!Sane(date)) return "Choose a date between 2000 and 2100.";
         if (spec.Room is null || spec.Room.Length > 100 || spec.Notes?.Length > 2000) return "Keep the location under 100 characters and notes under 2,000.";
         if (spec.RepeatUntil is not null && (!Date(spec.RepeatUntil, out var until) || until < date || until.DayNumber - date.DayNumber > 190)) return "Weekly recurrence must end within 190 days of its first date.";
         if (spec.Kind == "exam" && (spec.RepeatUntil is not null || spec.Source is not null || spec.Action != "add")) return "Exams happen on one date; edit or withdraw the published exam to change it.";
@@ -58,11 +62,21 @@ public static class PlannerEngine
         return null;
     }
 
-    public static IEnumerable<DateOnly> Dates(EventSpec spec)
+    /// <summary>
+    /// The dates an event happens: its first date as typed, then every week until RepeatUntil. Given the semester's
+    /// <paramref name="span"/>, the weekly repeats skip days off and dates outside the teaching weeks, as university
+    /// classes do. The first date is kept, so a make-up class put on a holiday still happens.
+    /// </summary>
+    public static IEnumerable<DateOnly> Dates(EventSpec spec, SemesterSpan? span = null)
     {
         if (!Date(spec.Date, out var first)) yield break;
         var until = Date(spec.RepeatUntil, out var last) ? last : first;
-        for (var d = first; d <= until && d.DayNumber - first.DayNumber <= 190; d = d.AddDays(7)) yield return d;
+        for (var d = first; d <= until && d.DayNumber - first.DayNumber <= 190; d = d.AddDays(7))
+        {
+            if (d == first || span is null || (d >= span.First && d <= span.Last && !span.DaysOff.ContainsKey(d))) yield return d;
+            // A draft stored before dates were checked can end in the last week there is.
+            if (d.DayNumber > DateOnly.MaxValue.DayNumber - 7) yield break;
+        }
     }
 
     public static bool SharedTargets(PlannerTarget[] a, PlannerTarget[] b) => a.Any(x => b.Any(y => x.CourseId == y.CourseId && (x.SectionIds.Length == 0 || y.SectionIds.Length == 0 || x.SectionIds.Intersect(y.SectionIds).Any())));
@@ -98,23 +112,26 @@ public static class PlannerEngine
         {
             var stale = spec.Source is { } src && !fingerprints.Contains(src.Fingerprint);
             var first = DateOnly.Parse(spec.Date, CultureInfo.InvariantCulture);
-            foreach (var d in Dates(spec))
+            foreach (var d in Dates(spec, span))
             {
                 if (effective && !stale && spec.Source is { } original && Date(original.Date, out var originalDate))
                 {
                     var replacedDate = originalDate.AddDays(d.DayNumber - first.DayNumber);
                     output.RemoveAll(x => x.Key == $"import:{original.Fingerprint}:{Iso(replacedDate)}");
                 }
-                if (d < from || d > to || (effective && spec.Action == "cancel")) continue;
-                output.Add(new($"{status}:{proposalId ?? eventId}:{Iso(d)}", eventId, proposalId, version, spec.Kind, spec.Title, Iso(d), spec.Start, spec.End, spec.Room, spec.Targets, spec.Action == "cancel" ? "cancelled-draft" : status, spec.Source, stale, spec.Notes));
+                // A published cancellation hides its class; once the class changed it no longer applies, so it's shown for review.
+                if (d < from || d > to || (effective && !stale && spec.Action == "cancel")) continue;
+                output.Add(new($"{status}:{proposalId ?? eventId}:{Iso(d)}", eventId, proposalId, version, spec.Kind, spec.Title, Iso(d), spec.Start, spec.End, spec.Room, spec.Targets, spec.Action == "cancel" ? effective ? "cancelled" : "cancelled-draft" : status, spec.Source, stale, spec.Notes));
             }
         }
     }
 
     public static async Task<PlannerAnalysis> Analyze(AppDb db, PlannerWorkspace workspace, EventSpec spec, CancellationToken ct, int? proposalId = null, int? eventId = null)
     {
-        var occurrences = Dates(spec).ToList();
-        if (occurrences.Count == 0) return new("", [], ["Choose a valid date."]);
+        var semester = await db.Semesters.FirstAsync(s => s.Id == workspace.SemesterId, ct);
+        var span = await SemesterSpan.ForAsync(db, semester, ct);
+        var occurrences = Dates(spec, span).ToList();
+        if (occurrences.Count == 0 || !Sane(occurrences[0]) || !Sane(occurrences[^1])) return new("", [], ["Choose a valid date."]);
         var entries = await Calendar(db, workspace.SemesterId, occurrences[0].AddDays(-6), occurrences[^1].AddDays(6), workspace.Id, ct, proposalId, eventId);
         var courseNames = await db.Courses.Where(c => c.SemesterId == workspace.SemesterId).ToDictionaryAsync(c => c.Id, c => c.Code, ct);
         var conflicts = new List<PlannerConflict>();
@@ -127,6 +144,14 @@ public static class PlannerEngine
         if (spec.Targets.Any(t => !courseSections.Any(s => s.CourseId == t.CourseId && s.Count > 0 && (t.SectionIds.Length == 0 || t.SectionIds.Contains(s.Id))))) coverage.Add("Some selected courses or sections have no class times. Availability is not confirmed for missing timetables.");
         foreach (var t in spec.Targets)
             if (courseSections.Any(s => s.CourseId == t.CourseId && s.Count == 0 && (t.SectionIds.Length == 0 || t.SectionIds.Contains(s.Id)))) coverage.Add("A selected section has no class times. Check its timetable before publishing.");
+        if (spec.Action != "cancel")
+        {
+            foreach (var d in occurrences.Where(span.DaysOff.ContainsKey)) coverage.Add($"{Iso(d)} is {span.DaysOff[d]}, a day off.");
+            // Exams after the last teaching week are the exam period; classes then, or anything before week 1, are unusual.
+            if (span.WeeksKnown && (occurrences[0] < span.First || (spec.Kind == "class" && occurrences[0] > span.Last))) coverage.Add($"{Iso(occurrences[0])} is outside the semester's teaching weeks.");
+            var skipped = Dates(spec).Except(occurrences).ToList();
+            if (skipped.Count > 0) coverage.Add($"The weekly repeat skips days off and dates outside the teaching weeks: {string.Join(", ", skipped.Select(Iso))}.");
+        }
         foreach (var date in occurrences)
         {
             var iso = Iso(date);
@@ -136,12 +161,13 @@ public static class PlannerEngine
             {
                 if (spec.Source is { } source && Date(source.Date, out var originalDate)
                     && e.Key == $"import:{source.Fingerprint}:{Iso(originalDate.AddDays(date.DayNumber - occurrences[0].DayNumber))}") continue;
-                var overlap = start < TimeOnly.Parse(e.End) && TimeOnly.Parse(e.Start) < end;
+                var overlap = start < TimeOnly.Parse(e.End, CultureInfo.InvariantCulture) && TimeOnly.Parse(e.Start, CultureInfo.InvariantCulture) < end;
                 var room = spec.Room.Length > 0 && string.Equals(spec.Room.Trim(), e.Room.Trim(), StringComparison.OrdinalIgnoreCase);
                 if (spec.Action != "cancel" && overlap && (SharedTargets(cohort, e.Targets) || room)) conflicts.Add(new("overlap", iso, $"{e.Title} ({e.Start}–{e.End}){(room ? $" uses {e.Room}" : " overlaps this batch")}{(e.Status == "draft" ? " · draft" : "")}", e.Targets.Select(t => courseNames.GetValueOrDefault(t.CourseId, "Course")).ToArray(), e.Targets.SelectMany(t => t.SectionIds).Distinct().ToArray()));
             }
             if (spec.Kind != "exam" || spec.Action == "cancel") continue;
-            var exams = entries.Where(e => e.Kind == "exam" && !e.Stale && SharedTargets(cohort, e.Targets)).DistinctBy(e => e.Key).ToList();
+            // Other drafts of the exam being edited are versions of this exam, counted once as its +1.
+            var exams = entries.Where(e => e.Kind == "exam" && !e.Stale && SharedTargets(cohort, e.Targets) && (eventId is null || e.EventId != eventId)).DistinctBy(e => e.Key).ToList();
             if (exams.Where(e => e.Date == iso).Select(ExamIdentity).Distinct().Count() + 1 >= workspace.DailyExamWarning) conflicts.Add(new("daily-load", iso, $"This would bring the batch to at least {workspace.DailyExamWarning} exams on one day.", [], []));
             // Test every rolling seven-day window containing the proposed exam.
             if (Enumerable.Range(0, 7).Any(back => exams.Where(e => Date(e.Date, out var d) && d >= date.AddDays(-back) && d <= date.AddDays(6 - back)).Select(ExamIdentity).Distinct().Count() + 1 >= workspace.WeeklyExamWarning)) conflicts.Add(new("weekly-load", iso, $"This would bring the batch to at least {workspace.WeeklyExamWarning} exams within seven days.", [], []));
@@ -154,11 +180,12 @@ public static class PlannerEngine
     public static async Task<PublishedPlan> PublishedAsync(AppDb db, int semester, CancellationToken ct)
     {
         var published = await db.PlannerEvents.Where(e => e.SemesterId == semester && !e.Withdrawn).ToListAsync(ct);
-        if (published.Count == 0) return new([]);
+        if (published.Count == 0) return new([], null);
+        var span = await SemesterSpan.ForAsync(db, await db.Semesters.FirstAsync(s => s.Id == semester, ct), ct);
         var sections = await db.Sections.Include(s => s.Meetings).Where(s => s.Course.SemesterId == semester).ToListAsync(ct);
         var fingerprints = sections.SelectMany(s => s.Meetings.Select(m => Fingerprint(s, m))).ToHashSet();
         return new(published.Select(e => (e, PlannerJson.Read<EventSpec>(e.PayloadJson)))
-            .Where(x => x.Item2.Source is not { } source || fingerprints.Contains(source.Fingerprint)).ToList());
+            .Where(x => x.Item2.Source is not { } source || fingerprints.Contains(source.Fingerprint)).ToList(), span);
     }
 
     /// <summary>Published events and cancelled or moved university classes, as one student sees them.</summary>
@@ -170,7 +197,7 @@ public static class PlannerEngine
 public record PlannerOccurrence(int Id, int Version, string Kind, string Title, string Date, string Start, string End, string Room,
     string? Notes, int CourseId, string Code, string CourseName, int? SectionId, DateTimeOffset UpdatedAt);
 
-public sealed class PublishedPlan(List<(PlannerEvent Event, EventSpec Spec)> events)
+public sealed class PublishedPlan(List<(PlannerEvent Event, EventSpec Spec)> events, SemesterSpan? span)
 {
     static DateOnly Day(string iso) => DateOnly.ParseExact(iso, "yyyy-MM-dd", CultureInfo.InvariantCulture);
 
@@ -186,7 +213,7 @@ public sealed class PublishedPlan(List<(PlannerEvent Event, EventSpec Spec)> eve
         {
             var matching = picks.Where(p => spec.Targets.Any(t => t.CourseId == p.CourseId && (t.SectionIds.Length == 0 || (p.SectionId is int sid && t.SectionIds.Contains(sid))))).ToList();
             if (matching.Count == 0) continue;
-            foreach (var d in PlannerEngine.Dates(spec))
+            foreach (var d in PlannerEngine.Dates(spec, span))
             {
                 if (spec.Source is { } original)
                 {

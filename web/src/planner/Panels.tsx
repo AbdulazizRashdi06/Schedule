@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { api, errorText, store } from '../lib/api'
+import { ApiError, api, errorText, store } from '../lib/api'
 import type { Course } from '../lib/types'
 import { Button, ErrorText, Select, TextField, cx } from '../components/ui'
 import { addDays, isoDate } from '../lib/slots'
@@ -38,13 +38,15 @@ export function ProposalEditor({ initial, courses, base, onSaved, onPublished, o
   const [explanation, setExplanation] = useState('')
   const [acknowledged, setAcknowledged] = useState(false)
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [dirty, setDirty] = useState(!initial.proposal)
+  // The event's current version, once another rep published a change to it after this draft was made.
+  const [rebase, setRebase] = useState<number | null>(null)
   const change = (values: Partial<Spec>) => { setSpec(s => ({ ...s, ...values })); setDirty(true); setAnalysis(null); setAcknowledged(false) }
   const save = async (e?: FormEvent) => {
     e?.preventDefault(); setBusy(true); setError('')
     try {
-      const body = { spec, eventId: initial.eventId ?? proposal?.eventId ?? null, baseEventVersion: initial.baseEventVersion ?? proposal?.baseEventVersion ?? 0, version: proposal?.version ?? 0 }
+      const body = { spec, eventId: initial.eventId ?? proposal?.eventId ?? null, baseEventVersion: rebase ?? proposal?.baseEventVersion ?? initial.baseEventVersion ?? 0, version: proposal?.version ?? 0 }
       const p = proposal ? await api.put<Proposal>(`${base}/proposals/${proposal.id}`, body) : await api.post<Proposal>(`${base}/proposals`, body)
-      setProposal(p); setDirty(false); await onSaved()
+      setProposal(p); setDirty(false); setRebase(null); await onSaved()
       setAnalysis(await api.post<Analysis>(`${base}/proposals/${p.id}/analyze`))
     } catch (e) { setError(errorText(e)) } finally { setBusy(false) }
   }
@@ -52,7 +54,19 @@ export function ProposalEditor({ initial, courses, base, onSaved, onPublished, o
     if (!proposal || !analysis) return
     setBusy(true); setError('')
     try { await api.post(`${base}/proposals/${proposal.id}/publish`, { version: proposal.version, analysisToken: analysis.token, explanation }); await onPublished(); onClose() }
-    catch (e) { setError(errorText(e)); setAnalysis(null) } finally { setBusy(false) }
+    catch (e) {
+      setError(errorText(e)); setAnalysis(null)
+      const eventId = proposal.eventId
+      if (e instanceof ApiError && e.status === 409 && eventId) {
+        try {
+          const current = await api.get<{ version: number; withdrawn: boolean; spec: Spec }>(`${base}/events/${eventId}`)
+          if (current.version !== proposal.baseEventVersion) {
+            setRebase(current.version); setDirty(true)
+            setError(`Another rep changed this event. It's now ${current.withdrawn ? 'withdrawn' : `${current.spec.date} · ${current.spec.start}–${current.spec.end}`}. Review your draft and save it again to base it on that version.`)
+          }
+        } catch { /* Keep the publish error. */ }
+      }
+    } finally { setBusy(false) }
   }
   const warnings = !!analysis && (analysis.conflicts.length > 0 || analysis.coverageWarnings.length > 0)
   return <form onSubmit={save} className="flex min-w-0 flex-col gap-4" aria-label="Scheduling proposal">
@@ -96,7 +110,7 @@ export function SlotFinder({ base, targets, initial, onPick }: { base: string; t
 export function AiAssistant({ base, onUse }: { base: string; onUse: (result: AiResult) => void }) {
   const [text, setText] = useState(''), [images, setImages] = useState<string[]>([]), [fileNames, setFileNames] = useState<string[]>([])
   const [job, setJob] = useState<AiJob | null>(null), [error, setError] = useState(''), [busy, setBusy] = useState(false)
-  const alive = useRef(true)
+  const alive = useRef(true), pollFailed = useRef(false)
   const pollKey = `${base}:ai-job`
   const jobId = job?.id
   const jobStatus = job?.status
@@ -104,9 +118,17 @@ export function AiAssistant({ base, onUse }: { base: string; onUse: (result: AiR
   useEffect(() => {
     const id = jobId ?? store.get(pollKey)
     if (!id || (jobStatus && !['queued', 'running'].includes(jobStatus))) return
-    let active = true
-    const poll = () => api.get<AiJob>(`${base}/ai-jobs/${id}`).then(value => { if (!active) return; setJob(value); if (!['queued', 'running'].includes(value.status)) store.set(pollKey, '') }, e => { if (active) { setError(errorText(e)); store.set(pollKey, '') } })
-    void poll(); const timer = setInterval(poll, 2000)
+    let active = true, timer = 0
+    const poll = () => api.get<AiJob>(`${base}/ai-jobs/${id}`).then(value => { if (!active) return; setJob(value); if (pollFailed.current) { pollFailed.current = false; setError('') } if (!['queued', 'running'].includes(value.status)) store.set(pollKey, '') }, e => {
+      if (!active) return
+      pollFailed.current = true; setError(errorText(e))
+      // A missing job, a disabled planner or lost access won't come back: stop asking. A network blip is retried.
+      if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429) {
+        clearInterval(timer); store.set(pollKey, '')
+        setJob(j => j && ['queued', 'running'].includes(j.status) ? { ...j, status: 'failed' } : j)
+      }
+    })
+    void poll(); timer = window.setInterval(() => { if (!document.hidden) void poll() }, 2000)
     return () => { active = false; clearInterval(timer) }
   }, [base, jobId, jobStatus, pollKey])
   const submit = async (e: FormEvent) => { e.preventDefault(); setBusy(true); setError(''); try { const next = await api.post<AiJob>(`${base}/ai-jobs`, { text, images }); if (alive.current) { setJob(next); store.set(pollKey, next.id) } } catch (e) { setError(errorText(e)) } finally { if (alive.current) setBusy(false) } }
