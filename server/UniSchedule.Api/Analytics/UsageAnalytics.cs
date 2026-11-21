@@ -120,7 +120,8 @@ public static class UsageAnalytics
             var day = OmanDay(now);
             var at = now.ToUnixTimeSeconds();
             var midnight = DateTimeOffset.FromUnixTimeSeconds(day);
-            var activeSince = now.AddMinutes(-5);
+            // Not before this day's midnight: a sample just after it would count last night's students as today's peak.
+            var activeSince = now.AddMinutes(-5) > midnight ? now.AddMinutes(-5) : midnight;
             var active = await db.Students.CountAsync(s => s.LastSeenAt >= activeSince, ct);
             var today = await db.Students.CountAsync(s => s.LastSeenAt >= midnight, ct);
             await db.Database.ExecuteSqlInterpolatedAsync($"""

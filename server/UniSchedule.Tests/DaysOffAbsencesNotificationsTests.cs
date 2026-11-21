@@ -259,7 +259,7 @@ public class DaysOffAbsencesNotificationsTests(ApiFactory factory) : IClassFixtu
         var (p256dh, auth) = DeviceKeys();
         Assert.Equal(HttpStatusCode.NoContent, (await s.PostAsJsonAsync("/api/me/push", new { endpoint = $"https://fcm.googleapis.com/fcm/send/out-{studentId}", keys = new { p256dh, auth } })).StatusCode);
         var me = await db.Students.Where(x => x.UniversityId == studentId).Select(x => x.Id).FirstAsync();
-        var (who, note) = (await Notifications.PublishAnnouncement(db, default))!.Value;
+        var (who, note, _, _) = (await Notifications.PublishAnnouncement(db, default))!.Value;
         Assert.Contains(me, who);
         Assert.Equal(who.Count, who.Distinct().Count());
         Assert.Equal(new Note($"{name} is out", "Set up your courses in about a minute.", "/setup", "published", 3 * 86_400), note);

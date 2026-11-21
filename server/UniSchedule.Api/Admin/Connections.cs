@@ -20,6 +20,8 @@ public interface IConnectionFetcher
 public sealed class HttpConnectionFetcher(HttpClient http) : IConnectionFetcher
 {
     public const int MaxBytes = 20 * 1024 * 1024;
+    /// <summary>How long the whole reply may take, body included (the client's own timeout stops once headers arrive).</summary>
+    public TimeSpan Deadline { get; init; } = TimeSpan.FromSeconds(30);
 
     public async Task<string> GetAsync(Uri url, string headerName, string headerValue, CancellationToken ct)
     {
@@ -27,24 +29,27 @@ public sealed class HttpConnectionFetcher(HttpClient http) : IConnectionFetcher
         req.Headers.Accept.ParseAdd("application/json");
         if (headerName.Length > 0 && !req.Headers.TryAddWithoutValidation(headerName, headerValue))
             throw new ConnectionException($"The header {headerName} can't be sent.");
-        HttpResponseMessage res;
-        try { res = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct); }
-        catch (HttpRequestException e) { throw new ConnectionException($"Couldn't reach the API ({e.Message})."); }
-        catch (TaskCanceledException) when (!ct.IsCancellationRequested) { throw new ConnectionException("The API took longer than 30 seconds to answer."); }
-        using (res)
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(Deadline);
+        try
         {
+            using var res = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
             if (!res.IsSuccessStatusCode) throw new ConnectionException($"The API answered {(int)res.StatusCode} {res.ReasonPhrase}.");
-            await using var stream = await res.Content.ReadAsStreamAsync(ct);
+            await using var stream = await res.Content.ReadAsStreamAsync(deadline.Token);
             using var buffer = new MemoryStream();
             var chunk = new byte[81920];
             int n;
-            while ((n = await stream.ReadAsync(chunk, ct)) > 0)
+            while ((n = await stream.ReadAsync(chunk, deadline.Token)) > 0)
             {
                 if (buffer.Length + n > MaxBytes) throw new ConnectionException("The API's reply is bigger than 20 MB.");
                 buffer.Write(chunk, 0, n);
             }
             return Encoding.UTF8.GetString(buffer.ToArray());
         }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { throw new ConnectionException($"The API took longer than {Deadline.TotalSeconds:0} seconds to answer."); }
+        catch (HttpRequestException e) { throw new ConnectionException($"Couldn't reach the API ({e.Message})."); }
+        // The connection closed part-way through the reply.
+        catch (IOException e) { throw new ConnectionException($"The API's reply was cut off ({e.Message})."); }
     }
 }
 

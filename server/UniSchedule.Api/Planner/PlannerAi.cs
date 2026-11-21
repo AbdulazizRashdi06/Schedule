@@ -50,6 +50,15 @@ public class PlannerAiWorker(IServiceScopeFactory scopes, TimeProvider clock, IL
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // One worker per process and it just started, so a job still 'running' was cut off by a restart: nothing will
+        // finish it, so fail it now (and drop its screenshots) instead of after 10 minutes.
+        try {
+            using var scope = scopes.CreateScope();
+            await scope.ServiceProvider.GetRequiredService<AppDb>().PlannerAiJobs.Where(j => j.Status == "running")
+                .ExecuteUpdateAsync(u => u.SetProperty(j => j.Status, "failed").SetProperty(j => j.Error, "The request was interrupted. Retry or plan manually.").SetProperty(j => j.InputJson, "{}"), stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
+        catch (Exception) { logger.LogWarning("Planner AI worker couldn't clear interrupted requests; they fail after 10 minutes instead."); }
         // One Classy inference at a time; the shared gateway also serves other apps.
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -119,9 +128,11 @@ public class PlannerAiWorker(IServiceScopeFactory scopes, TimeProvider clock, IL
         catch (OperationCanceledException) { status = "failed"; error = "The AI request timed out or was interrupted. Your message is preserved; retry or plan manually."; }
         catch (InvalidOperationException e) { status = "failed"; error = e.Message; }
         catch (Exception) { status = "failed"; error = "The AI response couldn't be read. Your message is preserved; retry or plan manually."; }
-        // Never overwrite a cancellation, or retain screenshots after the request completes.
+        // Never overwrite a cancellation, or retain screenshots after the request completes. Saved even when the server is
+        // stopping (that's what interrupted it), so the job doesn't stay 'running' with its screenshots.
+        using var save = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         await db.PlannerAiJobs.Where(j => j.Id == job.Id && j.Status == "running").ExecuteUpdateAsync(u => u
             .SetProperty(j => j.Status, status).SetProperty(j => j.ResultJson, result).SetProperty(j => j.Error, error)
-            .SetProperty(j => j.InputJson, PlannerJson.Write(input with { Images = [] })), stopping);
+            .SetProperty(j => j.InputJson, PlannerJson.Write(input with { Images = [] })), save.Token);
     }
 }
