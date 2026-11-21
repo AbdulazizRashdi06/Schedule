@@ -167,7 +167,9 @@ public static class AdminEndpoints
         {
             if (!await db.Semesters.AnyAsync(s => s.Id == id, ct)) return Errors.NotFound("That semester doesn't exist.");
             var majors = await db.Majors.ToDictionaryAsync(m => m.Id, m => m.Code, ct);
-            var rows = await db.CourseDefaults.Where(d => d.SemesterId == id)
+            var families = await db.Majors.Where(m => m.Family != null).Select(m => m.Family!).Distinct().ToListAsync(ct);
+            // A family no major is in any more names nobody: it isn't listed, so sending the list back still saves (and drops it).
+            var rows = await db.CourseDefaults.Where(d => d.SemesterId == id && (d.Family == null || families.Contains(d.Family)))
                 .Select(d => new { d.Course.Code, d.MajorId, d.Family, d.Year }).ToListAsync(ct);
             return Results.Ok(rows
                 .Select(d => new { id = d.Code, major = d.MajorId is int m ? majors[m] : d.Family!, year = d.Year })
@@ -386,6 +388,9 @@ public static class AdminEndpoints
                 if (familyProblem is not null) return Errors.BadRequest(familyProblem);
                 major.Family = family;
             }
+            // No family sent keeps the one it has, which can't become its new code either.
+            else if (major.Family == code && major.Code != code)
+                return Errors.BadRequest("A family can't use the major's own code. Pick another family name.");
             major.Code = code!;
             major.Name = name!;
             await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -542,9 +547,11 @@ public static class AdminEndpoints
 
     /// <summary>
     /// After a major's family changed: when no other major is left in the old family, what's stored under the old name
-    /// moves with this major, so it keeps working. Its default courses go to the new family (or become the major's own),
-    /// unless the new place already has defaults for that semester and year. Its planner workspaces and batch reps go to
-    /// the new planner family; a workspace that already exists there takes in the old one's batches, drafts and history.
+    /// moves with this major, so it keeps working. Its default courses go to the new family (a rename), except in a semester
+    /// where that family's other majors already have defaults: there, as with no family, they become the major's own,
+    /// so joining a family doesn't change the defaults of the majors already in it.
+    /// Its planner workspaces and batch reps go to the new planner family; a workspace that already exists there takes
+    /// in the old one's batches, drafts and history.
     /// </summary>
     static async Task MoveFamily(AppDb db, Major major, string? oldFamily, string oldKey, CancellationToken ct)
     {
@@ -552,13 +559,20 @@ public static class AdminEndpoints
         if (oldFamily is not null && oldFamily != major.Family && !await others.AnyAsync(m => m.Family == oldFamily, ct))
         {
             var moving = await db.CourseDefaults.Where(d => d.Family == oldFamily).ToListAsync(ct);
-            var there = major.Family is null ? db.CourseDefaults.Where(d => d.MajorId == major.Id) : db.CourseDefaults.Where(d => d.Family == major.Family);
-            var taken = (await there.Select(d => new { d.SemesterId, d.Year }).ToListAsync(ct)).ToHashSet();
+            var shared = major.Family is not null && await others.AnyAsync(m => m.Family == major.Family, ct);
+            var there = major.Family is null ? [] : await db.CourseDefaults.Where(d => d.Family == major.Family).ToListAsync(ct);
+            // A semester where the family other majors are in already has defaults: joining it doesn't change theirs.
+            var curated = shared ? there.Select(d => d.SemesterId).ToHashSet() : [];
+            // No major was in the new family, so rows already under its name were left over: the moving ones replace them.
+            var years = moving.Select(d => new { d.SemesterId, d.Year }).ToHashSet();
+            if (!shared) db.CourseDefaults.RemoveRange(there.Where(d => years.Contains(new { d.SemesterId, d.Year })));
+            // A semester and year the major already has its own defaults for never used the family's.
+            var taken = (await db.CourseDefaults.Where(d => d.MajorId == major.Id).Select(d => new { d.SemesterId, d.Year }).ToListAsync(ct)).ToHashSet();
             foreach (var d in moving)
             {
-                if (taken.Contains(new { d.SemesterId, d.Year })) { db.CourseDefaults.Remove(d); continue; }
-                if (major.Family is null) d.MajorId = major.Id;
-                d.Family = major.Family;
+                if (major.Family is not null && !curated.Contains(d.SemesterId)) d.Family = major.Family;
+                else if (taken.Contains(new { d.SemesterId, d.Year })) db.CourseDefaults.Remove(d);
+                else { d.MajorId = major.Id; d.Family = null; }
             }
         }
 

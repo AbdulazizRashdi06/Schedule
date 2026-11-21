@@ -386,6 +386,11 @@ public class ConnectionTests(ApiFactory factory) : IClassFixture<ApiFactory>
         // Another path on the same server keeps it.
         var kept = await Json(await owner.PutAsJsonAsync("/api/admin/connections/timetable", body with { url = "https://GUTECH.example/v2/tt", headerValue = null }));
         Assert.True(kept.GetProperty("hasSecret").GetBoolean());
+        // Clearing the address keeps it without typing it, but the next address needs it typed again.
+        var cleared = await owner.PutAsJsonAsync("/api/admin/connections/timetable", body with { url = "", headerValue = null });
+        Assert.Equal(HttpStatusCode.OK, cleared.StatusCode);
+        Assert.True((await Json(cleared)).GetProperty("hasSecret").GetBoolean());
+        Assert.Equal(HttpStatusCode.BadRequest, (await owner.PutAsJsonAsync("/api/admin/connections/timetable", body with { url = "https://gutech.example/tt", headerValue = null })).StatusCode);
         fake.Replies["https://elsewhere.example/collect"] = """{"items":[{"c":"A1"}]}""";
         Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync("/api/admin/connections/timetable", body with { url = "https://elsewhere.example/collect", headerValue = "OTHER-KEY" })).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await owner.PostAsJsonAsync("/api/admin/connections/timetable/test", new { })).StatusCode);

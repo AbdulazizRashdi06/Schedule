@@ -98,7 +98,8 @@ public static partial class ConnectionEndpoints
             var url = body.Url?.Trim() ?? "";
             var headerName = body.HeaderName?.Trim() ?? "";
             // The saved value was given for one server and one header: it isn't sent anywhere else without being typed again.
-            if (c.HeaderSecret.Length > 0 && body.HeaderValue is null && body.ClearSecret != true && headerName.Length > 0
+            // With no address it goes nowhere, and any address typed later needs it again.
+            if (c.HeaderSecret.Length > 0 && body.HeaderValue is null && body.ClearSecret != true && headerName.Length > 0 && url.Length > 0
                 && (!SameServer(c.Url, url) || !headerName.Equals(c.HeaderName, StringComparison.OrdinalIgnoreCase)))
                 return Errors.BadRequest("Enter the header value again for the new address or header.");
             c.Url = url;

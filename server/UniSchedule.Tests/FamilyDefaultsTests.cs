@@ -192,6 +192,16 @@ public class FamilyDefaultsTests(ApiFactory factory) : IClassFixture<ApiFactory>
         using (var scope = factory.Services.CreateScope())
             await scope.ServiceProvider.GetRequiredService<AppDb>().Majors.Where(m => m.Id == cs).ExecuteUpdateAsync(u => u.SetProperty(m => m.Family, "FGCS2"));
         Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/majors/{cs}", new { code = "FGCS2", name = "Renamed", family = "" })).StatusCode);
+
+        // A call that sends no family keeps the one the major has, so it can't be renamed to that family's name either.
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/majors/{cs}", new { code = "FGCS2", name = "Renamed", family = "FGSOLO" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await owner.PutAsJsonAsync($"/api/admin/majors/{cs}", new { code = "FGSOLO", name = "Renamed" })).StatusCode);
+        var kept = (await Json(await owner.GetAsync("/api/admin/majors"))).EnumerateArray().First(m => m.GetProperty("id").GetInt32() == cs);
+        Assert.Equal(("FGCS2", "FGSOLO"), (kept.GetProperty("code").GetString(), kept.GetProperty("family").GetString()));
+        // One stuck like that can still be edited without sending a family.
+        using (var scope = factory.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<AppDb>().Majors.Where(m => m.Id == cs).ExecuteUpdateAsync(u => u.SetProperty(m => m.Family, "FGCS2"));
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/majors/{cs}", new { code = "FGCS2", name = "Renamed again" })).StatusCode);
     }
 
     [Fact]
@@ -234,16 +244,48 @@ public class FamilyDefaultsTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
-    public async Task Joining_a_family_that_has_defaults_adopts_them()
+    public async Task Joining_a_family_keeps_the_majors_defaults_as_its_own_and_changes_nobody_elses()
     {
-        var (owner, semester, cs, ai, _) = await Setup("FJ", 2049);
-        // AI on its own family with year 1 defaults; CS alone in FJCOMP with its own.
+        var (owner, semester, cs, ai, courses) = await Setup("FJ", 2049);
+        // CS alone in FJCOMP with year 1 defaults; AI alone in FJDATA with year 1 and year 2 defaults.
         Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/majors/{ai}", new { code = "FJAI", name = "AI", family = "FJDATA" })).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/semesters/{semester}/defaults", new[] { new { id = "FJ101", major = "FJCOMP", year = 1 }, new { id = "FJ102", major = "FJDATA", year = 1 } })).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/majors/{cs}", new { code = "FJCS", name = "CS", family = "FJDATA" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/semesters/{semester}/defaults", new[]
+        {
+            new { id = "FJ101", major = "FJCOMP", year = 1 }, new { id = "FJ102", major = "FJDATA", year = 1 }, new { id = "FJ102", major = "FJDATA", year = 2 },
+        })).StatusCode);
+        // AI joins CS's family: its defaults become its own, and none are dropped.
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/majors/{ai}", new { code = "FJAI", name = "AI", family = "FJCOMP" })).StatusCode);
         var listed = (await Json(await owner.GetAsync($"/api/admin/semesters/{semester}/defaults"))).EnumerateArray()
             .Select(d => $"{d.GetProperty("id").GetString()}|{d.GetProperty("major").GetString()}|{d.GetProperty("year").GetInt32()}").ToList();
-        Assert.Equal(["FJ102|FJDATA|1"], listed);
+        Assert.Equal(["FJ102|FJAI|1", "FJ102|FJAI|2", "FJ101|FJCOMP|1"], listed);
+
+        // CS in year 2 still gets the upload's course, not AI's old family default; each keeps its year 1 courses.
+        Assert.Equal([courses["FJ201"]], await Picked(await Student(cs, 2)));
+        Assert.Equal([courses["FJ101"]], await Picked(await Student(cs, 1)));
+        Assert.Equal([courses["FJ102"]], await Picked(await Student(ai, 2)));
+    }
+
+    [Fact]
+    public async Task Defaults_left_under_a_family_nobody_is_in_are_not_listed_and_give_way_to_a_major_moving_there()
+    {
+        var (owner, semester, cs, ai, courses) = await Setup("FK", 2053);
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/semesters/{semester}/defaults", new[] { new { id = "FK101", major = "FKCOMP", year = 1 } })).StatusCode);
+        // Left by the old rules: a family no major is in any more.
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+            db.CourseDefaults.Add(new CourseDefault { SemesterId = semester, CourseId = courses["FK201"], Family = "FKOLD", Year = 1 });
+            await db.SaveChangesAsync();
+        }
+        async Task<List<string>> Listed() => (await Json(await owner.GetAsync($"/api/admin/semesters/{semester}/defaults"))).EnumerateArray()
+            .Select(d => $"{d.GetProperty("id").GetString()}|{d.GetProperty("major").GetString()}|{d.GetProperty("year").GetInt32()}").ToList();
+        Assert.Equal(["FK101|FKCOMP|1"], await Listed());
+
+        // The family's last major moves to the old name: its defaults win over what was left there.
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/majors/{cs}", new { code = "FKCS", name = "CS", family = "FKOTHER" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/majors/{ai}", new { code = "FKAI", name = "AI", family = "FKOLD" })).StatusCode);
+        Assert.Equal(["FK101|FKOLD|1"], await Listed());
+        Assert.Equal([courses["FK101"]], await Picked(await Student(ai, 1)));
     }
 
     [Fact]
