@@ -16,6 +16,21 @@ public static class AuthEndpoints
     public record VerifyBody(string? UniversityId, string? Code);
     public record AdminLoginBody(string? Username, string? Password);
     public record ChangePasswordBody(string? CurrentPassword, string? NewPassword);
+    public record LogoutBody(string? Endpoint);
+
+    /// <summary>The notification endpoint a sign-out names, if any. The body is optional, and a bad one never stops the sign-out.</summary>
+    static async Task<string?> LogoutEndpoint(HttpContext http, CancellationToken ct)
+    {
+        if (!http.Request.HasJsonContentType()) return null;
+        try
+        {
+            return (await http.Request.ReadFromJsonAsync<LogoutBody>(ct))?.Endpoint is { Length: > 0 } e ? e : null;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
 
     static readonly PasswordHasher<AdminUser> Hasher = new();
     public static string HashPassword(AdminUser user, string password) => Hasher.HashPassword(user, password);
@@ -297,8 +312,15 @@ public static class AuthEndpoints
         }).RequireAuthorization();
 
         // Leaves the trusted-device cookie: signing out doesn't make this a stranger's browser.
-        auth.MapPost("/logout", async (HttpContext http) =>
+        // A student's device can send its notification endpoint, so it stops getting their notifications in the same
+        // step: if the sign-out doesn't get through, the device keeps them along with the sign-in.
+        auth.MapPost("/logout", async (HttpContext http, AppDb db, CancellationToken ct) =>
         {
+            if (http.User.IsStudent() && await LogoutEndpoint(http, ct) is { } endpoint)
+            {
+                var id = http.User.Id();
+                await db.PushSubscriptions.Where(x => x.StudentId == id && x.Endpoint == endpoint).ExecuteDeleteAsync(ct);
+            }
             await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             return Results.NoContent();
         });

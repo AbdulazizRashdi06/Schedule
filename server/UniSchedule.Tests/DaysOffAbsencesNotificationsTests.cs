@@ -301,6 +301,41 @@ public class DaysOffAbsencesNotificationsTests(ApiFactory factory) : IClassFixtu
     }
 
     [Fact]
+    public async Task Signing_out_with_this_device_endpoint_removes_only_that_device()
+    {
+        var (s, studentId) = await Student();
+        var (other, otherId) = await Student();
+        var (p256dh, auth) = DeviceKeys();
+        var phone = $"https://fcm.googleapis.com/fcm/send/logout-phone-{studentId}";
+        var laptop = $"https://fcm.googleapis.com/fcm/send/logout-laptop-{studentId}";
+        var theirs = $"https://fcm.googleapis.com/fcm/send/logout-theirs-{otherId}";
+        foreach (var e in new[] { phone, laptop })
+            Assert.Equal(HttpStatusCode.NoContent, (await s.PostAsJsonAsync("/api/me/push", new { endpoint = e, keys = new { p256dh, auth } })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await other.PostAsJsonAsync("/api/me/push", new { endpoint = theirs, keys = new { p256dh, auth } })).StatusCode);
+
+        // Naming someone else's device does nothing to it; the sign-out itself still happens.
+        Assert.Equal(HttpStatusCode.NoContent, (await s.PostAsJsonAsync("/api/auth/logout", new { endpoint = theirs })).StatusCode);
+        Assert.Equal(JsonValueKind.Null, (await Json(await s.GetAsync("/api/auth/session"))).GetProperty("kind").ValueKind);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+        Assert.True(await db.PushSubscriptions.AnyAsync(x => x.Endpoint == theirs));
+
+        // The other student signs out on their device: it's removed in the same step, their other devices stay.
+        Assert.Equal(HttpStatusCode.NoContent, (await other.PostAsJsonAsync("/api/me/push", new { endpoint = laptop, keys = new { p256dh, auth } })).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await other.PostAsJsonAsync("/api/auth/logout", new { endpoint = theirs })).StatusCode);
+        Assert.False(await db.PushSubscriptions.AnyAsync(x => x.Endpoint == theirs));
+        Assert.True(await db.PushSubscriptions.AnyAsync(x => x.Endpoint == laptop));
+        Assert.True(await db.PushSubscriptions.AnyAsync(x => x.Endpoint == phone));
+
+        // A sign-out without a body, or with one that isn't JSON, still signs out.
+        var (s2, _) = await Student();
+        Assert.Equal(HttpStatusCode.NoContent, (await s2.PostAsync("/api/auth/logout", null)).StatusCode);
+        var (s3, _) = await Student();
+        Assert.Equal(HttpStatusCode.NoContent, (await s3.PostAsync("/api/auth/logout", new StringContent("{not json", System.Text.Encoding.UTF8, "application/json"))).StatusCode);
+        Assert.Equal(JsonValueKind.Null, (await Json(await s3.GetAsync("/api/auth/session"))).GetProperty("kind").ValueKind);
+    }
+
+    [Fact]
     public async Task Publishing_a_semester_announces_it_once_to_students_with_a_device()
     {
         var (owner, s, studentId, sem, _, _) = await Setup();

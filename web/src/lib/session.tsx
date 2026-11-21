@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import { ApiError, api, store } from './api'
 import { resetAbsences } from './absences'
-import { disableDevice, resetNotifySettings } from './push'
+import { deviceSubscription, resetNotifySettings } from './push'
 import type { SessionInfo } from './types'
 import { resetTimetable } from '../student/timetable'
 
@@ -35,12 +35,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, [])
   const logout = useCallback(async () => {
-    // First, while still signed in: this device stops getting this student's reminders, so the next person to use it
-    // doesn't see them.
-    await disableDevice().catch(() => {})
+    // The server drops this device's notifications in the same step as the sign-in, so the next person to use it
+    // doesn't see this student's reminders.
+    const sub = await deviceSubscription().catch(() => null)
     // Only the server's answer clears the sign-in cookie: if it doesn't come (offline, server restarting), this throws
-    // and the student stays signed in here too, rather than being told they're out while the cookie still works.
-    await api.post('/auth/logout')
+    // and the student stays signed in here too, with notifications still on, rather than being told they're out while
+    // the cookie still works.
+    await api.post('/auth/logout', sub ? { endpoint: sub.endpoint } : {})
+    await sub?.unsubscribe().catch(() => {})
     store.remove(SAVED)
     store.remove('timetable')
     resetAbsences()

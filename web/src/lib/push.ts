@@ -66,12 +66,17 @@ export async function enableDevice(): Promise<EnableResult> {
   return 'on'
 }
 
-/** Stops notifications on this device. */
-export async function disableDevice() {
-  if (!pushSupported()) return
+/** This browser's push subscription, if it has one. */
+export async function deviceSubscription() {
+  if (!pushSupported()) return null
   // No worker registered means no subscription; don't register one (or wait for it) just to find that out.
   const reg = await navigator.serviceWorker.getRegistration('/')
-  const sub = await reg?.pushManager.getSubscription()
+  return (await reg?.pushManager.getSubscription()) ?? null
+}
+
+/** Stops notifications on this device. */
+export async function disableDevice() {
+  const sub = await deviceSubscription()
   if (!sub) return
   await api.post('/me/push/remove', { endpoint: sub.endpoint }).catch(() => {})
   await sub.unsubscribe()
