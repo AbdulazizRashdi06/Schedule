@@ -18,7 +18,7 @@ public sealed record SemesterSpan(DateOnly First, DateOnly Last, Dictionary<Date
 
     public static async Task<SemesterSpan> ForAsync(AppDb db, Semester s, CancellationToken ct)
     {
-        // Not guessed from dated classes while there are weekly ones too (one dated lab would make the whole semester a
+        // Not guessed from dated classes while most sections are weekly (one dated lab would make the whole semester a
         // week long), nor from when it was published (a semester published in week 5 still had weeks 1 to 4).
         var t = await SemesterWeeks.TeachingAsync(db, s, ct);
         return new(t.First, t.First.AddDays(t.Count * 7 - 1), await UniSchedule.Api.Schedule.DaysOff.ForAsync(db, s.Id, ct),

@@ -120,6 +120,39 @@ public class TeachingWeeksTests
     }
 
     [Fact]
+    public async Task One_weekly_class_added_to_a_dated_timetable_keeps_the_weeks_from_the_class_dates()
+    {
+        using var w = new World();
+        await w.Init(new Meeting { Day = 3, Start = new(8, 0), End = new(9, 30), Room = "R1", Date = new(2026, 9, 23) },
+            new Meeting { Day = 1, Start = new(8, 0), End = new(9, 30), Room = "R1", Date = new(2026, 12, 7) });
+        using (var scope = w.Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+            var other = new Course { SemesterId = w.Semester, Code = "WK102", Name = "Another dated course", Type = CourseType.Core, Year = 1 };
+            other.Sections.Add(new() { Number = "1", Meetings = [new() { Day = 4, Start = new(12, 0), End = new(13, 0), Room = "R3", Date = new(2026, 10, 1) }] });
+            db.Courses.Add(other); await db.SaveChangesAsync();
+        }
+        var before = await w.Read();
+        Assert.Equal(("2026-09-20", (int?)12), (before.Week1, before.LastWeek));
+
+        // Staff add a weekly tutorial to one section in the section editor.
+        Assert.Equal(HttpStatusCode.OK, (await w.Owner.PutAsJsonAsync($"/api/admin/sections/{w.Section2}", new
+        {
+            instructor = "",
+            meetings = new object[]
+            {
+                new { day = 2, start = "10:00", end = "11:00", room = "R2", date = "2026-09-22" },
+                new { day = 0, start = "14:00", end = "15:00", room = "R2", date = (string?)null },
+            },
+        })).StatusCode);
+
+        // Still numbered from the class dates, and the tutorial meets in those weeks.
+        var after = await w.Read();
+        Assert.Equal(before, after);
+        Agree(after);
+    }
+
+    [Fact]
     public async Task With_weekly_classes_a_dated_class_does_not_set_the_weeks()
     {
         using var w = new World();

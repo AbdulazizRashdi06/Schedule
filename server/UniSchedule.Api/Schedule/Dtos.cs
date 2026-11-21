@@ -44,18 +44,21 @@ public static class SemesterWeeks
     }
 
     /// <summary>
-    /// Week 1 is the one staff set. Without it, it's the week of the first class when every class is dated (then the
-    /// dated classes are the whole timetable); with weekly classes too, a dated lab says nothing about when term starts,
-    /// so it's the term's usual start (1 September, 1 February or 1 June) and the weeks aren't numbered. The last week is
-    /// the one staff set (only with week 1: a last week counts from it), else the week of the last dated class when every
-    /// class is dated, else <see cref="SemesterSpan.DefaultWeeks"/> weeks on.
+    /// Week 1 is the one staff set. Without it, it's the week of the first dated class when most sections are dated (then
+    /// the dated classes are the timetable, and a weekly tutorial staff added to one section doesn't change that); when
+    /// most are weekly, a dated lab says nothing about when term starts, so it's the term's usual start (1 September,
+    /// 1 February or 1 June) and the weeks aren't numbered. The last week is the one staff set (only with week 1: a last
+    /// week counts from it), else the week of the last dated class when most sections are dated, else
+    /// <see cref="SemesterSpan.DefaultWeeks"/> weeks on.
     /// </summary>
     public static async Task<Teaching> TeachingAsync(Microsoft.EntityFrameworkCore.DbContext db, Semester s, CancellationToken ct)
     {
-        var meetings = db.Set<Meeting>().Where(m => db.Set<Section>().Any(x => x.Id == m.SectionId && x.Course.SemesterId == s.Id));
+        var meetings = db.Set<Meeting>().Where(m => m.Date != null && db.Set<Section>().Any(x => x.Id == m.SectionId && x.Course.SemesterId == s.Id));
+        var sections = db.Set<Section>().Where(x => x.Course.SemesterId == s.Id && x.Meetings.Any());
         DateOnly? min = null, max = null;
         if ((s.Week1Start is null || s.LastWeek is null)
-            && !await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AnyAsync(meetings, m => m.Date == null, ct))
+            && await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(sections, x => x.Meetings.All(m => m.Date != null), ct)
+               > await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(sections, x => x.Meetings.Any(m => m.Date == null), ct))
         {
             min = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.MinAsync(meetings, m => m.Date, ct);
             max = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.MaxAsync(meetings, m => m.Date, ct);
