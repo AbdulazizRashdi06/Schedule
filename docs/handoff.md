@@ -26,7 +26,7 @@ For the next session (local Claude Code on the laptop). Read this first, then `R
 | `create-admin <username> <owner\|rsa>` CLI | `Cli.cs` |
 | Dev seed (Fall 2026 from sample data, login `dev-owner` / `dev-password`) | `DevSeed.cs` |
 | Frontend (React + TS + Vite + Tailwind) | `web/src` (`student/`, `admin/`, `components/`, `lib/`) |
-| Tests: 64 xUnit (time parsing, files, import diff, clashes, auth flow, sample files) | `server/UniSchedule.Tests` |
+| Tests: 265 xUnit (time parsing, files, import diff, clashes, auth flow, sign-in safety, workers, planner, sample files) | `server/UniSchedule.Tests` |
 | Docker, compose, deploy script, Caddy block | `deploy/` |
 | Mock data | `sample-data/fall-2026.csv`, `sample-data/spring-2027.csv` and `.xlsx` |
 
@@ -51,7 +51,10 @@ For the next session (local Claude Code on the laptop). Read this first, then `R
 - **Edits to a live semester** (upload or single-section edit) show a "Changed" badge to students who picked that section. Edits before publishing don't.
 - **Removed sections** clear the pick and flag the student to re-pick. A banner on their timetable links to Edit my courses.
 - **Allowed electives** are stored by course code (`MajorElective`), so they carry over between semesters. Electives with no major in the upload are open to everyone.
-- **Rate limits** are per IP per 5 minutes: 1000 code requests, 2000 verifies, 600 public timetable reads (campus Wi-Fi shares one IP; each ID has its own tighter limits). In production they can be changed with `RATE_LIMIT_REQUEST_CODE` / `RATE_LIMIT_VERIFY` / `RATE_LIMIT_PUBLIC_TIMETABLE` in `deploy/.env`.
+- **Rate limits** are per IP per 5 minutes: 1000 code requests, 2000 verifies, 600 public timetable reads (campus Wi-Fi shares one IP; each ID has its own tighter limits), plus 300 wrong codes per IP per hour. In production they can be changed with `RATE_LIMIT_REQUEST_CODE` / `RATE_LIMIT_VERIFY` / `RATE_LIMIT_PUBLIC_TIMETABLE` / `RATE_LIMIT_WRONG_CODES_PER_HOUR` in `deploy/.env`.
+- **Sign-in codes only work in the browser that asked for them**, and each ID has daily caps (20 codes, 30 wrong codes) that browsers it has signed in on before skip. Details in `README.md` (Sign-in). Codes sent before the `S1AuthBinding` migration stop working.
+- **Dashboard lockout:** 5 wrong passwords lock a username on that IP for 15 minutes, even for the right password, so someone on the same Wi-Fi as an admin can still keep them out. The account-wide lock (20 wrong from anywhere) lets the right password in.
+- **Changes from other origins are refused:** POST/PUT/DELETE to `/api` with cookies must come from the app's own origin (or the Classy Sync extension). A front end served from another host won't work.
 - **Data** lives in the `uni-schedule_data` Docker volume: SQLite + data-protection keys. Sessions survive restarts. Migrations run at startup. A backup command is in `deploy/README.md`.
 
 ## Run and check locally
@@ -59,7 +62,7 @@ For the next session (local Claude Code on the laptop). Read this first, then `R
 ```bash
 cd server/UniSchedule.Api && dotnet run --launch-profile http   # API :5085, seeds Fall 2026
 cd web && npm install && npm run dev                            # app :5173
-cd server && dotnet test                                        # 64 tests
+cd server && dotnet test                                        # 265 tests
 cd web && npx tsc -b && npx eslint .
 ```
 

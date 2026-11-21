@@ -24,6 +24,8 @@ services:
       RateLimits__RequestCode: ${RATE_LIMIT_REQUEST_CODE:-1000}
       RateLimits__Verify: ${RATE_LIMIT_VERIFY:-2000}
       RateLimits__PublicTimetable: ${RATE_LIMIT_PUBLIC_TIMETABLE:-600}
+      # Wrong sign-in codes per IP per rolling hour, across all IDs.
+      RateLimits__WrongCodesPerHour: ${RATE_LIMIT_WRONG_CODES_PER_HOUR:-300}
       # Extra EduWave course codes for Classy Sync, comma-separated. Set it empty for none.
       Sync__ExtraCodes: ${SYNC_EXTRA_CODES-CS1102-L}
       # The owners' dashboard setting wins over Planner__Enabled.

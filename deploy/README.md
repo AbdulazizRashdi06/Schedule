@@ -32,6 +32,7 @@ Run everything below **from the laptop**: the SSH key (`~/.ssh/zarqa_vps`) is on
    | Variable | Default | Meaning |
    |---|---|---|
    | `RATE_LIMIT_REQUEST_CODE`, `RATE_LIMIT_VERIFY`, `RATE_LIMIT_PUBLIC_TIMETABLE` | 1000, 2000, 600 | Per IP per 5 minutes: sign-in code requests, code checks, public timetable reads |
+   | `RATE_LIMIT_WRONG_CODES_PER_HOUR` | 300 | Wrong sign-in codes per IP per rolling hour, across all IDs |
    | `SYNC_EXTRA_CODES` | `CS1102-L` | Extra EduWave course codes for Classy Sync, comma-separated; empty for none |
    | `PLANNER_ENABLED`, `PLANNER_AI_URL`, `PLANNER_AI_MODEL` | `false`, `http://codex:8090/v1/chat/completions`, `gpt-6-luna` | Semester planner; the owners' dashboard setting wins over `PLANNER_ENABLED` |
    | `ANALYTICS_ENABLED` | `true` | Usage analytics |
@@ -67,6 +68,13 @@ Use `owner` instead of `rsa` for an owner account. Running it again for an exist
 - **Restore a backup:** stop the app, empty the volume and unpack the whole archive, so `schedule.db` comes back together with any `schedule.db-wal` and the `keys/` from the same backup, then start it:
   `ssh -i ~/.ssh/zarqa_vps deploy@173.249.40.122 "cd /opt/uni-schedule && docker compose -f deploy/docker-compose.yml --env-file deploy/.env stop && docker run --rm -v uni-schedule_data:/d -v /opt/uni-schedule/backups:/b:ro alpine sh -c 'own=\$(stat -c %u:%g /d) && rm -rf /d/* && tar xzf /b/db-YYYYMMDD-HHMMSS.tgz -C /d && chown -R \$own /d' && docker compose -f deploy/docker-compose.yml --env-file deploy/.env start"`
 - Database migrations run automatically at startup.
+- The page (`index.html`) is sent with `Cache-Control: no-cache` and the service worker fetches it fresh, so a deploy shows on the next visit without a hard reload.
+
+## First deploy after the audit fixes
+
+- The `S1AuthBinding` migration ties sign-in codes to the browser that asked, so codes sent before the deploy stop working; students just ask for a new one. Students already signed in stay signed in.
+- Owners reload the unpacked Classy Sync extension once (`chrome://extensions` → Reload) to get its fixes.
+- Server `.env` files need no change: `RATE_LIMIT_WRONG_CODES_PER_HOUR` is optional and defaults to the server's 300.
 
 ## Deploying from GitHub
 

@@ -52,6 +52,13 @@ One row per section meeting time; the header row names the columns (any order, c
 
 `.xlsx`, `.csv`, or rows pasted straight from Excel.
 
+## Sign-in
+
+- A sign-in code only works in the browser that asked for it (HttpOnly `unischedule-login` cookie, 24 hours). Asking again in that browser cancels the old code.
+- Per ID and browser: one code a minute, 4 per 15 minutes. Per ID across all browsers: 20 codes and 30 wrong codes per rolling 24 hours. A browser that has signed in as that ID before (`unischedule-device` cookie, 1 year, kept on sign-out) skips the daily caps.
+- Dashboard: 5 wrong passwords from one IP lock that username on that IP for 15 minutes. 20 wrong in 15 minutes from anywhere lock the account against wrong passwords only; the right one still signs in.
+- POST/PUT/DELETE requests to `/api` that carry cookies are refused when they come from another origin (Classy Sync's extension origin and its Bearer token are allowed). Serve the web app from the API's own origin; the Vite dev proxy does.
+
 ## Configuration
 
 | Setting (env var) | Default | |
@@ -62,6 +69,7 @@ One row per section meeting time; the header row names the columns (any order, c
 | `Email__Provider` | `log` | `log` or `resend` |
 | `Email__ResendApiKey`, `Email__From` | | for Resend |
 | `RateLimits__RequestCode`, `RateLimits__Verify`, `RateLimits__PublicTimetable` | 1000, 2000, 600 | per IP per 5 minutes: a flood guard, since campus Wi-Fi shares one IP (each ID has its own tighter limits) |
+| `RateLimits__WrongCodesPerHour` | 300 | wrong sign-in codes per IP per rolling hour, across all IDs |
 | `Sync__ExtraCodes` | `CS1102-L` | extra EduWave course codes for Classy Sync, comma-separated |
 | `Planner__Enabled`, `Planner__AiUrl`, `Planner__AiModel` | `false`, `http://codex:8090/v1/chat/completions`, `gpt-6-luna` | semester planner; the owners' dashboard setting wins over `Planner__Enabled` |
 | `Analytics__Enabled` | `true` | usage analytics |
