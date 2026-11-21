@@ -12,6 +12,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 let looping = false
 let stopping = false
 const stale = (run) => run && !looping && Date.now() - (run.startedAt || 0) > MAX_RUN_MS
+const same = (a, b) => !!a && !!b && a.startedAt === b.startedAt
 
 function badge(text, colour = '#0b1957') {
   chrome.action.setBadgeText({ text })
@@ -56,13 +57,17 @@ async function fetchCourse(form, code) {
 
 // ---- A sync ----
 
-async function start() {
+/** Starts a sync, or carries on the stored one. With `replacing`, it only starts again in place of that old run,
+ * so a Stop pressed meanwhile isn't undone by a new sync. */
+async function start(replacing) {
   const { token, form, ...saved } = await get(['token', 'form', 'run'])
+  if (replacing && !same(saved.run, replacing)) return
   if (!token) throw new Error('Connect to Classy first.')
   if (!form) throw new Error('Open Advisor Plan in EduWave (through its menu) first.')
   const run = stale(saved.run) ? null : saved.run
   if (run && (run.status === 'running' || run.status === 'paused')) return resume()
   const list = await classy('/sync/courses')
+  if (replacing && !same((await get('run')).run, replacing)) return
   await set({
     run: {
       status: 'running',
@@ -129,20 +134,30 @@ async function loop() {
 
 async function finish(run) {
   badge('↑')
+  // Stop (and then maybe Sync now) can change the stored run during the upload: only touch it if it is still this one.
+  const mine = async () => same((await get('run')).run, run)
   try {
     const result = await classy('/sync/timetable', {
       method: 'POST',
       body: JSON.stringify({ semesterId: run.semesterId, rows: run.rows, failed: run.failed }),
     })
-    await set({ run: null, last: { at: Date.now(), ok: true, result, failed: run.failed.length } })
+    const last = { at: Date.now(), ok: true, result, failed: run.failed.length }
+    if (!(await mine())) return set({ last })
+    await set({ run: null, last })
     badge('')
   } catch (e) {
+    const ours = await mine()
     if (e.status === 401) {
+      if (!ours) return // stopped: don't bring it back
       // Keep the classes fetched so far: after Connect, Carry on sends them again.
       run.status = 'paused'
       run.message = 'Classy didn’t accept this browser’s connection. Press Connect to Classy, then Carry on.'
       await set({ run })
-    } else await set({ run: null, last: { at: Date.now(), ok: false, error: e.message } })
+    } else {
+      const last = { at: Date.now(), ok: false, error: e.message }
+      if (!ours) return set({ last })
+      await set({ run: null, last })
+    }
     badge('!', '#b3261e')
   }
 }
@@ -218,7 +233,9 @@ function carryOn() {
   carried ??= get('run').then(({ run }) => {
     if (run?.status !== 'running') return
     if (!stale(run)) return loop()
-    start().catch((e) => set({ run: null, last: { at: Date.now(), ok: false, error: e.message } }))
+    start(run).catch(async (e) => {
+      if (same((await get('run')).run, run)) await set({ run: null, last: { at: Date.now(), ok: false, error: e.message } })
+    })
   })
   return carried
 }

@@ -44,7 +44,8 @@
     return String(h).padStart(2, '0') + ':' + m[2]
   }
   // One entry per <br>, as plain text (so &amp; reads as &). Blank entries keep their place, so a blank room or time
-  // doesn't shift the later classes onto the wrong one; only blanks at the end are dropped.
+  // doesn't shift the later classes onto the wrong one. Blanks at the end are dropped, so a missing last room falls back
+  // to the first room.
   const split = (cell) => {
     const parts = cell.innerHTML.split(/<br\s*\/?>/i).map((s) => {
       const t = document.createElement('template')
