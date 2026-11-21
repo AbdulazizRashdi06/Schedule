@@ -19,8 +19,6 @@ public static partial class Timeslots
         ["sat"] = 6, ["saturday"] = 6, ["sa"] = 6,
     };
 
-    static readonly int LongestWord = Words.Keys.Max(k => k.Length);
-
     /// <summary>Returns the distinct days in week order, or null when a part isn't a day.</summary>
     public static List<int>? ParseDays(string? cell)
     {
@@ -29,8 +27,11 @@ public static partial class Timeslots
         foreach (var token in Regex.Split(cell.Trim(), @"[\s,/;&+|\-]+|\band\b", RegexOptions.IgnoreCase))
         {
             if (token.Length == 0) continue;
+            // Compact forms: "MW", "TTh", "UTR", "SuTuTh". In mixed case capitals start the days: "SaTu" is
+            // Sat+Tue (not Sat+u), "TuThu" is Tue+Thu and "SaT" is Sat+Tue.
+            var pieces = token.Any(char.IsLower) ? Regex.Split(token, @"(?=\p{Lu})").Where(p => p.Length > 0).ToList() : [];
+            if (pieces.Count > 1 && pieces.All(Words.ContainsKey)) { days.UnionWith(pieces.Select(p => Words[p])); continue; }
             if (Words.TryGetValue(token, out var d)) { days.Add(d); continue; }
-            // Compact forms: "MW", "TTh", "UTR", "SuTuTh".
             var compact = ParseCompact(token);
             if (compact is null) return null;
             days.UnionWith(compact);
@@ -40,18 +41,22 @@ public static partial class Timeslots
 
     static List<int>? ParseCompact(string token)
     {
-        var result = new List<int>();
-        var i = 0;
-        while (i < token.Length)
-        {
-            // Longest name first, so "TuThu" is Tue+Thu and not Tue+Th+u (Sunday), and "FSat" is Fri+Sat.
-            var len = Math.Min(LongestWord, token.Length - i);
-            while (len > 0 && !Words.ContainsKey(token.Substring(i, len))) len--;
-            if (len == 0) return null;
-            result.Add(Words[token.Substring(i, len)]);
-            i += len;
-        }
-        return result;
+        // The split into the fewest day names ("TUTHU" is TU+THU, not TU+TH+U), and none when two such
+        // splits give different days ("SATU": SA+TU or SAT+U), so a row error rather than a wrong day.
+        // best[i]: the fewest names that make up token[i..], with the sets of days (as bits) those splits give.
+        var best = new (int Count, HashSet<int> Masks)?[token.Length + 1];
+        best[token.Length] = (0, [0]);
+        for (var i = token.Length - 1; i >= 0; i--)
+            for (var len = 1; i + len <= token.Length; len++)
+            {
+                if (!Words.TryGetValue(token.Substring(i, len), out var d) || best[i + len] is not { } rest) continue;
+                var count = rest.Count + 1;
+                if (best[i] is null || best[i]!.Value.Count > count) best[i] = (count, []);
+                if (best[i]!.Value.Count == count) best[i]!.Value.Masks.UnionWith(rest.Masks.Select(m => m | 1 << d));
+            }
+        if (best[0] is not { Masks: { Count: 1 } masks }) return null;
+        var mask = masks.Single();
+        return [.. Enumerable.Range(0, 7).Where(d => (mask & 1 << d) != 0)];
     }
 
     // [0-9], not \d: \d also matches Arabic-Indic digits, which int.Parse can't read.
@@ -79,6 +84,8 @@ public static partial class Timeslots
         {
             start = Resolve(ah, am, ap, afternoon: true);
             end = Resolve(bh, bm, bp, afternoon: true);
+            // But "07:30-06:45" is a typo, not an 11-hour class.
+            if (start is { } s && end is { } e && e > s && e - s > TimeSpan.FromHours(6)) return null;
         }
         if (start is null || end is null || end <= start) return null;
         return (start.Value, end.Value);

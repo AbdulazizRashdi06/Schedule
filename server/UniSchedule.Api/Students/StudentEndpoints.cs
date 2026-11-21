@@ -91,7 +91,8 @@ public static class StudentEndpoints
 
     static async Task<List<int>> DefaultsWithoutLabs(AppDb db, int semesterId, int majorId, int year, CancellationToken ct)
     {
-        var defaults = db.CourseDefaults.Where(d => d.SemesterId == semesterId && d.Year == year);
+        // Settings for courses with no sections don't count, so when all of them are left out the next choice is used.
+        var defaults = db.CourseDefaults.Where(d => d.SemesterId == semesterId && d.Year == year && d.Course.Sections.Any());
         var own = await defaults.Where(d => d.MajorId == majorId).Select(d => d.CourseId).ToListAsync(ct);
         if (own.Count > 0) return own;
         var family = await db.Majors.Where(m => m.Id == majorId).Select(m => m.Family).FirstOrDefaultAsync(ct);

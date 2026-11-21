@@ -131,6 +131,22 @@ public class UploadFollowUpTests(ApiFactory factory) : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task When_every_default_of_a_year_has_no_sections_the_core_courses_are_ticked_instead()
+    {
+        var full = Header +
+            "KB101,Programming,KBM,Core,1,1,A,Sun,08:00-09:30,R1\n" +
+            "KB201,Data Structures,KBM,Core,1,1,B,Tue,08:00-09:30,R2\n";
+        var (owner, semester, major) = await Setup("KB", 2056, full);
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/semesters/{semester}/defaults", new[]
+        {
+            new { id = "KB201", major = "KBM", year = 1 },
+        })).StatusCode);
+        // KB201 is kept with no sections for its setting, which then counts as no setting.
+        await Upload(owner, semester, string.Join("\n", full.Split('\n').Where(l => !l.StartsWith("KB201"))));
+        Assert.Equal([await CourseId("KB101")], (await Picks(await Student(major, 1))).Select(p => p.GetProperty("courseId").GetInt32()));
+    }
+
+    [Fact]
     public async Task A_family_code_in_the_major_column_is_refused_and_defaults_never_move_to_a_major_of_that_name()
     {
         var (owner, semester, major) = await Setup("NQ", 2053, Header + "NQ101,Programming,NQM,Core,1,1,A,Sun,08:00-09:30,R1\n");
@@ -171,6 +187,19 @@ public class UploadFollowUpTests(ApiFactory factory) : IClassFixture<ApiFactory>
         }
         Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/semesters/{semester}/defaults", Array.Empty<object>())).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/semesters/{semester}/defaults", new[] { new { id = "NB 1101", major = "NBM", year = 1 } })).StatusCode);
+
+        // When the older of the two is the one left with no sections, the setting goes to the one students can take.
+        int live;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+            var ids = await db.Courses.Where(c => c.SemesterId == semester).OrderBy(c => c.Id).Select(c => c.Id).ToListAsync();
+            live = ids[1];
+            await db.Sections.Where(x => x.CourseId == ids[0]).ExecuteUpdateAsync(u => u.SetProperty(x => x.CourseId, live));
+        }
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/semesters/{semester}/defaults", new[] { new { id = "NB1101", major = "NBM", year = 1 } })).StatusCode);
+        using (var scope = factory.Services.CreateScope())
+            Assert.Equal(live, await scope.ServiceProvider.GetRequiredService<AppDb>().CourseDefaults.Where(d => d.SemesterId == semester).Select(d => d.CourseId).SingleAsync());
     }
 
     [Fact]

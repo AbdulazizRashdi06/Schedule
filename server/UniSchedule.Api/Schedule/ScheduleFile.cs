@@ -57,15 +57,16 @@ public static class ScheduleFile
 
     /// <summary>
     /// A real Excel date or time is read by its value, not as Excel shows it: the display format is often
-    /// month-first or a pattern like "h:mm tt". Dates come out as 2026-09-21 and times as 13:30.
+    /// month-first or a pattern like "h:mm tt". Dates come out as 2026-09-21 and times as 13:30 or 2:00.
+    /// A time has no leading zero: one typed as 2:00 is meant as the afternoon, and "02:00" would read as 2 a.m.
     /// </summary>
     static string CellText(IXLCell c)
     {
-        if (c.DataType == XLDataType.TimeSpan) return c.GetTimeSpan().ToString(@"hh\:mm", CultureInfo.InvariantCulture);
+        if (c.DataType == XLDataType.TimeSpan) return c.GetTimeSpan().ToString(@"h\:mm", CultureInfo.InvariantCulture);
         if (c.DataType != XLDataType.DateTime) return c.GetFormattedString().Trim();
         var d = c.GetDateTime();
         // Excel keeps a time on its own as a fraction of day 0 (30 Dec 1899).
-        if (d.Year < 1900) return d.ToString("HH:mm", CultureInfo.InvariantCulture);
+        if (d.Year < 1900) return d.ToString("H:mm", CultureInfo.InvariantCulture);
         return d.TimeOfDay == TimeSpan.Zero
             ? d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
             : d.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);

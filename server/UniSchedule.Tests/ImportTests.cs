@@ -279,5 +279,10 @@ public sealed class ImportTests : IDisposable
         // A new overlap is still refused.
         (_, problem) = AdminEndpoints.ParseMeetings([.. same, new AdminEndpoints.MeetingBody(0, "09:00", "10:00", "R3")], stored);
         Assert.Equal("Two meetings overlap on Sun.", problem);
+        // So is a second copy of a stored meeting: each stored one only covers itself once.
+        (_, problem) = AdminEndpoints.ParseMeetings([.. same, same[0]], stored);
+        Assert.Equal("Two meetings overlap on Sun.", problem);
+        (_, problem) = AdminEndpoints.ParseMeetings([same[0], same[0]], stored.Take(1));
+        Assert.Equal("Two meetings overlap on Sun.", problem);
     }
 }

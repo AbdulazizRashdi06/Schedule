@@ -181,7 +181,8 @@ public static class AdminEndpoints
             if (body is null) return Errors.BadRequest("Send a list of { id, major, year }.");
             if (body.Count > 5000) return Errors.BadRequest("Too many rows.");
             // Grouped: two stored codes that differ only by spacing ("NB1101" and "NB 1 101" with a non-breaking space) mustn't crash.
-            var courses = (await db.Courses.Where(c => c.SemesterId == id).OrderBy(c => c.Id).Select(c => new { c.Id, c.Code }).ToListAsync(ct))
+            // Of those, the one with sections: the other was left by an upload and can't be taken.
+            var courses = (await db.Courses.Where(c => c.SemesterId == id).OrderByDescending(c => c.Sections.Any()).ThenBy(c => c.Id).Select(c => new { c.Id, c.Code }).ToListAsync(ct))
                 .GroupBy(c => CodeKey(c.Code)).ToDictionary(g => g.Key, g => g.First().Id);
             var majors = await db.Majors.ToListAsync(ct);
             var families = majors.Where(m => m.Family is not null).Select(m => m.Family!).ToHashSet();
@@ -580,10 +581,12 @@ public static class AdminEndpoints
     /// <summary>
     /// <paramref name="stored"/>: the section's meetings now. Two of them that overlap may stay (an upload can list a
     /// class in two rooms), so editing anything else still saves; only a new overlap is refused.
+    /// Each stored meeting covers one sent meeting, so a copy of one is still a new overlap.
     /// </summary>
     public static (List<Meeting>? Meetings, string? Problem) ParseMeetings(List<MeetingBody>? input, IEnumerable<Meeting>? stored = null)
     {
-        var kept = (stored ?? []).Select(ParsedMeeting.Of).ToHashSet();
+        var unmatched = (stored ?? []).Select(ParsedMeeting.Of).ToList();
+        var kept = new List<bool>();
         if (input is null || input.Count == 0) return (null, "Add at least one meeting time.");
         if (input.Count > 400) return (null, "Too many meetings.");
         var list = new List<Meeting>();
@@ -602,8 +605,10 @@ public static class AdminEndpoints
             var room = m.Room?.Trim() ?? "";
             if (room.Length > 60) return (null, "The room name is too long.");
             var meeting = new Meeting { Day = day, Start = start, End = end, Room = room, Date = date };
-            if (list.Any(x => Clashes.Overlap(x, meeting) && !(kept.Contains(ParsedMeeting.Of(x)) && kept.Contains(ParsedMeeting.Of(meeting))))) return (null, $"Two meetings overlap on {(date is null ? Timeslots.DayNames[day] : date.Value.ToString("d MMM"))}.");
+            var isKept = unmatched.Remove(ParsedMeeting.Of(meeting));
+            if (list.Where((x, i) => Clashes.Overlap(x, meeting) && !(kept[i] && isKept)).Any()) return (null, $"Two meetings overlap on {(date is null ? Timeslots.DayNames[day] : date.Value.ToString("d MMM"))}.");
             list.Add(meeting);
+            kept.Add(isKept);
         }
         return (list, null);
     }

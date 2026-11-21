@@ -22,6 +22,17 @@ public class TimeslotsTests
     [InlineData("FSat", new[] { 5, 6 })]
     [InlineData("ThSat", new[] { 4, 6 })]
     [InlineData("MonWed", new[] { 1, 3 })]
+    // Capitals start the days, so "Sat" isn't taken out of "SaTu" (no phantom Sunday, no lost Tuesday).
+    [InlineData("SaTu", new[] { 2, 6 })]
+    [InlineData("SaTuTh", new[] { 2, 4, 6 })]
+    [InlineData("SaT", new[] { 2, 6 })]
+    [InlineData("SaTh", new[] { 4, 6 })]
+    // In one case, the split into the fewest days.
+    [InlineData("TUTHU", new[] { 2, 4 })]
+    [InlineData("tuthu", new[] { 2, 4 })]
+    [InlineData("FSAT", new[] { 5, 6 })]
+    [InlineData("TTH", new[] { 2, 4 })]
+    [InlineData("SUTUTH", new[] { 0, 2, 4 })]
     public void ParseDays_reads_common_forms(string cell, int[] expected) =>
         Assert.Equal(expected, Timeslots.ParseDays(cell));
 
@@ -30,6 +41,8 @@ public class TimeslotsTests
     [InlineData("  ")]
     [InlineData("Xyz")]
     [InlineData("Mon/Funday")]
+    // SA+TU or SAT+U: the days differ, so it's an error and not a guess.
+    [InlineData("SATU")]
     public void ParseDays_rejects_garbage(string cell) => Assert.Null(Timeslots.ParseDays(cell));
 
     [Theory]
@@ -70,6 +83,8 @@ public class TimeslotsTests
     [InlineData("25:00-26:00")]
     [InlineData("8:75-9:00")]
     [InlineData("noon-1")]
+    // Reading 06:45 as the afternoon would make an 11-hour class: a typo.
+    [InlineData("07:30-06:45")]
     public void ParseRange_rejects_bad_ranges(string cell) => Assert.Null(Timeslots.ParseRangeLoose(cell));
 
     [Theory]

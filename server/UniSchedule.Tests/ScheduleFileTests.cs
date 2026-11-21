@@ -90,13 +90,38 @@ public class ScheduleFileTests
         ms.Position = 0;
         var read = ScheduleFile.Read(ms, "fall.xlsx");
         Assert.Equal(["2026-09-05", "2026-09-21", "2026-09-21"], read.Rows.Select(r => r.Date));
-        Assert.All(read.Rows, r => Assert.Equal("08:00 - 13:30", r.Time));
+        Assert.All(read.Rows, r => Assert.Equal("8:00 - 13:30", r.Time));
 
         var parsed = ScheduleImport.Parse(read.Rows);
         Assert.Empty(parsed.Errors);
         var meetings = Assert.Single(parsed.Courses).Sections.SelectMany(s => s.Meetings).ToList();
         Assert.Equal([new DateOnly(2026, 9, 5), new DateOnly(2026, 9, 21), new DateOnly(2026, 9, 21)], meetings.Select(m => m.Date));
         Assert.All(meetings, m => Assert.Equal((new TimeOnly(8, 0), new TimeOnly(13, 30)), (m.Start, m.End)));
+    }
+
+    /// <summary>Typed as 2:00 and 3:15 (Excel keeps 2 a.m., shown as h:mm): the afternoon, as the same text would be.</summary>
+    [Fact]
+    public void Excel_times_typed_without_pm_are_the_afternoon()
+    {
+        using var book = new XLWorkbook();
+        var sheet = book.AddWorksheet("Fall");
+        string[] header = ["Course Code", "Section", "Days", "Start", "End", "Type"];
+        for (var c = 0; c < header.Length; c++) sheet.Cell(1, c + 1).Value = header[c];
+        sheet.Cell(2, 1).Value = "LS101";
+        sheet.Cell(2, 2).Value = 1;
+        sheet.Cell(2, 3).Value = "Sun";
+        sheet.Cell(2, 4).Value = 2.0 / 24;
+        sheet.Cell(2, 5).Value = 3.25 / 24;
+        sheet.Cell(2, 6).Value = "LS";
+        sheet.Cell(2, 4).Style.NumberFormat.NumberFormatId = 20;
+        sheet.Cell(2, 5).Style.NumberFormat.NumberFormatId = 20;
+        using var ms = new MemoryStream();
+        book.SaveAs(ms);
+        ms.Position = 0;
+        var read = ScheduleFile.Read(ms, "fall.xlsx");
+        Assert.Equal("2:00 - 3:15", Assert.Single(read.Rows).Time);
+        var meeting = Assert.Single(ScheduleImport.Parse(read.Rows).Courses).Sections.Single().Meetings.Single();
+        Assert.Equal((new TimeOnly(14, 0), new TimeOnly(15, 15)), (meeting.Start, meeting.End));
     }
 
     [Theory]
