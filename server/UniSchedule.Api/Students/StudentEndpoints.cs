@@ -246,7 +246,7 @@ public static class StudentEndpoints
             return Results.Ok(picks);
         });
 
-        me.MapPut("/picks", async (PicksBody body, HttpContext http, AppDb db, CancellationToken ct) =>
+        me.MapPut("/picks", async (PicksBody body, HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) =>
         {
             var s = await db.Students.FirstAsync(x => x.Id == http.User.Id(), ct);
             var current = await CurrentSemester(db, ct);
@@ -271,7 +271,8 @@ public static class StudentEndpoints
                 if (pick.SectionId != w.SectionId)
                 {
                     pick.SectionId = w.SectionId;
-                    pick.SeenAt = null;
+                    // A section picked now is seen as it is now: only later edits mark it changed.
+                    pick.SeenAt = w.SectionId is null ? null : clock.GetUtcNow();
                     if (w.SectionId is not null) pick.SectionRemoved = false;
                 }
             }

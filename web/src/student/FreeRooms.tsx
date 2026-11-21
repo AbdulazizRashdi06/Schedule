@@ -17,7 +17,8 @@ interface FreeRoomsReply {
 
 /**
  * Rooms with no class right now, or at the start of a class slot today, each with how long it
- * stays free. From the timetable only: events and exams aren't in it, so a "free" room can still be in use.
+ * stays free. From the timetable as students see it (teaching weeks, days off and the reps' published changes):
+ * other events and exams aren't in it, so a "free" room can still be in use.
  */
 export default function FreeRooms() {
   const back = useBack('/')
@@ -72,7 +73,7 @@ export default function FreeRooms() {
         </div>
 
         <Notice className="mt-4">
-          Free of classes only. Events and exams aren’t in the timetable, so a room here could still be in use.
+          Free of classes, as your timetable has them. Other events and exams may not be in it, so a room here could still be in use.
         </Notice>
 
         <ErrorText className="mt-4">{error}</ErrorText>

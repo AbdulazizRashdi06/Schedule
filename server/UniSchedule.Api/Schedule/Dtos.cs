@@ -22,30 +22,48 @@ public static class Dto
     public static object Of(Semester s) => new { s.Id, s.Name, s.Term, s.Year, s.IsCurrent, publishedAt = s.PublishedAt };
 }
 
-/// <summary>Teaching weeks of a semester: set by an admin, or taken from its dated classes.</summary>
+/// <summary>
+/// Teaching weeks of a semester: set by an admin, or taken from its dated classes. The timetable's span
+/// (<see cref="SemesterSpan"/>) is worked out by <see cref="TeachingAsync"/> too, so the week labels and the weeks
+/// classes meet in always agree.
+/// </summary>
 public static class SemesterWeeks
 {
+    /// <param name="Set">An admin set week 1 (and maybe the last week).</param>
     public record Weeks(string? Week1Start, int? LastWeek, bool Set);
+
+    /// <summary>Week 1's Sunday, how many teaching weeks there are, and whether the week numbers mean anything.</summary>
+    public record Teaching(DateOnly First, int Count, bool Known);
 
     public static DateOnly Sunday(DateOnly d) => d.AddDays(-(int)d.DayOfWeek);
 
     public static async Task<Weeks> ForAsync(Microsoft.EntityFrameworkCore.DbContext db, Semester s, CancellationToken ct)
     {
-        var dates = db.Set<Meeting>().Where(m => m.Date != null && db.Set<Section>().Any(x => x.Id == m.SectionId && x.Course.SemesterId == s.Id)).Select(m => m.Date!.Value);
-        DateOnly? first = s.Week1Start;
-        DateOnly? last = null;
-        if (first is null || s.LastWeek is null)
+        var t = await TeachingAsync(db, s, ct);
+        return t.Known ? new(t.First.ToString("yyyy-MM-dd"), t.Count, s.Week1Start is not null) : new(null, null, false);
+    }
+
+    /// <summary>
+    /// Week 1 is the one staff set. Without it, it's the week of the first class when every class is dated (then the
+    /// dated classes are the whole timetable); with weekly classes too, a dated lab says nothing about when term starts,
+    /// so it's the term's usual start (1 September, 1 February or 1 June) and the weeks aren't numbered. The last week is
+    /// the one staff set (only with week 1: a last week counts from it), else the week of the last dated class when every
+    /// class is dated, else <see cref="SemesterSpan.DefaultWeeks"/> weeks on.
+    /// </summary>
+    public static async Task<Teaching> TeachingAsync(Microsoft.EntityFrameworkCore.DbContext db, Semester s, CancellationToken ct)
+    {
+        var meetings = db.Set<Meeting>().Where(m => db.Set<Section>().Any(x => x.Id == m.SectionId && x.Course.SemesterId == s.Id));
+        DateOnly? min = null, max = null;
+        if ((s.Week1Start is null || s.LastWeek is null)
+            && !await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AnyAsync(meetings, m => m.Date == null, ct))
         {
-            var any = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.AnyAsync(dates, ct);
-            if (any)
-            {
-                first ??= Sunday(await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.MinAsync(dates, ct));
-                last = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.MaxAsync(dates, ct);
-            }
+            min = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.MinAsync(meetings, m => m.Date, ct);
+            max = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.MaxAsync(meetings, m => m.Date, ct);
         }
-        if (first is null) return new(null, s.LastWeek, s.Week1Start is not null || s.LastWeek is not null);
-        var lastWeek = s.LastWeek ?? (last is null ? null : (Sunday(last.Value).DayNumber - first.Value.DayNumber) / 7 + 1);
-        return new(first.Value.ToString("yyyy-MM-dd"), lastWeek, s.Week1Start is not null || s.LastWeek is not null);
+        var first = Sunday(s.Week1Start ?? min ?? new DateOnly(s.Year, s.Term == "Fall" ? 9 : s.Term == "Summer" ? 6 : 2, 1));
+        var fromDates = max is DateOnly last && (Sunday(last).DayNumber - first.DayNumber) / 7 + 1 is var n && n >= 1 ? n : (int?)null;
+        var count = (s.Week1Start is not null ? s.LastWeek : null) ?? fromDates ?? SemesterSpan.DefaultWeeks;
+        return new(first, count, s.Week1Start is not null || min is not null);
     }
 }
 

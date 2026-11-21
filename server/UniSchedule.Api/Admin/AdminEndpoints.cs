@@ -96,6 +96,8 @@ public static class AdminEndpoints
                 start = SemesterWeeks.Sunday(start.Value);
             }
             if (body.LastWeek is not null and not (>= 1 and <= 40)) return Errors.BadRequest("The last week should be between 1 and 40.");
+            // The last week counts on from week 1, so it means nothing without it.
+            if (body.LastWeek is not null && start is null) return Errors.BadRequest("Enter week 1's start date as well as the last week.");
             semester.Week1Start = start;
             semester.LastWeek = body.LastWeek;
             await db.SaveChangesAsync(ct);

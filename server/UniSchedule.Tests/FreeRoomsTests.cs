@@ -12,7 +12,7 @@ public class FreeRoomsTests(ApiFactory factory) : IClassFixture<ApiFactory>
     static async Task<JsonElement> Json(HttpResponseMessage r) => JsonDocument.Parse(await r.Content.ReadAsStringAsync()).RootElement;
 
     /// <summary>
-    /// Sundays: A101 08:00–09:30 and 13:15–14:45, A102 09:45–11:15. Sun 18 Oct 2026 only: Lab L2 08:00–09:30.
+    /// Fall 2026, weeks 1 to 14. Sundays: A101 08:00–09:30 and 13:15–14:45, A102 09:45–11:15. Sun 18 Oct 2026 only: Lab L2 08:00–09:30.
     /// Tuesdays: named campus spaces. Non-room entries include online classes and off-site activities.
     /// </summary>
     async Task<HttpClient> Published()
@@ -34,9 +34,11 @@ public class FreeRoomsTests(ApiFactory factory) : IClassFixture<ApiFactory>
             "FR111,Remote class,FRM,Core,1,1,K,,Sun,08:00-09:30,Online\n" +
             "FR112,Hall class,FRM,Core,1,1,L,,Tue,08:00-09:30,Oman Hall\n" +
             "FR113,Workshop,FRM,Core,1,1,M,,Tue,08:00-09:30,ENG Warehouse\n";
-        var sem = (await Json(await owner.PostAsJsonAsync("/api/admin/semesters", new { term = "Fall", year = 2093 }))).GetProperty("id").GetInt32();
+        var sem = (await Json(await owner.PostAsJsonAsync("/api/admin/semesters", new { term = "Fall", year = 2026 }))).GetProperty("id").GetInt32();
         using var file = new MultipartFormDataContent { { new ByteArrayContent(System.Text.Encoding.UTF8.GetBytes(csv)), "file", "r.csv" } };
         Assert.Equal(HttpStatusCode.OK, (await owner.PostAsync($"/api/admin/semesters/{sem}/upload/apply", file)).StatusCode);
+        // Weeks 1 to 14: Sunday 20 September to Saturday 26 December.
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync($"/api/admin/semesters/{sem}/weeks", new { week1Start = "2026-09-20", lastWeek = 14 })).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await owner.PostAsync($"/api/admin/semesters/{sem}/publish", null)).StatusCode);
         return owner;
     }
@@ -67,6 +69,15 @@ public class FreeRoomsTests(ApiFactory factory) : IClassFixture<ApiFactory>
         var nextSunday = Rooms(await Json(await c.GetAsync("/api/rooms/free?date=2026-10-25&at=08:30")));
         Assert.True(nextSunday.ContainsKey("Lab L2"));
         Assert.False(nextSunday.ContainsKey("A101"));
+
+        // Weekly classes only meet in the teaching weeks: before week 1 and after the last, A101 and A102 are free.
+        foreach (var outside in new[] { "2026-09-13", "2026-12-27" })
+        {
+            var r = await Json(await c.GetAsync($"/api/rooms/free?date={outside}&at=08:30"));
+            Assert.False(r.GetProperty("classesThatDay").GetBoolean());
+            Assert.Equal(0, r.GetProperty("busy").GetInt32());
+            Assert.True(Rooms(r).ContainsKey("A101"));
+        }
 
         // A Friday has no classes: every room is free, and the page is told so.
         var friday = await Json(await c.GetAsync("/api/rooms/free?date=2026-10-23&at=10:00"));

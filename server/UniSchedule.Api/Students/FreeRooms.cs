@@ -3,13 +3,15 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using UniSchedule.Api.Auth;
 using UniSchedule.Api.Data;
+using UniSchedule.Api.Planner;
 using UniSchedule.Api.Schedule;
 
 namespace UniSchedule.Api.Students;
 
 /// <summary>
-/// Rooms with no class at a given time, worked out from the published timetable: every room any class uses this
-/// semester, minus the ones with a class then, and how long each stays free. Timetable data only, nothing about students.
+/// Rooms with no class at a given time, worked out from the published timetable (and the batch reps' published changes
+/// when the planner is on): every room any class uses this semester, minus the ones with a class or exam then, and how
+/// long each stays free. Nothing about students.
 /// </summary>
 public static partial class FreeRooms
 {
@@ -34,7 +36,7 @@ public static partial class FreeRooms
     public static void MapFreeRooms(this RouteGroupBuilder api)
     {
         // Free rooms on a date (default today) at a time (default now), both in Oman time.
-        api.MapGet("/rooms/free", async (string? date, string? at, AppDb db, TimeProvider clock, CancellationToken ct) =>
+        api.MapGet("/rooms/free", async (string? date, string? at, AppDb db, TimeProvider clock, IConfiguration config, CancellationToken ct) =>
         {
             var now = clock.GetUtcNow().ToOffset(Oman);
             var day = date is null ? DateOnly.FromDateTime(now.DateTime) : ScheduleImport.ParseDate(date);
@@ -50,11 +52,21 @@ public static partial class FreeRooms
             // Every room the timetable uses, under its first spelling.
             var rooms = meetings.Select(m => m.Room.Trim()).Where(r => r.Length > 0 && !NotARoom().IsMatch(r))
                 .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            var weekday = (int)day.Value.DayOfWeek;
             // On a day off weekly classes don't meet; a class set for that date still does.
             var dayOff = semester is null ? null : await db.DaysOff.Where(d => d.SemesterId == semester.Id && d.Date == day).Select(d => d.Name).FirstOrDefaultAsync(ct);
-            var thatDay = meetings.Where(m => m.Date == day || (m.Date is null && m.Day == weekday && dayOff is null))
-                .ToLookup(m => m.Room.Trim(), StringComparer.OrdinalIgnoreCase);
+            // What's on in each room that day, as students' timetables have it: weekly classes only in the teaching weeks,
+            // and with the planner on, its published changes (cancelled and moved classes, added classes and exams).
+            List<(string Room, TimeOnly Start, TimeOnly End)> occupied = [];
+            if (semester is not null && await PlannerEngine.Enabled(db, config, ct))
+                occupied = (await PlannerEngine.Calendar(db, semester.Id, day.Value, day.Value, null, ct)).Where(e => !e.Stale)
+                    .Select(e => (e.Room, TimeOnly.ParseExact(e.Start, "HH:mm", CultureInfo.InvariantCulture), TimeOnly.ParseExact(e.End, "HH:mm", CultureInfo.InvariantCulture))).ToList();
+            else if (semester is not null)
+            {
+                var span = await SemesterSpan.ForAsync(db, semester, ct);
+                occupied = meetings.Where(m => m.Date == day || (m.Date is null && span.Weekly(m.Day, day.Value, true)))
+                    .Select(m => (m.Room, m.Start, m.End)).ToList();
+            }
+            var thatDay = occupied.ToLookup(m => m.Room.Trim(), StringComparer.OrdinalIgnoreCase);
 
             var free = new List<(string Room, string Building, string? Until)>();
             var busy = 0;
