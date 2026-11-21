@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api, errorText } from '../lib/api'
-import type { Section, Semester } from '../lib/types'
-import { minutes } from '../lib/time'
+import type { Meeting, Section, Semester } from '../lib/types'
+import { meetingsOverlap, minutes } from '../lib/time'
 import { yearName } from '../lib/year'
 import { SLOTS, sessionType, slotOf, type ClassType } from '../lib/slots'
 import { Button, Confirm, ErrorText, Loading, Tag, cx } from '../components/ui'
@@ -65,12 +65,19 @@ export default function StudentDetail() {
   }
   const a = action ? actions[action] : null
 
-  // The read-only week: slot rows × day columns.
-  const cells = new Map<string, { code: string; type: ClassType; clash: boolean }[]>()
+  // The read-only week: slot rows × day columns. A section is in a cell once, however many dated classes it has there.
+  // It clashes there when one of those meetings is on at once with another pick's (the students' clash rule: a dated
+  // class only clashes with what meets on its date).
+  const picked = d.picks.flatMap((p) => (p.section ? (p.section.meetings ?? []).map((m) => ({ id: p.section!.id, m })) : []))
+  const clashes = (id: number, m: Meeting) => picked.some((o) => o.id !== id && meetingsOverlap(m, o.m))
+  const cells = new Map<string, { id: number; code: string; type: ClassType; clash: boolean }[]>()
   for (const p of d.picks)
     for (const m of p.section?.meetings ?? []) {
       const key = `${m.day}-${slotOf(minutes(m.start), minutes(m.end))}`
-      cells.set(key, [...(cells.get(key) ?? []), { code: p.code, type: sessionType(m.room), clash: clashing.has(p.section!.id) }])
+      const here = cells.get(key) ?? []
+      const same = here.find((c) => c.id === p.section!.id)
+      if (same) same.clash ||= clashes(same.id, m)
+      else cells.set(key, [...here, { id: p.section!.id, code: p.code, type: sessionType(m.room), clash: clashes(p.section!.id, m) }])
     }
   const days = [0, 1, 2, 3, 4, 5, 6].filter((day) => day <= 4 || [...cells.keys()].some((k) => k.startsWith(`${day}-`)))
 
@@ -142,7 +149,7 @@ export default function StudentDetail() {
                 </span>
                 {days.map((day) => {
                   const here = cells.get(`${day}-${slot}`) ?? []
-                  const clash = here.length > 1 || here.some((c) => c.clash)
+                  const clash = here.some((c) => c.clash)
                   return (
                     <span
                       key={day}

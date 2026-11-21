@@ -1,5 +1,5 @@
 import type { CustomSlot, Meeting, Timetable, TimetableClass, Weeks } from './types'
-import { minutes } from './time'
+import { meetingsOverlap, minutes } from './time'
 
 /** Class slots: every class is 1h30 with 15-minute breaks. The week grid is laid out by slot, not by hour. */
 export const SLOTS = [
@@ -27,7 +27,10 @@ export interface Session {
   /** Minutes since midnight. */
   start: number
   end: number
+  /** Clashes with another course's weekly class or slot: every week both meet. Use clashOn() for a date. */
   clash: boolean
+  /** Dates ("2026-11-03") it clashes with another course's dated class, event or one-off slot. */
+  clashDates: string[]
   /** Set for the student's own slots; `cls` then holds its title so the views can show it like a class. */
   mine?: CustomSlot
   /** Notes on this session: the class's whole-class notes plus any for this date. For a weekly class use notesOn(). */
@@ -96,7 +99,7 @@ export function buildSessions(tt: Timetable): Session[] {
       const end = minutes(meeting.end)
       const { slot, span } = slotSpan(start, end)
       const notes = (cls.notes?.classWide ?? 0) + (meeting.date ? (cls.notes?.dates[meeting.date] ?? 0) : 0)
-      out.push({ cls, meeting, type: sessionType(meeting.room), slot, span, start, end, clash: false, notes, noteDates: cls.notes?.dates ?? {} })
+      out.push({ cls, meeting, type: sessionType(meeting.room), slot, span, start, end, clash: false, clashDates: [], notes, noteDates: cls.notes?.dates ?? {} })
     }
   for (const mine of tt.slots ?? []) {
     const cls = slotClass(mine)
@@ -104,7 +107,7 @@ export function buildSessions(tt: Timetable): Session[] {
     const start = minutes(meeting.start)
     const end = minutes(meeting.end)
     const { slot, span } = slotSpan(start, end)
-    out.push({ cls, meeting, type: 'mine', slot, span, start, end, clash: false, mine, notes: mine.note ? 1 : 0, noteDates: {} })
+    out.push({ cls, meeting, type: 'mine', slot, span, start, end, clash: false, clashDates: [], mine, notes: mine.note ? 1 : 0, noteDates: {} })
   }
   for (const event of tt.plannerEvents ?? []) {
     const original = tt.classes.find(c => c.courseId === event.courseId)
@@ -112,7 +115,7 @@ export function buildSessions(tt: Timetable): Session[] {
     const cls: TimetableClass = { courseId: event.courseId, code: event.code, name: `${event.title} · ${event.courseName}`, type: original?.type ?? 'Core', credits: original?.credits ?? null, changed: false,
       section: { id: event.sectionId ?? 0, number: original?.section.number ?? '', instructor: original?.section.instructor ?? '', meetings: [meeting], changedAt: event.updatedAt, changeSummary: 'Published by a batch representative' } }
     const start = minutes(event.start), end = minutes(event.end)
-    out.push({ cls, meeting, type: event.kind === 'exam' ? 'exam' : sessionType(event.room), ...slotSpan(start, end), start, end, clash: false, notes: 0, noteDates: {}, plannerEventId: event.id, plannerNotes: event.notes })
+    out.push({ cls, meeting, type: event.kind === 'exam' ? 'exam' : sessionType(event.room), ...slotSpan(start, end), start, end, clash: false, clashDates: [], notes: 0, noteDates: {}, plannerEventId: event.id, plannerNotes: event.notes })
   }
   // Weekly classes and slots only meet in the teaching weeks (planner events are all dated, so they're left alone).
   if (tt.span)
@@ -121,18 +124,20 @@ export function buildSessions(tt: Timetable): Session[] {
         s.firstDate = tt.span.first
         s.lastDate = tt.span.last
       }
+  // A clash needs both on at once. Two weekly ones clash every week; with a dated one, only on its date, and only when
+  // the other meets that day too (not a day off, a cancelled class, or outside the teaching weeks).
   for (const a of out)
-    a.clash = out.some(
-      (b) =>
-        b !== a &&
-        b.cls.courseId !== a.cls.courseId &&
-        b.meeting.day === a.meeting.day &&
-        a.start < b.end &&
-        b.start < a.end &&
-        (!a.meeting.date || !b.meeting.date || a.meeting.date === b.meeting.date),
-    )
+    for (const b of out) {
+      if (b === a || b.cls.courseId === a.cls.courseId || !meetingsOverlap(a.meeting, b.meeting)) continue
+      const date = a.meeting.date ?? b.meeting.date
+      if (!date) a.clash = true
+      else if (!a.clashDates.includes(date) && onDate(a, new Date(`${date}T12:00`)) && onDate(b, new Date(`${date}T12:00`))) a.clashDates.push(date)
+    }
   return out.sort((a, b) => a.meeting.day - b.meeting.day || a.start - b.start)
 }
+
+/** Whether a session clashes with another course as it falls on a date. */
+export const clashOn = (s: Session, date: Date) => s.clash || s.clashDates.includes(isoDate(date))
 
 /** Where tapping a session goes outside home: its course page, or home for the student's own slot. */
 export const sessionHref = (s: Session) => (s.mine ? '/' : `/course/${s.cls.courseId}`)
@@ -180,7 +185,10 @@ export function onDate(s: Session, d: Date) {
 export function inWeek(sessions: Session[], start: Date) {
   const from = isoDate(start)
   const to = isoDate(addDays(start, 6))
-  return sessions.filter((s) => s.meeting.date ? s.meeting.date >= from && s.meeting.date <= to : onDate(s, addDays(start, (s.meeting.day - start.getDay() + 7) % 7)))
+  // A dated class also goes through onDate, so one cancelled or moved by the planner (in excludedDates) drops out.
+  return sessions.filter((s) =>
+    s.meeting.date ? s.meeting.date >= from && s.meeting.date <= to && onDate(s, new Date(`${s.meeting.date}T12:00`)) : onDate(s, addDays(start, (s.meeting.day - start.getDay() + 7) % 7)),
+  )
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { ApiError, api, errorText, store } from '../lib/api'
 import type { Me, Timetable } from '../lib/types'
@@ -12,8 +12,23 @@ interface Data {
   tt: Timetable | null
 }
 
-// Shared by Today, Schedule and Course so moving between them doesn't reload or flash.
+// Shared by Today, Schedule and Course so moving between them doesn't reload or flash. Screens on at the same time
+// (home and the Today inside it) all show it, so a change one of them loads or makes shows in every one.
 let cache: Data | null = null
+/** When set, we're offline and showing what was saved at this time (campus time). Shared like the timetable. */
+let offlineAt: Date | null = null
+const listeners = new Set<() => void>()
+function share(d: Data | null, offline: Date | null) {
+  cache = d
+  offlineAt = offline
+  listeners.forEach((l) => l())
+}
+const subscribe = (l: () => void) => {
+  listeners.add(l)
+  return () => {
+    listeners.delete(l)
+  }
+}
 
 /** The last timetable that loaded, shown (with a banner) when the server can't be reached. */
 const SAVED = 'timetable'
@@ -56,27 +71,22 @@ function load(): Promise<Data> {
 }
 
 export function useTimetable() {
-  const [data, setData] = useState(cache)
+  const data = useSyncExternalStore(subscribe, () => cache)
+  const offline = useSyncExternalStore(subscribe, () => offlineAt)
   const [error, setError] = useState('')
-  /** When set, we're offline and showing what was saved at this time (campus time). */
-  const [offline, setOffline] = useState<Date | null>(null)
 
   const fetchNow = useCallback(async () => {
     try {
       const d = await load()
-      cache = d
       save(d)
-      setData(d)
-      setOffline(null)
+      share(d, null)
       setError('')
       return true
     } catch (e) {
       // As in the session: offline (0) or the server restarting (5xx) shows the saved timetable.
       const old = e instanceof ApiError && (e.status === 0 || e.status >= 500) ? saved() : null
-      if (old) {
-        if (!cache) setData({ me: old.me, tt: old.tt })
-        setOffline(campusTime(new Date(old.savedAt)))
-      } else setError(errorText(e))
+      if (old) share(cache ?? { me: old.me, tt: old.tt }, campusTime(new Date(old.savedAt)))
+      else setError(errorText(e))
       return false
     }
   }, [])
@@ -100,8 +110,7 @@ export function useTimetable() {
   const markSeen = useCallback((sectionId: number) => {
     api.post('/me/seen', { sectionId }).catch(() => {})
     if (!cache?.tt) return
-    cache = { ...cache, tt: { ...cache.tt, classes: cache.tt.classes.map((c) => (c.section.id === sectionId ? { ...c, changed: false } : c)) } }
-    setData(cache)
+    share({ ...cache, tt: { ...cache.tt, classes: cache.tt.classes.map((c) => (c.section.id === sectionId ? { ...c, changed: false } : c)) } }, offlineAt)
   }, [])
 
   return { me: data?.me ?? null, tt: data?.tt ?? null, sessions, error, markSeen, offline, retry: fetchNow }
@@ -115,6 +124,7 @@ export const clearTimetableCache = () => {
 /** On sign-out: forget everything about this student, including a load still on its way. */
 export const resetTimetable = () => {
   cache = null
+  offlineAt = null
   inflight = null
   loadedAt = 0
   generation++

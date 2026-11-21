@@ -1,7 +1,7 @@
 import { useContext, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { DAY_LONG, DAY_SHORT } from '../lib/time'
-import { TYPE_NAME, addDays, clock, fmtDate, fmtDuration, isoDate, nowMinutes, onDate, sessionHref, type Session } from '../lib/slots'
+import { TYPE_NAME, addDays, clashOn, clock, fmtDate, fmtDuration, isoDate, nowMinutes, onDate, sessionHref, type Session } from '../lib/slots'
 import { Button, ErrorText, Sk, cx } from '../components/ui'
 import { MenuSheet } from './StudentShell'
 import { Icon, NeedsSection, useNow, useTimetable } from './timetable'
@@ -103,13 +103,13 @@ export default function Today() {
                 <NoClasses semester={tt.semester?.name} />
               ) : live ? (
                 <>
-                  <LiveCard s={live} nowMin={nowMin} />
-                  {rest.length > 0 ? <List title="Up next" sessions={rest} /> : <LastOne>Last class today</LastOne>}
+                  <LiveCard s={live} nowMin={nowMin} date={now} />
+                  {rest.length > 0 ? <List title="Up next" sessions={rest} date={now} /> : <LastOne>Last class today</LastOne>}
                 </>
               ) : next ? (
                 <>
-                  <NextCard s={next} nowMin={nowMin} />
-                  {rest.length > 0 ? <List title="Later today" sessions={rest} /> : <LastOne>Nothing after this today</LastOne>}
+                  <NextCard s={next} nowMin={nowMin} date={now} />
+                  {rest.length > 0 ? <List title="Later today" sessions={rest} date={now} /> : <LastOne>Nothing after this today</LastOne>}
                 </>
               ) : today.length > 0 ? (
                 <>
@@ -225,7 +225,7 @@ function DayCard({ s, count, end, date }: { s: Session; count: number; end: stri
     <Link {...link(s, date)} className="press mx-3 flex flex-col gap-3.5 rounded-[32px] bg-navy p-[22px] text-cream">
       <span className="flex flex-wrap items-center gap-2">
         <span className="label text-[12px] tracking-[0.14em] text-ice">First class · {s.cls.code}</span>
-        <Tags s={s} dark />
+        <Tags s={s} date={date} dark />
       </span>
       <span className="display text-[96px] leading-[0.8] tracking-[-0.06em] text-sky tabular-nums">{s.meeting.start}</span>
       <span className="flex flex-col gap-1">
@@ -242,17 +242,17 @@ function DayCard({ s, count, end, date }: { s: Session; count: number; end: stri
   )
 }
 
-function Tags({ s, dark }: { s: Session; dark?: boolean }) {
+function Tags({ s, date, dark }: { s: Session; date: Date; dark?: boolean }) {
   return (
     <>
       {s.cls.changed && <span className={cx('label rounded-full px-2 py-0.5 text-[9px]', dark ? 'bg-cream text-navy' : 'bg-navy text-cream')}>Changed</span>}
-      {s.clash && <span className="label rounded-full bg-alert-ink px-2 py-0.5 text-[9px] text-cream">Clash</span>}
+      {clashOn(s, date) && <span className="label rounded-full bg-alert-ink px-2 py-0.5 text-[9px] text-cream">Clash</span>}
     </>
   )
 }
 
 /** A class on right now: start time, progress and minutes left. */
-function LiveCard({ s, nowMin }: { s: Session; nowMin: number }) {
+function LiveCard({ s, nowMin, date }: { s: Session; nowMin: number; date: Date }) {
   const link = useClassLink()
   const total = s.end - s.start
   const done = Math.min(total, Math.max(0, nowMin - s.start))
@@ -261,7 +261,7 @@ function LiveCard({ s, nowMin }: { s: Session; nowMin: number }) {
     <Link {...link(s)} className="press mx-3 flex flex-col gap-3.5 rounded-[32px] bg-navy p-[22px] pb-6 text-cream">
       <span className="flex flex-wrap items-center gap-2">
         <span className="label text-[12px] tracking-[0.14em] text-ice">● Now · {s.cls.code}</span>
-        <Tags s={s} dark />
+        <Tags s={s} date={date} dark />
       </span>
       <span className="display text-[96px] leading-[0.8] tracking-[-0.06em] text-sky tabular-nums">{s.meeting.start}</span>
       <span className="flex flex-col gap-1">
@@ -295,7 +295,7 @@ function LiveCard({ s, nowMin }: { s: Session; nowMin: number }) {
 }
 
 /** Between classes: a countdown to the next one. */
-function NextCard({ s, nowMin }: { s: Session; nowMin: number }) {
+function NextCard({ s, nowMin, date }: { s: Session; nowMin: number; date: Date }) {
   const link = useClassLink()
   const until = s.start - nowMin
   const hint =
@@ -310,7 +310,7 @@ function NextCard({ s, nowMin }: { s: Session; nowMin: number }) {
     <Link {...link(s)} className="press mx-3 flex flex-col gap-3.5 rounded-[32px] bg-navy p-[22px] text-cream">
       <span className="flex flex-wrap items-center gap-2">
         <span className="label text-[12px] tracking-[0.14em] text-ice">Next in</span>
-        <Tags s={s} dark />
+        <Tags s={s} date={date} dark />
       </span>
       <span aria-live="polite" className="display text-[96px] leading-[0.8] tracking-[-0.06em] text-sky tabular-nums">
         {/* Re-keyed so the new number slides in each time it changes. */}
@@ -397,7 +397,7 @@ function MoreLink({ to, onLab, children }: { to: string; onLab: () => void; chil
   )
 }
 
-function List({ title, sessions, date, children }: { title: string; sessions: Session[]; date?: Date; children?: ReactNode }) {
+function List({ title, sessions, date, children }: { title: string; sessions: Session[]; date: Date; children?: ReactNode }) {
   const link = useClassLink()
   return (
     <section className="flex flex-col px-6 pt-[22px]">
@@ -412,7 +412,7 @@ function List({ title, sessions, date, children }: { title: string; sessions: Se
               <span className="flex min-w-0 flex-col gap-0.5">
                 <span className="flex flex-wrap items-center gap-1.5">
                   <span className="text-[18px] leading-[1.1] font-extrabold">{s.cls.name}</span>
-                  <Tags s={s} />
+                  <Tags s={s} date={date} />
                 </span>
                 <span className="truncate font-mono text-[12px] uppercase">
                   {TYPE_NAME[s.type]}, {s.meeting.room || 'Room TBA'}
