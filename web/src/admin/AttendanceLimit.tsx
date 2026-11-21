@@ -10,13 +10,15 @@ import { Button, ErrorText, TextField } from '../components/ui'
 export default function AttendanceLimit({ readOnly = false }: { readOnly?: boolean }) {
   const [percent, setPercent] = useState('')
   const [saved, setSaved] = useState<number | null>(null)
+  // Until the limit loads, the read-only line must not claim there is none.
+  const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
 
   useEffect(() => {
     api.get<{ percent: number | null }>('/admin/attendance-limit').then(
-      (r) => (setSaved(r.percent), setPercent(r.percent?.toString() ?? '')),
+      (r) => (setSaved(r.percent), setPercent(r.percent?.toString() ?? ''), setLoaded(true)),
       (e) => setError(errorText(e)),
     )
   }, [])
@@ -47,7 +49,7 @@ export default function AttendanceLimit({ readOnly = false }: { readOnly?: boole
       </div>
       {readOnly ? (
         <span className="text-[15px] font-bold">
-          {saved === null ? 'No limit set.' : `${saved}% of classes.`} Only owners can change it.
+          {!loaded ? (error ? '' : 'Loading… ') : saved === null ? 'No limit set. ' : `${saved}% of classes. `}Only owners can change it.
         </span>
       ) : (
         <form

@@ -28,19 +28,24 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 
 export default function AdminHome() {
   const { semester, isOwner } = useAdmin()
-  const [stats, setStats] = useState<Stats | null>(null)
-  const [error, setError] = useState('')
+  // Numbers and errors are kept with the semester they belong to, so picking another semester never shows the last
+  // one's numbers under the new title, nor its old error.
+  const key = semester?.id ?? 0
+  const [loaded, setLoaded] = useState<{ key: number; stats: Stats } | null>(null)
+  const [failed, setFailed] = useState<{ key: number; error: string } | null>(null)
+  const stats = loaded?.key === key ? loaded.stats : null
+  const error = failed?.key === key ? failed.error : ''
   useEffect(() => {
     // A successful poll clears an earlier error, and a late answer for the previous semester is dropped.
     let active = true
     const load = () =>
-      api.get<Stats>(`/admin/stats${semester ? `?semesterId=${semester.id}` : ''}`).then(
+      api.get<Stats>(`/admin/stats${key ? `?semesterId=${key}` : ''}`).then(
         (s) => {
           if (!active) return
-          setStats(s)
-          setError('')
+          setLoaded({ key, stats: s })
+          setFailed(null)
         },
-        (e) => active && setError(errorText(e)),
+        (e) => active && setFailed({ key, error: errorText(e) }),
       )
     void load()
     // Keeps "active now" current while the page is open.
@@ -49,7 +54,8 @@ export default function AdminHome() {
       active = false
       clearInterval(timer)
     }
-  }, [semester])
+    // semester too, so an edit to the same semester (publishing it, say) refetches as before.
+  }, [key, semester])
 
   // A failed poll keeps the last numbers on screen, with the error above them.
   if (error && !stats) return <ErrorText>{error}</ErrorText>

@@ -65,7 +65,12 @@ export default function Join() {
               </p>
             </div>
             {invite.full ? (
-              <p className="text-[16px] font-bold">This group is full.</p>
+              <>
+                <p className="text-[16px] font-bold">This group is full.</p>
+                <Link to="/" className="label self-start text-[12px] link-hover">
+                  Go to Classy
+                </Link>
+              </>
             ) : (
               <>
                 <TextField label="Your name in the group" value={name} maxLength={30} placeholder="What your friends call you" onChange={(e) => setName(e.target.value)} />
