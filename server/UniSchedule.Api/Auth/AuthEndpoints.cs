@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using UniSchedule.Api.Data;
 
@@ -38,7 +39,12 @@ public static class AuthEndpoints
 
     // No real username or password is anywhere near this long (usernames are 3-32 characters).
     const int MaxUsernameLength = 64, MaxPasswordLength = 256;
+    public const int MaxAuthBody = 4096;
     const string WrongPassword = "Wrong username or password.", TooManyPasswords = "Too many wrong passwords. Try again in 15 minutes.";
+    const string TooManyPasswordsAccount = "Too many wrong passwords for this account. Try again in 15 minutes, or sign in on a browser you've used before.";
+
+    /// <summary>How a dashboard account is listed in the trusted-browser cookie (usernames have no colons, IDs neither).</summary>
+    static string AdminDeviceKey(string username) => "admin:" + username;
 
     /// <summary>Hours until enough of the oldest of these (oldest first, each weighing <c>weight</c>) are a day old to
     /// bring the total under <c>limit</c>.</summary>
@@ -64,6 +70,8 @@ public static class AuthEndpoints
     public static string? PasswordProblem(string password, string username)
     {
         if (password.Length < 12) return "Use at least 12 characters.";
+        // Sign-in refuses anything longer, so a longer one could never be used.
+        if (password.Length > MaxPasswordLength) return $"Use at most {MaxPasswordLength} characters.";
         if (!password.Any(char.IsAsciiDigit)) return "Add at least one number.";
         if (password.Contains(username, StringComparison.OrdinalIgnoreCase)) return "Don't put your username in your password.";
         return null;
@@ -71,7 +79,8 @@ public static class AuthEndpoints
 
     public static void MapAuth(this RouteGroupBuilder api)
     {
-        var auth = api.MapGroup("/auth");
+        // Every sign-in body is a few short fields: a bigger one is refused before it's read.
+        var auth = api.MapGroup("/auth").WithMetadata(new RequestSizeLimitAttribute(MaxAuthBody));
 
         auth.MapPost("/request-code", async (RequestCodeBody body, AppDb db, IEmailSender email, TimeProvider clock, IConfiguration config, HttpContext http, CancellationToken ct) =>
         {
@@ -144,8 +153,10 @@ public static class AuthEndpoints
             var id = StudentIds.Normalize(body.UniversityId);
             var code = body.Code?.Trim();
             if (id is null || !LoginCodes.IsWellFormed(code)) return Errors.BadRequest("Enter the 6-digit code from your email.");
-            if (wrongCodes.IsBlocked(http))
-                return Errors.TooMany("Too many wrong codes from this network. Try again in an hour.");
+            // The per-address cap is for guessing at other people's IDs, so it skips browsers this ID has signed in on.
+            var trusted = SignInCookies.IsTrustedDevice(http, id);
+            if (!trusted && wrongCodes.IsBlocked(http))
+                return Errors.TooMany("Too many wrong codes from this network. Try again in an hour, or sign in on a device you've used before.");
 
             var now = clock.GetUtcNow();
             // A code only works in the browser that asked for it, and only this browser's newest code counts:
@@ -164,7 +175,6 @@ public static class AuthEndpoints
             // Each try is claimed in the database before the code is checked, so guesses sent in parallel can't share a
             // try: once the five are used, every other request finds none left. Away from a browser this ID has signed
             // in on before, the claim also needs the ID to have had fewer than 30 wrong codes in the last day.
-            var trusted = SignInCookies.IsTrustedDevice(http, id);
             var dayAgo = now - LoginCodes.Day;
             var claimed = await db.LoginCodes
                 .Where(c => c.Id == login.Id && c.UsedAt == null && c.Attempts < LoginCodes.MaxAttempts)
@@ -181,7 +191,7 @@ public static class AuthEndpoints
             }
             if (!LoginCodes.Verify(login.CodeHash, id, code!))
             {
-                wrongCodes.Record(http);
+                if (!trusted) wrongCodes.Record(http);
                 var tries = await db.LoginCodes.Where(c => c.Id == login.Id).Select(c => c.Attempts).FirstAsync(ct);
                 var left = LoginCodes.MaxAttempts - tries;
                 return Errors.BadRequest(left > 0 ? $"Wrong code. {left} {(left == 1 ? "try" : "tries")} left." : "Wrong code. Send a new one.");
@@ -216,21 +226,27 @@ public static class AuthEndpoints
             if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(body.Password))
                 return Errors.BadRequest("Enter your username and password.");
             var now = clock.GetUtcNow();
+            // A browser that has signed in to this account before is counted on its own, not by address, so someone on
+            // the same network (all of campus Wi-Fi shares one IP) can't lock the owner out of it.
+            var trusted = SignInCookies.IsTrustedDevice(http, AdminDeviceKey(username));
             // The try is taken before the slow password check, so tries sent together can't all slip past the limit.
-            var client = $"{username}|{http.Connection.RemoteIpAddress}";
+            var client = trusted ? $"{username}|trusted" : $"{username}|{ClientAddress.Key(http)}";
             if (!tries.PerClient.TryAdd(client, now)) return Errors.TooMany(TooManyPasswords);
 
-            // Usernames that don't exist go through the same steps (a dummy hash and an account lock kept in memory),
+            // Usernames that don't exist go through the same steps (an account lock kept in memory and a dummy hash),
             // so no answer or timing says which usernames are real.
             var user = await db.AdminUsers.FirstOrDefaultAsync(a => a.Username == username, ct);
+            var locked = user is null ? tries.UnknownAccounts.IsLocked(username, now) : user.LockedUntil > now;
+            // While the account is locked, browsers that never signed in to it are refused even the right password, so
+            // the lock caps guessing from every address together. The owner's own browsers still get in.
+            if (locked && !trusted) return Errors.TooMany(TooManyPasswordsAccount);
             var result = Hasher.VerifyHashedPassword(user!, user?.PasswordHash ?? DummyHash, body.Password);
             if (user is null || result == PasswordVerificationResult.Failed)
             {
-                // The account lock only refuses wrong passwords (the right one still signs in), so an outsider can't
-                // keep the owner out. Wrong tries while it's on aren't counted.
+                // Wrong tries while the lock is on aren't counted.
+                if (locked) return Errors.TooMany(TooManyPasswordsAccount);
                 if (user is null)
                 {
-                    if (tries.UnknownAccounts.IsLocked(username, now)) return Errors.TooMany(TooManyPasswords);
                     tries.UnknownAccounts.TryAdd(username, now);
                     return Errors.Unauthorized(WrongPassword);
                 }
@@ -240,7 +256,7 @@ public static class AuthEndpoints
                     .ExecuteUpdateAsync(u => u
                         .SetProperty(a => a.FailedLogins, a => a.FailedSince == null || a.FailedSince <= windowStart ? 1 : a.FailedLogins + 1)
                         .SetProperty(a => a.FailedSince, a => a.FailedSince == null || a.FailedSince <= windowStart ? now : a.FailedSince), ct);
-                if (counted == 0) return Errors.TooMany(TooManyPasswords);
+                if (counted == 0) return Errors.TooMany(TooManyPasswordsAccount);
                 await db.AdminUsers.Where(a => a.Id == user.Id && a.FailedLogins >= AdminTriesPerAccount)
                     .ExecuteUpdateAsync(u => u
                         .SetProperty(a => a.LockedUntil, now + AdminLock)
@@ -256,6 +272,7 @@ public static class AuthEndpoints
             user.LastSeenAt = now;
             await db.SaveChangesAsync(ct);
             await Session.SignInAdminAsync(http, user);
+            SignInCookies.RememberDevice(http, AdminDeviceKey(username));
             return Results.Ok(new { mustChangePassword = user.MustChangePassword });
         }).RequireRateLimiting(VerifyLimit);
 

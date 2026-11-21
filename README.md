@@ -55,8 +55,9 @@ One row per section meeting time; the header row names the columns (any order, c
 ## Sign-in
 
 - A sign-in code only works in the browser that asked for it (HttpOnly `unischedule-login` cookie, 24 hours). Asking again in that browser cancels the old code.
-- Per ID and browser: one code a minute, 4 per 15 minutes. Per ID across all browsers: 20 codes and 30 wrong codes per rolling 24 hours. A browser that has signed in as that ID before (`unischedule-device` cookie, 1 year, kept on sign-out) skips the daily caps.
-- Dashboard: 5 wrong passwords from one IP lock that username on that IP for 15 minutes. 20 wrong in 15 minutes from anywhere lock the account against wrong passwords only; the right one still signs in.
+- Per ID and browser: one code a minute, 4 per 15 minutes. Per ID across all browsers: 20 codes and 30 wrong codes per rolling 24 hours. A browser that has signed in as that ID before (`unischedule-device` cookie, 1 year, kept on sign-out) skips the daily caps and the per-IP wrong-code cap (`RateLimits__WrongCodesPerHour`).
+- Dashboard: 5 wrong passwords from one IP (an IPv6 /64 counts as one) lock that username on that IP for 15 minutes. 20 wrong in 15 minutes from anywhere lock the account for 15 minutes, even against the right password. A browser that has signed in to that account before is exempt from both: it has its own 5-try lock, and during an account lock the right password still signs in there.
+- Sign-in request bodies over 4 KB are refused (413).
 - POST/PUT/DELETE requests to `/api` that carry cookies are refused when they come from another origin (Classy Sync's extension origin and its Bearer token are allowed). Serve the web app from the API's own origin; the Vite dev proxy does.
 
 ## Configuration

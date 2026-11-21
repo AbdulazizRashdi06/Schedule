@@ -56,13 +56,8 @@ export default function AdminLogin() {
             // The temporary password is the "current" one on the next screen, so it isn't asked for twice.
             navigate(r.mustChangePassword ? '/admin/password' : '/admin', { replace: true, state: r.mustChangePassword ? { current: password } : undefined })
           } catch (err) {
-            setError(
-              err instanceof ApiError && err.status === 401
-                ? 'That username and password don’t match.'
-                : err instanceof ApiError && err.status === 429
-                  ? 'Too many tries. This account is locked for 15 minutes.'
-                  : errorText(err),
-            )
+            // A 429 says which lock it is (this network, or the account) and what to do, so its text is shown as sent.
+            setError(err instanceof ApiError && err.status === 401 ? 'That username and password don’t match.' : errorText(err))
             shake()
             setBusy(false)
           }

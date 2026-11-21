@@ -197,6 +197,37 @@ public class SignInSafetyTests
     }
 
     [Fact]
+    public async Task The_per_address_cap_doesnt_hold_back_a_browser_the_ID_signed_in_on()
+    {
+        using var api = new ClockedApi(wrongCodesPerHour: 3);
+        const string ip = "203.0.113.20";
+        var id = NewId();
+        var mine = api.Browser(ip);
+        Assert.Equal(HttpStatusCode.OK, (await Verify(mine, id, await RequestCode(mine, id))).StatusCode);
+        await mine.PostAsync("/api/auth/logout", null);
+
+        // The student's own typos on that browser aren't counted against the address...
+        api.Time.Advance(TimeSpan.FromSeconds(61));
+        var typo = await RequestCode(mine, id);
+        for (var i = 0; i < 3; i++) Assert.Contains("tries left", await Error(await Verify(mine, id, WrongFor(typo))));
+        var other = NewId();
+        var stranger = api.Browser(ip);
+        Assert.Contains("tries left", await Error(await Verify(stranger, other, WrongFor(await RequestCode(stranger, other)))));
+
+        // ...and once someone else on the same network uses the cap up, new browsers there are stopped but not that one.
+        for (var i = 0; i < 2; i++)
+        {
+            var x = NewId();
+            Assert.Contains("tries left", await Error(await Verify(stranger, x, WrongFor(await RequestCode(stranger, x)))));
+        }
+        var newcomer = api.Browser(ip);
+        var newId = NewId();
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await Verify(newcomer, newId, await RequestCode(newcomer, newId))).StatusCode);
+        api.Time.Advance(TimeSpan.FromSeconds(61));
+        Assert.Equal(HttpStatusCode.OK, (await Verify(mine, id, await RequestCode(mine, id))).StatusCode);
+    }
+
+    [Fact]
     public async Task Day_old_codes_are_deleted()
     {
         using var api = new ClockedApi();
@@ -262,24 +293,94 @@ public class AdminLoginSafetyTests
         Assert.Equal(1, table.Count);
     }
 
+    static async Task<(HttpStatusCode, string)> Login(HttpClient c, string username, string password)
+    {
+        var r = await c.PostAsJsonAsync("/api/auth/admin-login", new { username, password });
+        var body = await Json(r);
+        return (r.StatusCode, body.TryGetProperty("error", out var e) ? e.GetString()! : "");
+    }
+
     [Fact]
-    public async Task The_right_password_works_during_an_account_lock_and_unknown_names_answer_the_same()
+    public async Task A_locked_account_keeps_out_new_browsers_even_with_the_right_password_but_not_ones_used_before()
     {
         using var api = new ClockedApi();
         await AddAdmin(api, "rsa-held", "right-password-1");
+        var mine = api.Browser("198.51.100.50");
+        Assert.Equal(HttpStatusCode.OK, (await Login(mine, "rsa-held", "right-password-1")).Item1);
+        await mine.PostAsync("/api/auth/logout", null);
+
         foreach (var name in new[] { "rsa-held", "rsa-ghost" })
             for (var ip = 1; ip <= 4; ip++)
                 for (var i = 0; i < 5; i++)
                     Assert.Equal(HttpStatusCode.Unauthorized, (await Login(api, $"198.51.100.{ip}", name, "wrong-guess")).Item1);
 
-        // From an address that never tried: both locked, word for word the same.
-        var real = await Login(api, "198.51.100.9", "rsa-held", "wrong-guess");
+        // From a browser that never signed in: both locked, word for word the same, and a right guess gets nowhere,
+        // so the lock caps guesses from every address together.
+        var real = await Login(api, "198.51.100.9", "rsa-held", "right-password-1");
         var ghost = await Login(api, "198.51.100.9", "rsa-ghost", "wrong-guess");
         Assert.Equal(HttpStatusCode.TooManyRequests, real.Item1);
         Assert.Equal(real, ghost);
+        Assert.Equal(real, await Login(api, "198.51.100.10", "rsa-held", "right-password-1"));
 
-        // The lock only turns away wrong passwords.
-        Assert.Equal(HttpStatusCode.OK, (await Login(api, "198.51.100.10", "rsa-held", "right-password-1")).Item1);
+        // The browser the account signed in on before still gets in, and a wrong password there isn't counted.
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await Login(mine, "rsa-held", "wrong-guess")).Item1);
+        Assert.Equal(HttpStatusCode.OK, (await Login(mine, "rsa-held", "right-password-1")).Item1);
+    }
+
+    [Fact]
+    public async Task Someone_on_the_same_network_cant_lock_the_owner_out_of_a_browser_they_used_before()
+    {
+        using var api = new ClockedApi();
+        await AddAdmin(api, "rsa-campus", "right-password-1");
+        const string campus = "198.51.100.77";
+        var mine = api.Browser(campus);
+        Assert.Equal(HttpStatusCode.OK, (await Login(mine, "rsa-campus", "right-password-1")).Item1);
+        await mine.PostAsync("/api/auth/logout", null);
+
+        for (var i = 0; i < 5; i++)
+            Assert.Equal(HttpStatusCode.Unauthorized, (await Login(api, campus, "rsa-campus", "wrong-guess")).Item1);
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await Login(api, campus, "rsa-campus", "right-password-1")).Item1);
+        Assert.Equal(HttpStatusCode.OK, (await Login(mine, "rsa-campus", "right-password-1")).Item1);
+    }
+
+    [Fact]
+    public async Task One_IPv6_connection_counts_as_one_address()
+    {
+        using var api = new ClockedApi();
+        await AddAdmin(api, "rsa-six", "right-password-1");
+        for (var i = 1; i <= 5; i++)
+            Assert.Equal(HttpStatusCode.Unauthorized, (await Login(api, $"2001:db8:0:1::{i}", "rsa-six", "wrong-guess")).Item1);
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await Login(api, "2001:db8:0:1::99", "rsa-six", "wrong-guess")).Item1);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await Login(api, "2001:db8:0:2::1", "rsa-six", "wrong-guess")).Item1);
+    }
+
+    [Fact]
+    public async Task A_password_too_long_to_sign_in_with_cant_be_chosen()
+    {
+        using var api = new ClockedApi();
+        await AddAdmin(api, "rsa-pw", "right-password-1");
+        var c = api.Browser("198.51.100.60");
+        Assert.Equal(HttpStatusCode.OK, (await Login(c, "rsa-pw", "right-password-1")).Item1);
+        var tooLong = await c.PostAsJsonAsync("/api/auth/change-password", new { currentPassword = "right-password-1", newPassword = "1" + new string('p', 256) });
+        Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
+        Assert.Contains("at most 256", (await Json(tooLong)).GetProperty("error").GetString());
+        var longest = "1" + new string('p', 255);
+        Assert.Equal(HttpStatusCode.NoContent, (await c.PostAsJsonAsync("/api/auth/change-password", new { currentPassword = "right-password-1", newPassword = longest })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Login(api, "198.51.100.61", "rsa-pw", longest)).Item1);
+    }
+
+    [Fact]
+    public async Task Sign_in_bodies_bigger_than_a_few_short_fields_are_refused()
+    {
+        // The limit is enforced by Kestrel (the in-memory test server has none), so this runs a real one.
+        using var app = new ApiFactory();
+        app.UseKestrel(0);
+        app.StartServer();
+        var c = app.CreateClient();
+        StringContent Body(int size) => new($"{{\"username\":\"nobody\",\"password\":\"{new string('p', size)}\"}}", System.Text.Encoding.UTF8, "application/json");
+        Assert.Equal(HttpStatusCode.Unauthorized, (await c.PostAsync("/api/auth/admin-login", Body(200))).StatusCode);
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, (await c.PostAsync("/api/auth/admin-login", Body(AuthEndpoints.MaxAuthBody))).StatusCode);
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, (await c.PostAsync("/api/auth/request-code", Body(100_000))).StatusCode);
     }
 
     [Fact]

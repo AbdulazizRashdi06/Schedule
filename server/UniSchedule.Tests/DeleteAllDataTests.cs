@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using UniSchedule.Api.Data;
 
 namespace UniSchedule.Tests;
@@ -55,8 +57,13 @@ public class DeleteAllDataTests(ApiFactory factory) : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.Forbidden, (await rsa.PostAsJsonAsync("/api/admin/delete-all-data", new { confirm = "DELETE ALL DATA" })).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await owner.PostAsJsonAsync("/api/admin/delete-all-data", new { confirm = "yes" })).StatusCode);
 
+        Assert.Equal(HttpStatusCode.OK, (await factory.Client().PostAsJsonAsync("/api/auth/request-code", new { universityId = "24-9901" })).StatusCode);
+
         var wiped = await owner.PostAsJsonAsync("/api/admin/delete-all-data", new { confirm = "DELETE ALL DATA" });
         Assert.Equal(HttpStatusCode.OK, wiped.StatusCode);
+        // Sign-in codes name the students who asked for them, so they go too.
+        using (var scope = factory.Services.CreateScope())
+            Assert.Equal(0, await scope.ServiceProvider.GetRequiredService<AppDb>().LoginCodes.CountAsync());
         Assert.Equal(0, (await Json(await owner.GetAsync("/api/admin/semesters"))).GetArrayLength());
         Assert.Equal(0, (await Json(await owner.GetAsync("/api/admin/majors"))).GetArrayLength());
         // Accounts survive: both can still use the dashboard.

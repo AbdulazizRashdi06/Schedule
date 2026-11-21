@@ -1,11 +1,9 @@
-using System.Net;
-using System.Net.Sockets;
-
 namespace UniSchedule.Api.Auth;
 
 /// <summary>
 /// Wrong sign-in codes per client IP per rolling hour (RateLimits:WrongCodesPerHour, default 300), so one address
-/// can't spray guesses across many IDs. High because everyone on campus Wi-Fi shares one IP. In memory: each address
+/// can't spray guesses across many IDs. High because everyone on campus Wi-Fi shares one IP, and a browser the ID
+/// has signed in on before isn't held to it (or counted), so a neighbour can't keep returning students out. In memory: each address
 /// keeps two counts (this hour and the last), and addresses quiet for two hours are dropped.
 /// </summary>
 public sealed class WrongCodeLimiter(TimeProvider clock, IConfiguration config)
@@ -18,14 +16,14 @@ public sealed class WrongCodeLimiter(TimeProvider clock, IConfiguration config)
     public bool IsBlocked(HttpContext http)
     {
         var now = clock.GetUtcNow();
-        lock (counts) return counts.TryGetValue(Key(http), out var c) && Estimate(c, now) >= perHour;
+        lock (counts) return counts.TryGetValue(ClientAddress.Key(http), out var c) && Estimate(c, now) >= perHour;
     }
 
     public void Record(HttpContext http)
     {
         var now = clock.GetUtcNow();
         var hour = Hour(now);
-        var key = Key(http);
+        var key = ClientAddress.Key(http);
         lock (counts)
         {
             if (hour != lastPurge)
@@ -57,16 +55,4 @@ public sealed class WrongCodeLimiter(TimeProvider clock, IConfiguration config)
     }
 
     static long Hour(DateTimeOffset now) => now.ToUnixTimeSeconds() / 3600;
-
-    /// <summary>The client's address; for IPv6 its /64, which is what one home or phone connection gets.</summary>
-    static string Key(HttpContext http)
-    {
-        var ip = http.Connection.RemoteIpAddress;
-        if (ip is null) return "unknown";
-        if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
-        if (ip.AddressFamily != AddressFamily.InterNetworkV6) return ip.ToString();
-        var bytes = ip.GetAddressBytes();
-        Array.Clear(bytes, 8, 8);
-        return new IPAddress(bytes) + "/64";
-    }
 }

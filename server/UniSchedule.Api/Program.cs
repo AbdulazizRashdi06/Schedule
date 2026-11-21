@@ -81,7 +81,7 @@ builder.Services.AddRateLimiter(o =>
     // each university ID has its own tighter limits (see LoginCodes) and WrongCodeLimiter caps wrong codes per IP per hour.
     // RateLimits:RequestCode / RateLimits:Verify override the defaults.
     static RateLimitPartition<string> PerIp(HttpContext http, string key, int fallback) =>
-        RateLimitPartition.GetFixedWindowLimiter(http.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions
+        RateLimitPartition.GetFixedWindowLimiter(ClientAddress.Key(http), _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = http.RequestServices.GetRequiredService<IConfiguration>().GetValue($"RateLimits:{key}", fallback),
             Window = TimeSpan.FromMinutes(5),

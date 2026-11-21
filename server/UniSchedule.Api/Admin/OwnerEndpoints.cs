@@ -212,6 +212,8 @@ public static partial class OwnerEndpoints
             await using var tx = await db.Database.BeginTransactionAsync(ct);
             await db.UsageDays.ExecuteDeleteAsync(ct);
             await db.UsageHours.ExecuteDeleteAsync(ct);
+            // Sign-in codes name the IDs that asked for them (codes still in flight stop working).
+            await db.LoginCodes.ExecuteDeleteAsync(ct);
             var semesters = await db.Semesters.ExecuteDeleteAsync(ct);
             var students = await db.Students.Where(s => !s.IsOwner).ExecuteDeleteAsync(ct);
             // Their memberships went with them; a group nobody is left in goes too (its name is student data).

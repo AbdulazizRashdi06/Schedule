@@ -6,10 +6,11 @@ using Microsoft.AspNetCore.DataProtection;
 namespace UniSchedule.Api.Auth;
 
 /// <summary>
-/// Two small cookies for student sign-in, both only sent to /api/auth.
+/// Two small cookies for sign-in, both only sent to /api/auth.
 /// "unischedule-login" names this browser, so a code only works in the browser that asked for it.
-/// "unischedule-device" lists the IDs that have signed in on this browser (up to five), so the per-ID daily limits
-/// don't apply there. Signing out keeps it: it isn't a sign-in.
+/// "unischedule-device" lists the IDs (and dashboard accounts, as "admin:username") that have signed in on this
+/// browser (up to five), so the per-ID daily limits, the per-address wrong-code cap and the dashboard account lock
+/// can't shut that browser out. Signing out keeps it: it isn't a sign-in.
 /// </summary>
 public static class SignInCookies
 {

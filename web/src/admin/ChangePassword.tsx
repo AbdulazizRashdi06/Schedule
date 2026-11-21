@@ -24,7 +24,7 @@ export default function ChangePassword() {
 
   // Same rules as the server (AuthEndpoints.PasswordProblem).
   const rules = [
-    { text: 'At least 12 characters', ok: next.length >= 12 },
+    { text: '12 to 256 characters', ok: next.length >= 12 && next.length <= 256 },
     { text: 'Has a number', ok: /\d/.test(next) },
     { text: 'Not your username', ok: next.length > 0 && !next.toLowerCase().includes(username.toLowerCase()) },
   ]
