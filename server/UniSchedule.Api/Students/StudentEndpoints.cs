@@ -313,7 +313,7 @@ public static class StudentEndpoints
         {
             var id = http.User.Id();
             var current = await CurrentSemester(db, ct);
-            if (current is null) return Results.Ok(new { semester = (object?)null, classes = Array.Empty<object>(), needsSection = Array.Empty<object>(), clashes = Array.Empty<int[]>(), slots = Array.Empty<object>() });
+            if (current is null) return Results.Ok(TimetableView.Empty());
             var picks = await db.Picks.Where(p => p.StudentId == id && p.Course.SemesterId == current.Id)
                 .Include(p => p.Course)
                 .Include(p => p.Section).ThenInclude(s => s!.Meetings)
@@ -322,19 +322,6 @@ public static class StudentEndpoints
             var planner = await UniSchedule.Api.Planner.PlannerEngine.Enabled(db, http.RequestServices.GetRequiredService<IConfiguration>(), ct)
                 ? await UniSchedule.Api.Planner.PlannerEngine.StudentView(db, current.Id, picks, ct)
                 : (Events: new List<UniSchedule.Api.Planner.PlannerOccurrence>(), Excluded: new Dictionary<string, List<string>>());
-            // Weekly classes skip the planner's cancellations and the semester's days off; dated ones keep their date.
-            // The semester's first and last teaching day (its days off come with it).
-            var span = await SemesterSpan.ForAsync(db, current, ct);
-            var daysOff = span.DaysOff;
-            List<string>? Skipped(Section section, Meeting m)
-            {
-                var skipped = (planner.Excluded.GetValueOrDefault(UniSchedule.Api.Planner.PlannerEngine.Fingerprint(section, m)) ?? [])
-                    .Concat(m.Date is null ? DaysOff.Skipped(daysOff, m.Day) : []).Distinct().Order().ToList();
-                return skipped.Count == 0 ? null : skipped;
-            }
-            SectionDto EffectiveSection(Section section) => Dto.Of(section) with {
-                Meetings = section.Meetings.Select(m => Dto.Of(m) with { ExcludedDates = Skipped(section, m) }).ToList()
-            };
             var slots = await db.CustomSlots.Where(s => s.StudentId == id && s.SemesterId == current.Id).ToListAsync(ct);
             // Note counts per course, so blocks can show a dot: whole-course notes, and per session date.
             var notes = await PersonalEndpoints.VisibleNotes(db, id, picks.Select(p => p.CourseId).ToList(), ct);
@@ -344,27 +331,14 @@ public static class StudentEndpoints
                 dates = notes.Where(n => n.CourseId == courseId && n.Date is not null)
                     .GroupBy(n => n.Date!.Value.ToString("yyyy-MM-dd")).ToDictionary(g => g.Key, g => g.Count()),
             };
-            return Results.Ok(new
-            {
-                semester = new { current.Id, current.Name },
-                span = new { first = span.First.ToString("yyyy-MM-dd"), last = span.Last.ToString("yyyy-MM-dd") },
-                daysOff = daysOff.OrderBy(d => d.Key).Select(d => new { date = d.Key.ToString("yyyy-MM-dd"), name = d.Value }),
-                plannerEvents = planner.Events,
-                slots = slots.OrderBy(s => s.Date).ThenBy(s => s.Day).ThenBy(s => s.Start).Select(PersonalEndpoints.Of),
-                classes = withSection.Select(p => new
-                {
-                    courseId = p.CourseId,
-                    p.Course.Code,
-                    p.Course.Name,
-                    type = p.Course.Type.ToString(),
-                    p.Course.Credits,
-                    section = EffectiveSection(p.Section!),
-                    changed = p.Section!.ChangedAt is not null && (p.SeenAt is null || p.SeenAt < p.Section.ChangedAt),
-                    notes = NoteCounts(p.CourseId),
-                }),
-                needsSection = picks.Where(p => p.Section is null).Select(p => new { courseId = p.CourseId, p.Course.Code, p.Course.Name, removed = p.SectionRemoved }),
-                clashes = Clashes.Find(withSection.Select(p => p.Section!).ToList()),
-            });
+            // The shape itself is made in one place, shared with the teacher's timetable.
+            return Results.Ok(await TimetableView.BuildAsync(db, current,
+                withSection.Select(p => new ClassRow(p.Course, p.Section!,
+                    p.Section!.ChangedAt is not null && (p.SeenAt is null || p.SeenAt < p.Section.ChangedAt), NoteCounts(p.CourseId), null, null, null)).ToList(),
+                slots.OrderBy(s => s.Date).ThenBy(s => s.Day).ThenBy(s => s.Start).Select(PersonalEndpoints.Of),
+                planner,
+                picks.Where(p => p.Section is null).Select(p => (object)new { courseId = p.CourseId, p.Course.Code, p.Course.Name, removed = p.SectionRemoved }),
+                null, ct));
         });
 
         me.MapPost("/seen", async (SeenBody body, HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) =>

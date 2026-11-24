@@ -321,6 +321,158 @@ public class TeacherIdentityTests
         Assert.Null(await w.Db(db => db.TeachNotices.Where(n => n.Id == theirs).Select(n => n.SeenAt).SingleAsync()));
     }
 
+    [Fact]
+    public async Task What_an_owner_does_through_view_as_is_kept_under_the_owner_and_the_teacher_is_told()
+    {
+        using var w = await TeachWorld.Create();
+        var other = await w.Section("BE1101", "2");
+        var own = await w.Section("LOG1101", "1");
+        var studentOwner = await w.SignInStudentOwner();
+        var key = TeacherKeys.For(new Teacher { Id = w.Teacher1Id });
+
+        // A dashboard owner adds a class to the teacher's timetable; a student owner hides one under the teacher's name.
+        var row = await Json(await TeachWorld.ViewAs(w.Owner, key).PutAsJsonAsync($"/api/teach/sections/{other}", new { on = true }));
+        Assert.Equal("added", row.GetProperty("state").GetString());
+        Assert.Equal("hidden", (await Json(await TeachWorld.ViewAs(studentOwner, key).PutAsJsonAsync($"/api/teach/sections/{own}", new { on = false }))).GetProperty("state").GetString());
+        var rows = await w.Db(db => db.TeacherSections.AsNoTracking().OrderBy(r => r.Id).ToListAsync());
+        Assert.Equal([(w.Teacher1Id, (int?)other, TeacherSection.AddedMode, (string?)TeachWorld.OwnerName), (w.Teacher1Id, own, TeacherSection.HiddenMode, ApiFactory.OwnerId)],
+            rows.Select(r => (r.TeacherId, r.SectionId, r.Mode, r.By)));
+        // The owner's own account got nothing, and the teacher sees it on their timetable.
+        var classes = (await Json(await w.Teacher1.GetAsync("/api/teach/timetable"))).GetProperty("classes").EnumerateArray()
+            .Select(c => $"{c.GetProperty("code").GetString()}/{c.GetProperty("section").GetProperty("number").GetString()}").ToList();
+        Assert.Equal(["BE1101/1", "BE1101/2", "IBSM1101/1"], classes);
+        // What the teacher ticks themselves carries nobody's name.
+        await Json(await w.Teacher1.PutAsJsonAsync($"/api/teach/sections/{await w.Section("CS2201", "1")}", new { on = true }));
+        Assert.Null(await w.Db(db => db.TeacherSections.Where(r => r.CourseCode == "CS2201").Select(r => r.By).SingleAsync()));
+
+        // The owner edits the office hours.
+        var office = await Json(await TeachWorld.ViewAs(w.Owner, key).PutAsJsonAsync("/api/teach/office",
+            new { officeRoom = "B-204", note = "", hours = new[] { new { day = 1, start = "10:00", end = "11:00", room = "B-204" } } }));
+        Assert.Equal((TeachWorld.Teacher1Name, "B-204", false), (office.GetProperty("name").GetString(), office.GetProperty("officeRoom").GetString(), office.GetProperty("showEmail").GetBoolean()));
+        Assert.Equal(w.Teacher1Id, await w.Db(db => db.OfficeHours.Select(h => h.TeacherId).SingleAsync()));
+
+        // Each edit is a notice in the teacher's inbox, with the owner's label kept for the log and one tag for the run.
+        var notices = await w.Db(db => db.TeachNotices.AsNoTracking().OrderBy(n => n.Id).ToListAsync());
+        Assert.Equal(
+        [
+            ("Classy staff added BE1101 section 2 to your classes", TeachWorld.OwnerName),
+            ("Classy staff hid LOG1101 section 1 on your timetable", ApiFactory.OwnerId),
+            ("Classy staff changed your office hours", TeachWorld.OwnerName),
+        ], notices.Select(n => (n.Title, n.ByLabel!)));
+        Assert.All(notices, n => Assert.Equal((TeachNotice.ToTeacher, (int?)w.Teacher1Id, "staff-edit", $"staff-edit-{w.Teacher1Id}", (DateTimeOffset?)null),
+            (n.Audience, n.TeacherId, n.Kind, n.Tag, n.SentAt)));
+        // The teacher sees them; who it was is never in what they are sent.
+        var inbox = await (await w.Teacher1.GetAsync("/api/teach/me")).Content.ReadAsStringAsync();
+        Assert.Equal(3, JsonDocument.Parse(inbox).RootElement.GetProperty("notices").GetArrayLength());
+        Assert.DoesNotContain(TeachWorld.OwnerName, inbox);
+        Assert.DoesNotContain(ApiFactory.OwnerId, inbox);
+        // A tick that changes nothing tells nobody anything; nor does anything the teacher does themselves.
+        await Json(await TeachWorld.ViewAs(w.Owner, key).PutAsJsonAsync($"/api/teach/sections/{other}", new { on = true }));
+        await Json(await w.Teacher1.PutAsJsonAsync("/api/teach/office", new { officeRoom = "B-205" }));
+        Assert.Equal(3, await w.Db(db => db.TeachNotices.CountAsync()));
+    }
+
+    [Fact]
+    public async Task An_owner_can_never_make_a_teachers_email_show()
+    {
+        using var w = await TeachWorld.Create();
+        var viewing = TeachWorld.ViewAs(w.Owner, TeacherKeys.For(new Teacher { Id = w.Teacher1Id }));
+        var refused = await viewing.PutAsJsonAsync("/api/teach/office", new { officeRoom = "B-204", showEmail = true });
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+        Assert.Equal("Only the teacher can show their email.", await Error(refused));
+        // Nothing of that save was kept, and nobody was told.
+        var teacher = await w.Db(db => db.Teachers.AsNoTracking().SingleAsync(t => t.Id == w.Teacher1Id));
+        Assert.Equal(("", false), (teacher.OfficeRoom, teacher.ShowEmail));
+        Assert.Equal(0, await w.Db(db => db.TeachNotices.CountAsync()));
+
+        // The teacher turns it on. An owner's save leaves it as it is (sending true again is not turning it on)...
+        await Json(await w.Teacher1.PutAsJsonAsync("/api/teach/office", new { officeRoom = "B-204", showEmail = true }));
+        Assert.True((await Json(await viewing.PutAsJsonAsync("/api/teach/office", new { officeRoom = "B-205", showEmail = true }))).GetProperty("showEmail").GetBoolean());
+        Assert.True((await Json(await viewing.PutAsJsonAsync("/api/teach/office", new { officeRoom = "B-205" }))).GetProperty("showEmail").GetBoolean());
+        // ...and may turn it off, but then not back on.
+        Assert.False((await Json(await viewing.PutAsJsonAsync("/api/teach/office", new { officeRoom = "B-205", showEmail = false }))).GetProperty("showEmail").GetBoolean());
+        Assert.Equal(HttpStatusCode.Conflict, (await viewing.PutAsJsonAsync("/api/teach/office", new { officeRoom = "B-205", showEmail = true })).StatusCode);
+        Assert.False(await w.Db(db => db.Teachers.Where(t => t.Id == w.Teacher1Id).Select(t => t.ShowEmail).SingleAsync()));
+    }
+
+    [Fact]
+    public async Task Viewing_a_name_nobody_claimed_shows_its_classes_and_has_no_account_to_edit()
+    {
+        using var w = await TeachWorld.Create();
+        foreach (var (name, code) in new[] { (TeachWorld.UnclaimedName, "BE1101"), (TeachWorld.PlaceholderName, "CS2201-L") })
+        {
+            var viewing = TeachWorld.ViewAs(w.Owner, TeacherKeys.ForName(name));
+            var tt = await Json(await viewing.GetAsync("/api/teach/timetable"));
+            var only = Assert.Single(tt.GetProperty("classes").EnumerateArray());
+            Assert.Equal((code, true, false), (only.GetProperty("code").GetString(), only.GetProperty("own").GetBoolean(), only.GetProperty("added").GetBoolean()));
+            Assert.Empty(tt.GetProperty("slots").EnumerateArray());
+            Assert.Empty(tt.GetProperty("officeHours").EnumerateArray());
+            Assert.Single((await Json(await viewing.GetAsync("/api/teach/sections"))).GetProperty("mine").EnumerateArray());
+
+            // Sections, office hours and details belong to an account.
+            foreach (var r in new[]
+            {
+                await viewing.PutAsJsonAsync($"/api/teach/sections/{await w.Section("CS2201", "1")}", new { on = true }),
+                await viewing.GetAsync("/api/teach/office"),
+                await viewing.PutAsJsonAsync("/api/teach/office", new { officeRoom = "B-204" }),
+            })
+            {
+                Assert.Equal(HttpStatusCode.Conflict, r.StatusCode);
+                Assert.Equal("This name has no Classy account yet.", await Error(r));
+            }
+            Assert.Equal(HttpStatusCode.NoContent, (await viewing.PostAsJsonAsync("/api/teach/seen", new { sectionId = await w.Section(code, code == "BE1101" ? "2" : "1") })).StatusCode);
+        }
+        Assert.Equal((0, 0, 0, 0), await w.Db(async db => (await db.TeacherSections.CountAsync(), await db.OfficeHours.CountAsync(), await db.TeachNotices.CountAsync(), await db.TeacherSeens.CountAsync())));
+    }
+
+    [Fact]
+    public async Task Own_slots_are_private_to_their_teacher()
+    {
+        using var w = await TeachWorld.Create();
+        var body = new { title = "Dentist", day = 2, start = "15:00", end = "16:00" };
+        var mine = (await Json(await w.Teacher1.PostAsJsonAsync("/api/teach/slots", body))).GetProperty("id").GetInt32();
+        // Student 1 has a slot with the same row id in their own table.
+        Assert.Equal(mine, (await Json(await w.Students[0].PostAsJsonAsync("/api/me/slots", new { title = "Gym", day = 2, start = "15:00", end = "16:00" }))).GetProperty("id").GetInt32());
+
+        // Another teacher's slot id is a 404, to read into, change or remove.
+        Assert.Equal(HttpStatusCode.NotFound, (await w.Teacher2.PutAsJsonAsync($"/api/teach/slots/{mine}", new { title = "Taken", day = 2, start = "15:00", end = "16:00" })).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await w.Teacher2.DeleteAsync($"/api/teach/slots/{mine}")).StatusCode);
+        Assert.Empty((await Json(await w.Teacher2.GetAsync("/api/teach/slots"))).EnumerateArray());
+        // A teaching assistant's are their teaching profile's, not their student slots.
+        await w.Services.AddTeachingStudent(w.StudentRowIds[0], "Lab Helper");
+        Assert.Empty((await Json(await w.Students[0].GetAsync("/api/teach/slots"))).EnumerateArray());
+        Assert.Equal(HttpStatusCode.NotFound, (await w.Students[0].DeleteAsync($"/api/teach/slots/{mine}")).StatusCode);
+        var theirs = (await Json(await w.Students[0].PostAsJsonAsync("/api/teach/slots", body))).GetProperty("id").GetInt32();
+        Assert.Equal("Gym", Assert.Single((await Json(await w.Students[0].GetAsync("/api/me/slots"))).EnumerateArray()).GetProperty("title").GetString());
+
+        // An owner looking in neither sees nor touches them: 409, reads and writes alike, and none on the timetable.
+        var studentOwner = await w.SignInStudentOwner();
+        foreach (var owner in new[] { w.Owner, studentOwner })
+        {
+            var viewing = TeachWorld.ViewAs(owner, TeacherKeys.For(new Teacher { Id = w.Teacher1Id }));
+            foreach (var r in new[]
+            {
+                await viewing.GetAsync("/api/teach/slots"),
+                await viewing.PostAsJsonAsync("/api/teach/slots", body),
+                await viewing.PutAsJsonAsync($"/api/teach/slots/{mine}", body),
+                await viewing.DeleteAsync($"/api/teach/slots/{mine}"),
+            })
+            {
+                Assert.Equal(HttpStatusCode.Conflict, r.StatusCode);
+                Assert.Equal("Not available while viewing as a teacher.", await Error(r));
+            }
+            var tt = await Json(await viewing.GetAsync("/api/teach/timetable"));
+            Assert.Equal(3, tt.GetProperty("classes").GetArrayLength());
+            Assert.Empty(tt.GetProperty("slots").EnumerateArray());
+        }
+
+        // Everything is where it was.
+        var slots = await w.Db(db => db.TeacherSlots.AsNoTracking().OrderBy(s => s.Id).ToListAsync());
+        Assert.Equal([(mine, w.Teacher1Id, "Dentist"), (theirs, slots[^1].TeacherId, "Dentist")], slots.Select(s => (s.Id, s.TeacherId, s.Title)));
+        Assert.NotEqual(w.Teacher1Id, slots[^1].TeacherId);
+        Assert.Equal("Dentist", Assert.Single((await Json(await w.Teacher1.GetAsync("/api/teach/timetable"))).GetProperty("slots").EnumerateArray()).GetProperty("title").GetString());
+    }
+
     static HttpContext As(string kind, int id) => new DefaultHttpContext
     {
         User = new ClaimsPrincipal(new ClaimsIdentity(
