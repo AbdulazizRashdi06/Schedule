@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using UniSchedule.Api.Analytics;
 using UniSchedule.Api.Planner;
+using UniSchedule.Api.Teachers;
 
 namespace UniSchedule.Api.Data;
 
@@ -45,6 +46,16 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
     public DbSet<DayOff> DaysOff => Set<DayOff>();
     public DbSet<Absence> Absences => Set<Absence>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
+    public DbSet<Teacher> Teachers => Set<Teacher>();
+    public DbSet<TeacherName> TeacherNames => Set<TeacherName>();
+    public DbSet<TeacherSection> TeacherSections => Set<TeacherSection>();
+    public DbSet<TeacherSeen> TeacherSeens => Set<TeacherSeen>();
+    public DbSet<TeacherSlot> TeacherSlots => Set<TeacherSlot>();
+    public DbSet<TeacherPushSubscription> TeacherPushSubscriptions => Set<TeacherPushSubscription>();
+    public DbSet<OfficeHour> OfficeHours => Set<OfficeHour>();
+    public DbSet<BlockedEmail> BlockedEmails => Set<BlockedEmail>();
+    public DbSet<ClassChange> ClassChanges => Set<ClassChange>();
+    public DbSet<TeachNotice> TeachNotices => Set<TeachNotice>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder b)
     {
@@ -208,6 +219,127 @@ public class AppDb(DbContextOptions<AppDb> options) : DbContext(options)
         {
             e.HasIndex(x => x.At);
             e.HasOne<Semester>().WithMany().HasForeignKey(x => x.SemesterId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ---- Teachers: new tables only. Every foreign key has its delete rule here, so raw deletes can't fail on one. ----
+        m.Entity<Teacher>(e =>
+        {
+            e.Property(x => x.Email).HasMaxLength(100);
+            e.Property(x => x.DisplayName).HasMaxLength(80);
+            e.Property(x => x.CreatedBy).HasMaxLength(64);
+            e.Property(x => x.FrozenBy).HasMaxLength(64);
+            e.Property(x => x.OfficeRoom).HasMaxLength(60);
+            e.Property(x => x.ProfileNote).HasMaxLength(200);
+            // SQLite allows many nulls in a unique index: student profiles have no email, staff accounts no student.
+            e.HasIndex(x => x.Email).IsUnique();
+            e.HasIndex(x => x.StudentId).IsUnique();
+            e.HasIndex(x => x.CalendarToken).IsUnique();
+            e.HasOne<Student>().WithMany().HasForeignKey(x => x.StudentId).OnDelete(DeleteBehavior.Cascade);
+        });
+        m.Entity<TeacherName>(e =>
+        {
+            e.Ignore(x => x.Holds);
+            e.Property(x => x.Name).HasMaxLength(120);
+            e.Property(x => x.NameKey).HasMaxLength(120);
+            e.Property(x => x.State).HasMaxLength(16);
+            e.Property(x => x.How).HasMaxLength(16);
+            e.Property(x => x.SuggestedName).HasMaxLength(120);
+            e.Property(x => x.DecidedBy).HasMaxLength(64);
+            e.HasIndex(x => new { x.TeacherId, x.NameKey }).IsUnique();
+            e.HasIndex(x => x.State);
+            // One account per timetable name.
+            e.HasIndex(x => x.NameKey).IsUnique().HasFilter("\"State\" IN ('auto','approved')");
+            e.HasOne<Teacher>().WithMany().HasForeignKey(x => x.TeacherId).OnDelete(DeleteBehavior.Cascade);
+        });
+        m.Entity<TeacherSection>(e =>
+        {
+            e.Property(x => x.CourseCode).HasMaxLength(32);
+            e.Property(x => x.SectionNumber).HasMaxLength(16);
+            e.Property(x => x.Mode).HasMaxLength(8);
+            e.Property(x => x.By).HasMaxLength(64);
+            e.HasIndex(x => new { x.TeacherId, x.SemesterId, x.CourseCode, x.SectionNumber }).IsUnique();
+            e.HasIndex(x => x.SectionId);
+            e.HasOne<Teacher>().WithMany().HasForeignKey(x => x.TeacherId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Semester>().WithMany().HasForeignKey(x => x.SemesterId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Section>().WithMany().HasForeignKey(x => x.SectionId).OnDelete(DeleteBehavior.SetNull);
+        });
+        m.Entity<TeacherSeen>(e =>
+        {
+            e.HasKey(x => new { x.TeacherId, x.SectionId });
+            e.HasOne<Teacher>().WithMany().HasForeignKey(x => x.TeacherId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Section>().WithMany().HasForeignKey(x => x.SectionId).OnDelete(DeleteBehavior.Cascade);
+        });
+        m.Entity<TeacherSlot>(e =>
+        {
+            e.Property(x => x.Title).HasMaxLength(60);
+            e.Property(x => x.Place).HasMaxLength(60);
+            e.Property(x => x.Note).HasMaxLength(500);
+            e.HasIndex(x => new { x.TeacherId, x.SemesterId });
+            e.HasOne<Teacher>().WithMany().HasForeignKey(x => x.TeacherId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Semester>().WithMany().HasForeignKey(x => x.SemesterId).OnDelete(DeleteBehavior.Cascade);
+        });
+        m.Entity<TeacherPushSubscription>(e =>
+        {
+            e.HasIndex(x => x.Endpoint).IsUnique();
+            e.HasIndex(x => x.TeacherId);
+            e.HasOne<Teacher>().WithMany().HasForeignKey(x => x.TeacherId).OnDelete(DeleteBehavior.Cascade);
+        });
+        m.Entity<OfficeHour>(e =>
+        {
+            e.Property(x => x.Room).HasMaxLength(60);
+            e.HasIndex(x => x.TeacherId);
+            e.HasOne<Teacher>().WithMany().HasForeignKey(x => x.TeacherId).OnDelete(DeleteBehavior.Cascade);
+        });
+        m.Entity<BlockedEmail>(e =>
+        {
+            e.HasKey(x => x.Email);
+            e.Property(x => x.Email).HasMaxLength(100);
+            e.Property(x => x.BlockedBy).HasMaxLength(64);
+        });
+        m.Entity<ClassChange>(e =>
+        {
+            e.Property(x => x.CourseCode).HasMaxLength(32);
+            e.Property(x => x.CourseName).HasMaxLength(200);
+            e.Property(x => x.SectionNumber).HasMaxLength(16);
+            e.Property(x => x.GroupId).HasMaxLength(32);
+            e.Property(x => x.Kind).HasMaxLength(8);
+            e.Property(x => x.SessionType).HasMaxLength(10);
+            e.Property(x => x.OrigRoom).HasMaxLength(100);
+            e.Property(x => x.NewRoom).HasMaxLength(100);
+            e.Property(x => x.Note).HasMaxLength(200);
+            e.Property(x => x.Tag).HasMaxLength(48);
+            e.Property(x => x.ByKind).HasMaxLength(8);
+            e.Property(x => x.ByLabel).HasMaxLength(100);
+            e.Property(x => x.ByName).HasMaxLength(80);
+            e.Property(x => x.OnBehalfOf).HasMaxLength(120);
+            e.Property(x => x.NamedTeacher).HasMaxLength(120);
+            e.Property(x => x.EndedBy).HasMaxLength(120);
+            e.Property(x => x.EndReason).HasMaxLength(20);
+            // One live change per session. Extra classes have no original session, so they aren't held to it.
+            e.HasIndex(x => new { x.SectionId, x.OrigDate, x.OrigStart }).IsUnique()
+                .HasFilter("\"EndedAt\" IS NULL AND \"Kind\" <> 'extra' AND \"SectionId\" IS NOT NULL");
+            e.HasIndex(x => new { x.SemesterId, x.EndedAt });
+            e.HasIndex(x => new { x.TeacherId, x.CreatedAt });
+            e.HasIndex(x => x.GroupId);
+            e.HasOne<Semester>().WithMany().HasForeignKey(x => x.SemesterId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Section>().WithMany().HasForeignKey(x => x.SectionId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<Teacher>().WithMany().HasForeignKey(x => x.TeacherId).OnDelete(DeleteBehavior.SetNull);
+        });
+        m.Entity<TeachNotice>(e =>
+        {
+            e.Property(x => x.Audience).HasMaxLength(10);
+            e.Property(x => x.GroupId).HasMaxLength(32);
+            e.Property(x => x.Kind).HasMaxLength(20);
+            e.Property(x => x.Title).HasMaxLength(120);
+            e.Property(x => x.Body).HasMaxLength(400);
+            e.Property(x => x.Url).HasMaxLength(200);
+            e.Property(x => x.Tag).HasMaxLength(64);
+            e.Property(x => x.ByLabel).HasMaxLength(64);
+            e.HasIndex(x => new { x.SentAt, x.Id });
+            e.HasIndex(x => new { x.TeacherId, x.SeenAt });
+            e.HasIndex(x => new { x.SectionId, x.Tag });
+            e.HasOne<Section>().WithMany().HasForeignKey(x => x.SectionId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<Teacher>().WithMany().HasForeignKey(x => x.TeacherId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

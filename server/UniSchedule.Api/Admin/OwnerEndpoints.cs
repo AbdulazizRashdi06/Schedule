@@ -33,13 +33,17 @@ public static partial class OwnerEndpoints
         return UsernameFormat().IsMatch(username) ? null : "Usernames are 3–32 letters, digits, dots, dashes or underscores.";
     }
 
-    /// <summary>Who made a change, for the accounts list.</summary>
+    /// <summary>Who made a change, for the accounts list: a university ID, a dashboard username or a teacher's email.</summary>
     internal static async Task<string> ActorName(HttpContext http, AppDb db, CancellationToken ct)
     {
         var id = http.User.Id();
-        return http.User.IsStudent()
-            ? await db.Students.Where(s => s.Id == id).Select(s => s.UniversityId).FirstAsync(ct)
-            : await db.AdminUsers.Where(a => a.Id == id).Select(a => a.Username).FirstAsync(ct);
+        return http.User.Kind() switch
+        {
+            "student" => await db.Students.Where(s => s.Id == id).Select(s => s.UniversityId).FirstAsync(ct),
+            "admin" => await db.AdminUsers.Where(a => a.Id == id).Select(a => a.Username).FirstAsync(ct),
+            "teacher" => await db.Teachers.Where(t => t.Id == id).Select(t => t.Email!).FirstAsync(ct),
+            var kind => throw new InvalidOperationException($"No name for a sign-in of kind '{kind}'."),
+        };
     }
 
     /// <summary>
@@ -64,7 +68,7 @@ public static partial class OwnerEndpoints
         accounts.MapGet("/", async (HttpContext http, AppDb db, CancellationToken ct) =>
         {
             var isOwner = http.User.IsOwner();
-            var me = http.User.IsStudent() ? -1 : http.User.Id();
+            var me = http.User.IsAdmin() ? http.User.Id() : -1;
             var admins = await db.AdminUsers.OrderBy(a => a.Role).ThenBy(a => a.Username).ToListAsync(ct);
             // Owners who are students: their IDs are student data, so RSA doesn't see them.
             var studentOwners = isOwner
@@ -263,7 +267,7 @@ public static partial class OwnerEndpoints
     {
         var user = await db.AdminUsers.FindAsync([id], ct);
         if (user is null) return (null, Errors.NotFound("That account doesn't exist."));
-        if (!http.User.IsStudent() && http.User.Id() == id) return (null, Errors.BadRequest("You can't do that to your own account."));
+        if (http.User.IsAdmin() && http.User.Id() == id) return (null, Errors.BadRequest("You can't do that to your own account."));
         if (user.Role == AdminRole.Owner && !http.User.IsOwner()) return (null, Errors.Forbidden("Only owners can manage owner accounts."));
         return (user, null);
     }

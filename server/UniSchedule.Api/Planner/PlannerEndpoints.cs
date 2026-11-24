@@ -262,19 +262,19 @@ public static class PlannerEndpoints
         work.MapPost("/ai-jobs", async (int workspaceId, PlannerAiInput body, HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) => {
             var w = await Workspace(http, db, workspaceId, ct); if (w is null) return Errors.NotFound();
             if (string.IsNullOrWhiteSpace(body.Text) || body.Text.Length > 20000 || body.Images is null || body.Images.Length > 3 || body.Images.Any(s => s is null) || body.Images.Sum(s => s.Length) > 8 * 1024 * 1024 + 200 || body.Images.Any(s => !System.Text.RegularExpressions.Regex.IsMatch(s, @"^data:image/(png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$"))) return Errors.BadRequest("Enter a message (up to 20,000 characters) and up to three PNG/JPEG images, under 6 MB combined.");
-            var sid = http.User.Id(); var ownerAccount = !http.User.IsStudent();
+            var sid = http.User.Id(); var ownerAccount = http.User.IsAdmin();
             if (await db.PlannerAiJobs.CountAsync(j => j.StudentId == sid && j.OwnerAccount == ownerAccount && (j.Status == "queued" || j.Status == "running"), ct) >= 2) return Results.Json(new { error = "Wait for your current requests to finish." }, statusCode: 429);
             var job = new PlannerAiJob { WorkspaceId = w.Id, StudentId = sid, OwnerAccount = ownerAccount, InputJson = PlannerJson.Write(body), CreatedAt = clock.GetUtcNow() };
             db.PlannerAiJobs.Add(job); await db.SaveChangesAsync(ct); return Results.Accepted($"/api/rep/workspaces/{w.Id}/ai-jobs/{job.Id}", new { job.Id, job.Status });
         });
         work.MapGet("/ai-jobs/{id}", async (int workspaceId, string id, HttpContext http, AppDb db, CancellationToken ct) => {
             if (await Workspace(http, db, workspaceId, ct) is null) return Errors.NotFound();
-            var job = await db.PlannerAiJobs.FirstOrDefaultAsync(j => j.Id == id && j.WorkspaceId == workspaceId && j.StudentId == http.User.Id() && j.OwnerAccount == !http.User.IsStudent(), ct);
+            var job = await db.PlannerAiJobs.FirstOrDefaultAsync(j => j.Id == id && j.WorkspaceId == workspaceId && j.StudentId == http.User.Id() && j.OwnerAccount == http.User.IsAdmin(), ct);
             return job is null ? Errors.NotFound() : Results.Ok(new { job.Id, job.Status, job.Error, result = System.Text.Json.JsonDocument.Parse(job.ResultJson).RootElement });
         });
         work.MapDelete("/ai-jobs/{id}", async (int workspaceId, string id, HttpContext http, AppDb db, CancellationToken ct) => {
             if (await Workspace(http, db, workspaceId, ct) is null) return Errors.NotFound();
-            await db.PlannerAiJobs.Where(j => j.Id == id && j.WorkspaceId == workspaceId && j.StudentId == http.User.Id() && j.OwnerAccount == !http.User.IsStudent()).ExecuteUpdateAsync(u => u.SetProperty(j => j.Status, "cancelled").SetProperty(j => j.InputJson, "{}"), ct);
+            await db.PlannerAiJobs.Where(j => j.Id == id && j.WorkspaceId == workspaceId && j.StudentId == http.User.Id() && j.OwnerAccount == http.User.IsAdmin()).ExecuteUpdateAsync(u => u.SetProperty(j => j.Status, "cancelled").SetProperty(j => j.InputJson, "{}"), ct);
             return Results.NoContent();
         });
     }
