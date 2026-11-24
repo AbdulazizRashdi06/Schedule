@@ -9,5 +9,7 @@ public static class Errors
     public static IResult NotFound(string message = "Not found.") => Results.Json(new { error = message }, statusCode: StatusCodes.Status404NotFound);
     public static IResult Conflict(string message) => Results.Json(new { error = message }, statusCode: StatusCodes.Status409Conflict);
     public static IResult TooMany(string message) => Results.Json(new { error = message }, statusCode: StatusCodes.Status429TooManyRequests);
+    /// <summary>A class change needs a newer emailed code: the app shows its code step and tries again.</summary>
+    public static IResult CodeNeeded(string message) => Results.Json(new { error = message, needsCode = true }, statusCode: StatusCodes.Status403Forbidden);
     public static IResult Unavailable(string message) => Results.Json(new { error = message }, statusCode: StatusCodes.Status503ServiceUnavailable);
 }

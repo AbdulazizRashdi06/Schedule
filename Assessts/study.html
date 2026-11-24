@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Data Structures Lectures 5–9</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* layout: fixed lecture rail on the left, one lecture at a time on the right, numbered micro-steps down a hairline spine */
+  --bg:#f3f4f7; --surface:#ffffff; --ink:#172031; --muted:#5a6476; --line:#dce0e8;
+  --accent:#2c56d4; --accent-soft:#e5ebfc;
+  --warn:#9a5b00; --warn-soft:#fbefd9; --ok:#17704a; --ok-soft:#ddf2e6; --bad:#b0302a; --bad-soft:#fbe4e2;
+  --code-bg:#eef1f6;
+  --display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body:"IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#10141c; --surface:#171c26; --ink:#e5e8ef; --muted:#9aa3b5; --line:#283040;
+    --accent:#86a3f7; --accent-soft:#1d2844;
+    --warn:#f1b65c; --warn-soft:#382a12; --ok:#62cc97; --ok-soft:#14301f; --bad:#f07f78; --bad-soft:#3b1917;
+    --code-bg:#0e1219; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#10141c; --surface:#171c26; --ink:#e5e8ef; --muted:#9aa3b5; --line:#283040;
+  --accent:#86a3f7; --accent-soft:#1d2844;
+  --warn:#f1b65c; --warn-soft:#382a12; --ok:#62cc97; --ok-soft:#14301f; --bad:#f07f78; --bad-soft:#3b1917;
+  --code-bg:#0e1219; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.6}
+a{color:var(--accent)}
+.layout{display:grid;grid-template-columns:250px minmax(0,1fr);min-height:100vh}
+.rail{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:28px 18px;border-right:1px solid var(--line);background:var(--surface)}
+.brand{font-family:var(--display);font-weight:700;font-size:20px;line-height:1.2;margin:0 0 4px}
+.brand-sub{font-size:13px;color:var(--muted);margin:0 0 22px}
+.nav{display:flex;flex-direction:column;gap:4px}
+.nav a{display:grid;grid-template-columns:40px minmax(0,1fr) auto;align-items:center;gap:8px;padding:9px 10px;border-radius:8px;text-decoration:none;color:var(--ink);font-size:14px}
+.nav a:hover{background:var(--bg)}
+.nav a[aria-current="page"]{background:var(--accent-soft);color:var(--accent)}
+.nav .ln{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.nav a[aria-current="page"] .ln{color:var(--accent)}
+.nav .sc{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.nav .sc.done{color:var(--ok)}
+.rail-foot{margin-top:24px;font-size:12px;color:var(--muted);line-height:1.5}
+main{padding:36px clamp(16px,4vw,56px) 80px;max-width:940px;width:100%}
+.lec-head h1{font-family:var(--display);font-weight:700;font-size:clamp(28px,4vw,40px);line-height:1.1;margin:6px 0 10px;text-wrap:balance}
+.eyebrow{font-family:var(--mono);font-size:12px;color:var(--accent);letter-spacing:.04em}
+.lec-head p{color:var(--muted);margin:0 0 8px;max-width:65ch}
+.jump{display:flex;flex-wrap:wrap;gap:6px;margin:18px 0 8px}
+.jump a{font-size:13px;padding:4px 10px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:var(--muted);background:var(--surface)}
+.jump a:hover{color:var(--accent);border-color:var(--accent)}
+.step{display:grid;grid-template-columns:46px minmax(0,1fr);gap:14px;padding:26px 0;border-top:1px solid var(--line)}
+.step .n{font-family:var(--mono);font-size:13px;color:var(--accent);padding-top:5px}
+.step h2{font-family:var(--display);font-weight:500;font-size:22px;line-height:1.25;margin:0 0 10px;text-wrap:balance}
+.step p,.step li{max-width:68ch}
+.step ul{padding-left:20px;margin:8px 0}
+.step li{margin:3px 0}
+code{font-family:var(--mono);font-size:.9em;background:var(--code-bg);padding:1px 5px;border-radius:4px}
+pre{background:var(--code-bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.55;margin:12px 0}
+pre code{background:none;padding:0}
+.cl{display:block;padding:0 6px;margin:0 -6px;border-radius:4px;white-space:pre}
+.cl.hl{background:var(--accent-soft);color:var(--accent)}
+.tbl-wrap{overflow-x:auto;margin:12px 0}
+table{border-collapse:collapse;font-size:14px;min-width:100%}
+th,td{border-bottom:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+th{font-weight:600;color:var(--muted);font-size:13px}
+td.m,th.m{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.note{border-left:3px solid var(--accent);padding:6px 12px;margin:12px 0;background:var(--accent-soft);border-radius:0;font-size:15px}
+.note.warn{border-color:var(--warn);background:var(--warn-soft)}
+.lab{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;margin:16px 0}
+.lab-title{font-size:12px;font-family:var(--mono);color:var(--muted);margin:0 0 12px}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end}
+.ci{display:flex;flex-direction:column;align-items:center;gap:3px}
+.pt{height:18px;font-family:var(--mono);font-size:12px;color:var(--accent);white-space:nowrap}
+.cell{min-width:44px;height:42px;padding:0 8px;border-radius:7px;border:1px solid var(--line);background:var(--bg);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:15px;font-variant-numeric:tabular-nums;transition:background .2s,border-color .2s,opacity .2s;white-space:nowrap}
+.cell.a{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.cell.w{background:var(--warn-soft);border-color:var(--warn);color:var(--warn)}
+.cell.ok{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
+.cell.bad{background:var(--bad-soft);border-color:var(--bad);color:var(--bad)}
+.cell.gap{border-style:dashed;background:transparent;color:var(--muted)}
+.cell.dim{opacity:.32}
+.cell.click{cursor:pointer}
+.cell.click:hover{border-color:var(--accent)}
+.ix{font-size:11px;color:var(--muted);font-family:var(--mono)}
+.rlabel{font-size:13px;color:var(--muted);min-width:96px;align-self:center}
+.lrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 0}
+.stage{min-height:60px;overflow-x:auto}
+.smsg{margin:14px 0 12px;min-height:48px;font-size:15px}
+.ctrl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.cnt{font-family:var(--mono);font-size:12px;color:var(--muted);min-width:60px;text-align:center}
+.btn{font:inherit;font-size:14px;padding:7px 13px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+:root[data-theme="dark"] .btn.primary{color:#0e1219}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .btn.primary{color:#0e1219}}
+.btn.ghost{border-color:transparent;color:var(--muted)}
+.btn.sel{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.btn:focus-visible,.nav a:focus-visible,.opt:focus-visible,summary:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+.chips .lbl{font-size:13px;color:var(--muted);margin-right:4px}
+.counter{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:10px}
+.out{font-family:var(--mono);font-size:13px;background:var(--code-bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:12px;white-space:pre-wrap;min-height:40px}
+.out.err{color:var(--bad)}
+input[type=number]{font:inherit;font-size:14px;width:90px;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.err-msg{font-size:13px;color:var(--bad)}
+details{border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:12px 0;background:var(--surface)}
+summary{cursor:pointer;font-weight:500}
+details[open] summary{margin-bottom:8px}
+.levels{display:flex;flex-direction:column;gap:10px}
+.lv{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.lv .grp{display:flex;gap:3px;padding:4px;border:1px dashed var(--line);border-radius:8px}
+.lv .grp .cell{min-width:34px;height:34px;font-size:13px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{display:inline-block;width:11px;height:11px;border-radius:3px;border:1px solid}
+.sw.a{background:var(--accent-soft);border-color:var(--accent)}
+.sw.w{background:var(--warn-soft);border-color:var(--warn)}
+.sw.ok{background:var(--ok-soft);border-color:var(--ok)}
+.sw.bad{background:var(--bad-soft);border-color:var(--bad)}
+svg text{font-family:var(--mono)}
+.quiz{margin-top:30px;border-top:2px solid var(--ink);padding-top:22px}
+.quiz h2{font-family:var(--display);font-weight:700;font-size:26px;margin:0 0 4px}
+.qbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:6px 0 10px;color:var(--muted);font-size:14px}
+.score{font-family:var(--mono);font-size:14px;color:var(--ink)}
+.q{padding:18px 0;border-top:1px solid var(--line)}
+.q .qt{font-weight:500;margin:0 0 10px;max-width:70ch}
+.q .qn{font-family:var(--mono);font-size:12px;color:var(--muted);margin-right:6px}
+.q pre{margin:8px 0 12px}
+.opts{display:flex;flex-direction:column;gap:6px}
+.opt{font:inherit;font-size:15px;text-align:left;padding:9px 12px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;display:flex;gap:10px;align-items:flex-start}
+.opt .k{font-family:var(--mono);font-size:12px;color:var(--muted);padding-top:3px;min-width:14px}
+.opt:hover:not([disabled]){border-color:var(--accent)}
+.opt[disabled]{cursor:default}
+.opt.right{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
+.opt.wrong{background:var(--bad-soft);border-color:var(--bad);color:var(--bad)}
+.exp{margin-top:10px;font-size:14px;padding:8px 12px;border-radius:8px;background:var(--code-bg)}
+.exp b{font-weight:600}
+.final{margin-top:18px;padding:14px 16px;border-radius:10px;background:var(--accent-soft);color:var(--accent);display:none}
+.final.show{display:block}
+@media (max-width:860px){
+  .layout{grid-template-columns:1fr}
+  .rail{position:static;height:auto;border-right:none;border-bottom:1px solid var(--line);padding:16px}
+  .brand-sub,.rail-foot{display:none}
+  .nav{flex-direction:row;overflow-x:auto;gap:6px;padding-bottom:4px}
+  .nav a{grid-template-columns:auto auto;white-space:nowrap}
+  .nav .sc{display:none}
+  .step{grid-template-columns:1fr;gap:4px}
+}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="rail">
+    <p class="brand">Lectures 5–9</p>
+    <p class="brand-sub">Vectors → Sorting part 2, step by step, with a slide-only quiz after each lecture.</p>
+    <nav class="nav" id="nav" aria-label="Lectures"></nav>
+    <p class="rail-foot">Use Back / Next in each lab to move one micro-step at a time. Your best quiz score per lecture is kept in this browser.</p>
+  </aside>
+  <main id="main"></main>
+</div>
+<script>
+/* ---------- helpers ---------- */
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const code = s => `<pre><code>${esc(s.replace(/^\n/,'').replace(/\s+$/,''))}</code></pre>`;
+const codeHL = (lines, hl) => `<pre><code>${lines.map((l,i)=>`<span class="cl${i===hl?' hl':''}">${esc(l)||' '}</span>`).join('')}</code></pre>`;
+const tbl = (head, rows, mono=[]) => `<div class="tbl-wrap"><table><thead><tr>${head.map((h,i)=>`<th${mono.includes(i)?' class="m"':''}>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((c,i)=>`<td${mono.includes(i)?' class="m"':''}>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+const legend = items => `<div class="legend">${items.map(([c,t])=>`<span><span class="sw ${c}"></span>${t}</span>`).join('')}</div>`;
+function cells(arr, o={}){
+  return `<div class="row">${arr.map((v,i)=>{
+    const c = o.cls ? (o.cls(i,v)||'') : '';
+    const p = o.ptr ? (o.ptr(i)||'') : '';
+    const val = (v===null||v===undefined) ? (o.blank||'') : v;
+    return `<div class="ci">${o.ptr?`<div class="pt">${p?esc(p)+' ↓':''}</div>`:''}<div class="cell ${c}"${o.click?` data-i="${i}" role="button" tabindex="0"`:''}>${esc(val)}</div>${o.idx===false?'':`<div class="ix">[${i}]</div>`}</div>`;
+  }).join('')}</div>`;
+}
+function stepper(el, steps, render){
+  el.insertAdjacentHTML('beforeend', `<div class="stage"></div><p class="smsg" aria-live="polite"></p><div class="ctrl"><button class="btn" data-d="-1">← Back</button><span class="cnt"></span><button class="btn primary" data-d="1">Next →</button><button class="btn ghost" data-d="r">Restart</button></div>`);
+  let i = 0;
+  const stage = el.querySelector('.stage'), msg = el.querySelector('.smsg'), cnt = el.querySelector('.cnt');
+  function draw(){ const s = steps[i]; stage.innerHTML = render(s, i); msg.innerHTML = s.msg||''; cnt.textContent = `${i+1} / ${steps.length}`; }
+  el.querySelector('.ctrl').addEventListener('click', e => {
+    const b = e.target.closest('button'); if(!b) return;
+    const d = b.dataset.d; if(d==='r') i = 0; else i = Math.max(0, Math.min(steps.length-1, i + Number(d)));
+    draw();
+  });
+  draw();
+  return { load(ns){ steps = ns; i = 0; draw(); } };
+}
+function chips(el, label, options, onPick, startIdx=0){
+  const wrap = document.createElement('div'); wrap.className = 'chips';
+  wrap.innerHTML = `<span class="lbl">${label}</span>` + options.map((o,i)=>`<button class="btn${i===startIdx?' sel':''}" data-k="${i}">${esc(o)}</button>`).join('');
+  el.appendChild(wrap);
+  wrap.addEventListener('click', e => {
+    const b = e.target.closest('button[data-k]'); if(!b) return;
+    wrap.querySelectorAll('button').forEach(x=>x.classList.remove('sel')); b.classList.add('sel');
+    onPick(Number(b.dataset.k));
+  });
+  return wrap;
+}
+function labTitle(el, t){ el.insertAdjacentHTML('beforeend', `<p class="lab-title">${esc(t)}</p>`); }
+/* trace stepper: code on the left, state below */
+function traceLab(el, title, lines, states, renderData){
+  labTitle(el, title);
+  stepper(el, states, s => codeHL(lines, s.line) + (s.data!==undefined ? renderData(s.data) : ''));
+}
+const pairCells = (m, hi) => `<div class="row">${Object.keys(m).sort().map(k=>`<div class="ci"><div class="cell ${k===hi?'a':''}">${esc(k)} ${esc(m[k])}</div></div>`).join('') || '<span class="ix">(empty)</span>'}</div>`;
+
+/* ---------- widgets ---------- */
+const W = {};
+
+W.access = el => {
+  labTitle(el, 'Tap any box: every element is one step away');
+  const v=[10,20,30,40,50];
+  el.insertAdjacentHTML('beforeend', `<div class="stage"></div><p class="smsg">vector&lt;int&gt; v = {10, 20, 30, 40, 50};  Pick an index.</p>`);
+  const st = el.querySelector('.stage'), m = el.querySelector('.smsg');
+  let sel=-1;
+  const draw=()=>{ st.innerHTML = cells(v,{click:true,cls:i=>'click '+(i===sel?'a':'')}); };
+  draw();
+  st.addEventListener('click', e=>{ const c=e.target.closest('[data-i]'); if(!c) return; sel=+c.dataset.i; draw(); m.innerHTML=`<code>v[${sel}]</code> → ${v[sel]}, reached in one step. The elements sit side by side in memory, so the vector jumps straight to the address. This is random access, <b>O(1)</b>: <code>v[999]</code> would take the same time as <code>v[0]</code>.`; });
+};
+
+W.at = el => {
+  labTitle(el, 'v[5] vs v.at(5) on a vector of size 3');
+  el.insertAdjacentHTML('beforeend', cells([10,20,30,'?','?','?'],{cls:i=>i>2?'gap':''}) + `<div class="ctrl" style="margin-top:12px"><button class="btn" data-x="sub">cout &lt;&lt; v[5];</button><button class="btn" data-x="at">cout &lt;&lt; v.at(5);</button></div><div class="out">Run one of the two lines.</div>`);
+  const out = el.querySelector('.out');
+  el.querySelector('.ctrl').addEventListener('click', e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    if(b.dataset.x==='sub'){ out.className='out'; out.textContent='Undefined behaviour: it may print a garbage value, crash, or seem to work.\nNo check is made, so the bug stays hidden.'; }
+    else { out.className='out err'; out.textContent="terminate called after throwing an instance of 'std::out_of_range'\n  what(): vector::_M_range_check: __n (which is 5) >= this->size() (which is 3)"; }
+  });
+};
+
+W.pushback = el => {
+  labTitle(el, 'push_back step by step (g++ doubles the block)');
+  const S=[
+    {code:'vector<int> v;', size:0, cap:0, mem:[], msg:'Empty vector: size 0, capacity 0, no memory yet.'},
+    {code:'v.push_back(10);', size:1, cap:1, mem:[10], neu:true, copied:0, msg:'First block allocated with room for 1. 10 goes in.'},
+    {code:'v.push_back(20);', size:2, cap:2, mem:[10,20], neu:true, copied:1, msg:'No room left, so a <b>new block</b> of 2 is allocated and 1 element (10) is copied over.'},
+    {code:'v.push_back(30);', size:3, cap:4, mem:[10,20,30], neu:true, copied:2, msg:'Full again: new block of 4, 2 elements copied. One slot is reserved but unused.'},
+    {code:'v.push_back(40);', size:4, cap:4, mem:[10,20,30,40], neu:false, copied:0, msg:'It <b>fits</b> in the reserved slot, so nothing is copied.'},
+    {code:'v.push_back(50);', size:5, cap:8, mem:[10,20,30,40,50], neu:true, copied:4, msg:'Full: new block of 8, 4 elements copied. Capacities shown are for g++; other compilers grow differently.'}
+  ];
+  stepper(el, S, s => `<pre><code>${esc(s.code)}</code></pre><div class="lrow"><span class="score">size = ${s.size} · capacity = ${s.cap}</span></div>` + (s.cap? cells(Array.from({length:s.cap},(_,i)=>i<s.mem.length?s.mem[i]:null),{cls:i=> i>=s.mem.length?'gap': (i===s.mem.length-1?'ok': (s.neu && i<s.copied?'a':'')) ,blank:'·'}) : '<p class="ix">(no memory yet)</p>') + legend([['ok','value just added'],['a','copied into the new block']]));
+};
+
+W.insert = el => {
+  labTitle(el, 'v.insert(v.begin() + 1, 99) on {10, 20, 30, 40}');
+  const S=[
+    {a:[10,20,30,40], msg:'Before. 99 must go in <b>before</b> index 1.'},
+    {a:[10,20,30,null,40], m:4, msg:'1. Make room, starting from the end: 40 moves one place right.'},
+    {a:[10,20,null,30,40], m:3, msg:'30 moves one place right.'},
+    {a:[10,null,20,30,40], m:2, msg:'20 moves one place right. Now there is a gap at index 1.'},
+    {a:[10,99,20,30,40], n:1, msg:'2. Put 99 in the gap. Every element after the position moved, so insert costs <b>O(n)</b>.'}
+  ];
+  stepper(el, S, s => cells(s.a,{cls:i=> s.a[i]===null?'gap': i===s.m?'a': i===s.n?'ok':''}));
+};
+
+W.erase = el => {
+  labTitle(el, 'v.erase(v.begin() + 1) on {10, 20, 30, 40}');
+  const S=[
+    {a:[10,20,30,40], r:1, msg:'Remove the element at index 1 (20).'},
+    {a:[10,null,30,40], msg:'20 is gone, leaving a gap.'},
+    {a:[10,30,null,40], m:1, msg:'30 shifts left.'},
+    {a:[10,30,40], m:2, msg:'40 shifts left. size is 3. Shifting makes erase <b>O(n)</b>, while pop_back needs no shifting: <b>O(1)</b>.'}
+  ];
+  stepper(el, S, s => cells(s.a,{cls:i=> s.a[i]===null?'gap': i===s.r?'bad': i===s.m?'a':''}));
+};
+
+W.eraseRemove = el => {
+  labTitle(el, 'v2.erase(remove(v2.begin(), v2.end(), 2), v2.end());');
+  const S=[
+    {a:[1,2,3,2,4,2], bad:true, msg:'Start: every 2 must go.'},
+    {a:[1,3,4,'?','?','?'], it:3, msg:'Step 1, <code>remove(begin, end, 2)</code>: the values to keep are moved to the front. The size is <b>still 6</b>. It returns an iterator <code>it</code> to the first leftover.'},
+    {a:[1,3,4], msg:'Step 2, <code>erase(it, end)</code>: the leftovers are cut off. size is 3, v2 = {1, 3, 4}.'}
+  ];
+  stepper(el, S, s => cells(s.a,{cls:i=> s.bad&&s.a[i]===2?'bad': s.a[i]==='?'?'gap':'', ptr: i=> s.it===i?'it':''}));
+};
+
+W.ref = el => {
+  labTitle(el, 'vector<int> v = {10, 20, 30};');
+  el.insertAdjacentHTML('beforeend', `<div class="ctrl"><button class="btn" data-x="copy">for (int x : v) x *= 2;</button><button class="btn" data-x="ref">for (int&amp; x : v) x *= 2;</button><button class="btn ghost" data-x="reset">Reset</button></div><div class="stage" style="margin-top:14px"></div><p class="smsg"></p>`);
+  let v=[10,20,30]; const st=el.querySelector('.stage'), m=el.querySelector('.smsg');
+  const draw=(c)=>{ st.innerHTML=cells(v,{cls:()=>c||''}); };
+  draw();
+  el.querySelector('.ctrl').addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    if(b.dataset.x==='copy'){ draw(); m.innerHTML='No change. Without <code>&amp;</code>, <code>x</code> is a <b>copy</b>, so <code>x *= 2</code> changes the copy, not the vector.'; }
+    if(b.dataset.x==='ref'){ v=v.map(x=>x*2); draw('ok'); m.innerHTML='With <code>&amp;</code>, <code>x</code> refers to the real element, so the vector changes.'; }
+    if(b.dataset.x==='reset'){ v=[10,20,30]; draw(); m.textContent=''; }
+  });
+};
+
+W.vecPractice = el => {
+  const L=['vector<int> v = {5, 18, 12};','v.push_back(25);','v.pop_back();','v.insert(v.begin(), 7);','v.erase(v.begin() + 2);','v.push_back(14);','v[1] = 0;','v.pop_back();','cout << v.size() << " " << v.front() << " " << v.back();'];
+  const S=[
+    {line:0,data:[5,18,12],msg:'Start: {5, 18, 12}'},
+    {line:1,data:[5,18,12,25],msg:'25 added at the end.'},
+    {line:2,data:[5,18,12],msg:'Last element removed.'},
+    {line:3,data:[7,5,18,12],msg:'7 inserted before index 0.'},
+    {line:4,data:[7,5,12],msg:'Index 2 (18) erased.'},
+    {line:5,data:[7,5,12,14],msg:'14 added at the end.'},
+    {line:6,data:[7,0,12,14],msg:'Index 1 changed to 0.'},
+    {line:7,data:[7,0,12],msg:'Last element removed.'},
+    {line:8,data:[7,0,12],msg:'Printed: <b>3 7 12</b>. size = 3, front = 7, back = 12.'}
+  ];
+  traceLab(el,'Practice trace',L,S,d=>cells(d));
+};
+
+W.setVsVec = el => {
+  labTitle(el, 'for (int x : {30, 10, 50, 10, 20}) { v.push_back(x); s.insert(x); }');
+  const ins=[30,10,50,10,20]; const S=[{v:[],s:[],msg:'Both containers start empty.'}];
+  let v=[],s=[];
+  const notes={0:'first element',1:'goes before 30',2:'goes after 30',3:'already there, so ignored',4:'fits between 10 and 30'};
+  ins.forEach((x,k)=>{ v=[...v,x]; const dup=s.includes(x); if(!dup) s=[...s,x].sort((a,b)=>a-b); S.push({v,s,x,dup,msg:`<code>insert(${x})</code> into the set: ${notes[k]}. The vector just appends ${x} at the end${dup?', so the duplicate 10 is kept there':''}. Set size = ${s.length}.`}); });
+  stepper(el, S, st => `<div class="lrow"><span class="rlabel">vector v</span>${cells(st.v,{cls:i=>i===st.v.length-1&&st.x!==undefined?'ok':''})}</div><div class="lrow"><span class="rlabel">set s</span>${st.s.length?cells(st.s,{idx:false,cls:(i,val)=>val===st.x?(st.dup?'a':'ok'):''}):'<span class="ix">(empty)</span>'}</div>` + legend([['ok','just inserted'],['a','already in the set, nothing changed']]));
+};
+
+function treeLab(el, title, nodes, targets, show, note){
+  labTitle(el, title);
+  const X=[300,150,450,75,225,375,525], Y=[34,104,174,174,174,174,174];
+  X[3]=75;Y[1]=104;Y[2]=104;
+  const pos=i=>[X[i], i===0?34:(i<3?104:174)];
+  function gen(t){
+    const S=[]; let k=0, path=[];
+    while(k<nodes.length){
+      const key=nodes[k].k; path=[...path,k];
+      if(t===key){ S.push({path,cur:k,found:k,msg:`${show(t)} = ${show(key)} → found in ${path.length} step${path.length>1?'s':''}.`}); return S; }
+      const left = t<key; const nk = left?2*k+1:2*k+2;
+      S.push({path,cur:k,msg:`${show(t)} ${left?'<':'>'} ${show(key)} → go ${left?'left':'right'}.`});
+      k=nk;
+    }
+    S.push({path,cur:-1,msg:`No child in that direction, so ${show(t)} is not here. find returns <code>end()</code>, count returns 0.`});
+    return S;
+  }
+  const area=document.createElement('div'); el.appendChild(area);
+  chips(area,'Search for',targets.map(show),i=>s.load(gen(targets[i])));
+  const render=st=>{
+    let svg=`<svg viewBox="0 0 600 205" width="100%" style="max-width:600px" role="img" aria-label="Binary search tree"><title>Search tree</title>`;
+    for(let i=1;i<nodes.length;i++){ const [x1,y1]=pos(Math.floor((i-1)/2)),[x2,y2]=pos(i); svg+=`<line x1="${x1}" y1="${y1+16}" x2="${x2}" y2="${y2-16}" stroke="var(--line)" stroke-width="1.5"/>`; }
+    nodes.forEach((n,i)=>{ const [x,y]=pos(i); const on=st.path.includes(i); const f=st.found===i; const c=st.cur===i;
+      const fill=f?'var(--ok-soft)':c?'var(--warn-soft)':on?'var(--accent-soft)':'var(--bg)'; const stroke=f?'var(--ok)':c?'var(--warn)':on?'var(--accent)':'var(--line)'; const tc=f?'var(--ok)':c?'var(--warn)':on?'var(--accent)':'var(--ink)';
+      const w=n.v!==undefined?104:52;
+      svg+=`<rect x="${x-w/2}" y="${y-16}" width="${w}" height="32" rx="8" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/><text x="${x}" y="${y+5}" text-anchor="middle" font-size="13" fill="${tc}">${esc(n.k)}${n.v!==undefined?' '+esc(n.v):''}</text>`; });
+    return svg+'</svg>';
+  };
+  const box=document.createElement('div'); el.appendChild(box);
+  const s=stepper(box, gen(targets[0]), render);
+  if(note) el.insertAdjacentHTML('beforeend', `<p class="counter">${note}</p>`);
+}
+
+W.setTree = el => treeLab(el,'Searching a set (balanced binary search tree)',[{k:40},{k:20},{k:60},{k:10},{k:30},{k:50},{k:70}],[50,10,70,35],x=>String(x),'Left = smaller, right = bigger. Each step throws away half the tree: O(log n).');
+W.mapTree = el => treeLab(el,'Searching a map by key (values play no part)',[{k:'leila',v:25},{k:'ahmed',v:13.1},{k:'salem',v:11},{k:'adel',v:32.4},{k:'fahad',v:19.7},{k:'muna',v:8},{k:'zahra',v:17}],['muna','adel','zahra','omar'],x=>`"${x}"`,'Keys are compared alphabetically. Going begin() → end() visits adel, ahmed, fahad, leila, muna, salem, zahra.');
+
+W.setOps = el => {
+  labTitle(el,'set s = {10, 20, 30, 50};  try each line');
+  const base=[10,20,30,50]; let s=[...base];
+  el.insertAdjacentHTML('beforeend',`<div class="ctrl"><button class="btn" data-x="e20">s.erase(20);</button><button class="btn" data-x="e99">s.erase(99);</button><button class="btn" data-x="f30">s.find(30)</button><button class="btn" data-x="c30">s.count(30)</button><button class="btn" data-x="c99">s.count(99)</button><button class="btn ghost" data-x="r">Reset</button></div><div class="stage" style="margin-top:14px"></div><div class="out">Pick a line.</div>`);
+  const st=el.querySelector('.stage'), out=el.querySelector('.out');
+  const draw=(h)=>{ st.innerHTML=s.length?cells(s,{idx:false,cls:(i,v)=>v===h?'ok':''}):'<span class="ix">(empty)</span>'; };
+  draw();
+  el.querySelector('.ctrl').addEventListener('click',e=>{
+    const b=e.target.closest('button'); if(!b) return; const x=b.dataset.x;
+    if(x==='e20'){ const had=s.includes(20); s=s.filter(v=>v!==20); draw(); out.textContent=had?'returns 1: 20 removed.':'returns 0: 20 is not in the set any more.'; }
+    if(x==='e99'){ draw(); out.textContent='returns 0: 99 is not there, no change.'; }
+    if(x==='f30'){ const h=s.includes(30); draw(h?30:null); out.textContent=h?'returns an iterator pointing to 30, so  s.find(30) != s.end()  is true.':'returns s.end()'; }
+    if(x==='c30'){ draw(s.includes(30)?30:null); out.textContent=String(s.includes(30)?1:0)+'   (in a set count is only 0 or 1)'; }
+    if(x==='c99'){ draw(); out.textContent='0'; }
+    if(x==='r'){ s=[...base]; draw(); out.textContent='Pick a line.'; }
+  });
+};
+
+W.randSet = el => {
+  labTitle(el,'Example 1: insert rand() % 30 twenty times');
+  el.insertAdjacentHTML('beforeend',`<div class="ctrl"><button class="btn primary" data-x="run">Run the program</button></div><div class="stage" style="margin-top:14px"></div><p class="smsg"></p>`);
+  const st=el.querySelector('.stage'), m=el.querySelector('.smsg');
+  el.querySelector('.ctrl').addEventListener('click',()=>{
+    const raw=Array.from({length:20},()=>Math.floor(Math.random()*30)); const seen=new Set(); const dupIdx=new Set();
+    raw.forEach((x,i)=>{ if(seen.has(x)) dupIdx.add(i); seen.add(x); });
+    const set=[...seen].sort((a,b)=>a-b);
+    st.innerHTML=`<div class="lrow"><span class="rlabel">20 numbers</span>${cells(raw,{idx:false,cls:i=>dupIdx.has(i)?'bad':''})}</div><div class="lrow"><span class="rlabel">the set</span>${cells(set,{idx:false,cls:()=>'ok'})}</div>`;
+    m.innerHTML=`size of the set: <b>${set.length}</b>. The red numbers are repeats, which the set ignores, so the size is below 20. The output is always sorted. Each run uses a new seed from <code>srand(time(NULL))</code>, so the numbers change.`;
+  });
+};
+
+W.setAlgebra = el => {
+  labTitle(el,'A = {1, 2, 3, 4}   B = {3, 4, 5}');
+  const A=[1,2,3,4],B=[3,4,5];
+  const ops=[['A ∪ B  union: in A or in B',[1,2,3,4,5]],['A ∩ B  intersection: in A and in B',[3,4]],['A − B  difference: in A but not in B',[1,2]]];
+  const area=document.createElement('div'); el.appendChild(area);
+  const st=document.createElement('div'); st.className='stage'; el.appendChild(st);
+  const draw=k=>{ const r=ops[k][1]; st.innerHTML=`<div class="lrow"><span class="rlabel">A</span>${cells(A,{idx:false,cls:(i,v)=>r.includes(v)?'a':'dim'})}</div><div class="lrow"><span class="rlabel">B</span>${cells(B,{idx:false,cls:(i,v)=>r.includes(v)?'a':'dim'})}</div><div class="lrow"><span class="rlabel">result</span>${cells(r,{idx:false,cls:()=>'ok'})}</div><p class="counter">${ops[k][0]}</p>`; };
+  chips(area,'Operation',['∪ union','∩ intersection','− difference'],draw);
+  draw(0);
+};
+
+W.setPractice = el => {
+  const L=['set<int> s;','s.insert(5);','s.insert(18);','s.insert(12);','s.insert(5);','s.erase(18);','s.insert(7);','s.erase(100);','cout << s.size() << " " << *s.begin() << " " << s.count(12);'];
+  const D=[[],[5],[5,18],[5,12,18],[5,12,18],[5,12],[5,7,12],[5,7,12],[5,7,12]];
+  const M=['Empty set.','{5}','{5, 18}','12 goes into its sorted place: {5, 12, 18}','5 is already there, no change.','{5, 12}','{5, 7, 12}','100 is not there, no change.','Printed: <b>3 5 1</b>. size 3, *s.begin() is the smallest (5), count(12) is 1.'];
+  traceLab(el,'Practice trace',L,L.map((_,i)=>({line:i,data:D[i],msg:M[i]})),d=>d.length?cells(d,{idx:false}):'<span class="ix">(empty)</span>');
+};
+
+W.mapUpdate = el => {
+  const L=['map<string, int> m;','m["muna"] = 8;','m["adel"] = 32;','m["muna"] = 12;','m.insert({"adel", 99});','m.insert({"salem", 11});'];
+  const D=[{},{muna:8},{adel:32,muna:8},{adel:32,muna:12},{adel:32,muna:12},{adel:32,muna:12,salem:11}];
+  const H=[null,'muna','adel','muna','adel','salem'];
+  const M=['Empty map, size 0.','New key → added. size 1.','New key → goes before muna (sorted by key). size 2.','Key exists → <b>value replaced</b> (8 becomes 12). size 2.','Key exists → insert does <b>nothing</b>. adel stays 32.','New key → added. size 3.'];
+  traceLab(el,'[ ] vs insert',L,L.map((_,i)=>({line:i,data:{m:D[i],h:H[i]},msg:M[i]})),d=>pairCells(d.m,d.h));
+};
+
+W.mapPitfall = el => {
+  const L=['map<string, int> months;','months["june"] = 30;','cout << months["jnue"];   // typo!','cout << months.size();'];
+  const D=[{},{june:30},{jnue:0,june:30},{jnue:0,june:30}];
+  const M=['Empty map.','june → 30 added.','[ ] could not find "jnue", so it <b>added it with the value 0</b>. Prints 0.','Prints <b>2</b>: the typo created a new key.'];
+  traceLab(el,'Pitfall: reading with [ ]',L,L.map((_,i)=>({line:i,data:{m:D[i],h:i===2?'jnue':null},msg:M[i]})),d=>pairCells(d.m,d.h));
+};
+
+W.votes = el => {
+  const names=['ali','sara','ali','omar','ali'];
+  const L=['map<string, int> votes;','string names[] = {"ali", "sara", "ali", "omar", "ali"};','for (string s : names)','    votes[s]++;   // a new key starts at 0, then +1'];
+  const S=[{line:0,data:{m:{},h:null},msg:'Empty map.'}]; const m={};
+  names.forEach(n=>{ const neu=!(n in m); m[n]=(m[n]||0)+1; S.push({line:3,data:{m:{...m},h:n},msg:`<code>votes["${n}"]++</code>${neu?' → new key starts at 0, then +1':''}. ${n} = ${m[n]}.`}); });
+  S.push({line:2,data:{m:{...m},h:null},msg:'Printed in key order: <b>ali: 3, omar: 1, sara: 1</b>.'});
+  traceLab(el,'Counting with a map',L,S,d=>pairCells(d.m,d.h));
+};
+
+W.mapPractice = el => {
+  const L=['map<string, int> s;','s["kiwi"] = 2;','s["apple"] = 5;','s["kiwi"] = 7;','s.insert({"apple", 1});','s["mango"];','s.erase("pear");','for (auto p : s) cout << p.first << "=" << p.second << " ";','cout << s.size();'];
+  const D=[{},{kiwi:2},{apple:5,kiwi:2},{apple:5,kiwi:7},{apple:5,kiwi:7},{apple:5,kiwi:7,mango:0},{apple:5,kiwi:7,mango:0},{apple:5,kiwi:7,mango:0},{apple:5,kiwi:7,mango:0}];
+  const H=[null,'kiwi','apple','kiwi','apple','mango',null,null,null];
+  const M=['Empty map.','kiwi=2','apple=5 goes first (sorted by key).','kiwi exists → replaced with 7.','apple exists → insert does nothing.','<b>mango=0 added!</b> [ ] alone creates the key.','pear is not there: no change.','Prints apple=5 kiwi=7 mango=0','Prints <b>3</b>. Full output: apple=5 kiwi=7 mango=0 3'];
+  traceLab(el,'Practice trace',L,L.map((_,i)=>({line:i,data:{m:D[i],h:H[i]},msg:M[i]})),d=>pairCells(d.m,d.h));
+};
+
+W.linear = el => {
+  labTitle(el,'Linear search');
+  const v=[32,12,6,23,54,10,28];
+  const gen=t=>{ const S=[{k:-1,msg:`Search for ${t}: compare with each element in turn.`}]; for(let i=0;i<v.length;i++){ if(v[i]===t){ S.push({k:i,f:true,msg:`${i+1}. v[${i}] = ${v[i]}: yes → found at index ${i} after ${i+1} comparison${i?'s':''}.`}); return S;} S.push({k:i,msg:`${i+1}. v[${i}] = ${v[i]}: no.`}); } S.push({k:v.length,msg:`All ${v.length} compared, none matched → return -1. This is the worst case: n comparisons.`}); return S; };
+  const a=document.createElement('div'); el.appendChild(a);
+  chips(a,'Search for',['54','99','32 (best case)'],i=>s.load(gen([54,99,32][i])));
+  const b=document.createElement('div'); el.appendChild(b);
+  const s=stepper(b,gen(54),st=>cells(v,{cls:i=> st.f&&i===st.k?'ok': i===st.k?'a': i<st.k?'dim':'', ptr:i=>i===st.k&&st.k<v.length?'compare':''}));
+};
+
+function binaryLab(el, title, v, targets){
+  labTitle(el,title);
+  const gen=t=>{
+    const S=[]; let low=0, high=v.length-1, c=0;
+    S.push({low,high,mid:-1,msg:`Search for ${t}. low = 0, high = ${high}.`});
+    while(low<=high){
+      const mid=low+Math.floor((high-low)/2); c++;
+      if(v[mid]===t){ S.push({low,high,mid,f:true,msg:`mid = ${low} + (${high} − ${low}) / 2 = ${mid}. arr[${mid}] = ${v[mid]} = ${t} → <b>found at index ${mid}</b>. ${c} comparison${c>1?'s':''}. Linear search would need ${mid+1}.`}); return S; }
+      if(v[mid]<t){ S.push({low,high,mid,msg:`mid = ${low} + (${high} − ${low}) / 2 = ${mid}. arr[${mid}] = ${v[mid]} &lt; ${t} → ignore left half: low = mid + 1 = ${mid+1}.`}); low=mid+1; }
+      else { S.push({low,high,mid,msg:`mid = ${low} + (${high} − ${low}) / 2 = ${mid}. arr[${mid}] = ${v[mid]} &gt; ${t} → ignore right half: high = mid − 1 = ${mid-1}.`}); high=mid-1; }
+    }
+    S.push({low,high,mid:-1,none:true,msg:`low = ${low} &gt; high = ${high}: the range is empty, so <code>while (low &lt;= high)</code> stops → <b>return -1</b>. ${c} comparisons. Linear search would need ${v.length}.`});
+    return S;
+  };
+  const a=document.createElement('div'); el.appendChild(a);
+  const ch=chips(a,'Search for',targets.map(String),i=>s.load(gen(targets[i])));
+  ch.insertAdjacentHTML('beforeend',`<input type="number" id="bs-${title.length}" aria-label="Your own value" placeholder="any"><button class="btn" data-own="1">Go</button><span class="err-msg"></span>`);
+  const inp=ch.querySelector('input'), err=ch.querySelector('.err-msg');
+  ch.addEventListener('click',e=>{ if(!e.target.closest('[data-own]')) return; e.stopPropagation(); const val=inp.value.trim(); if(val===''||isNaN(Number(val))){ err.textContent='Enter a number first.'; return;} err.textContent=''; ch.querySelectorAll('button').forEach(x=>x.classList.remove('sel')); s.load(gen(Number(val))); },true);
+  inp.addEventListener('input',()=>err.textContent='');
+  const b=document.createElement('div'); el.appendChild(b);
+  const s=stepper(b,gen(targets[0]),st=>cells(v,{cls:i=> st.f&&i===st.mid?'ok': i===st.mid?'w': (i<st.low||i>st.high)?'dim':'a', ptr:i=>[i===st.low&&!st.none?'low':'',i===st.mid?'mid':'',i===st.high&&!st.none?'high':''].filter(Boolean).join(' ')}) + legend([['a','still in the range'],['w','mid'],['ok','found']]));
+}
+W.binary = el => binaryLab(el,'Binary search: mid = low + (high − low) / 2',[2,7,60,98,105,176,190,205,210,300],[98,100,300]);
+W.binaryPractice = el => binaryLab(el,'Practice: count the comparisons',[3,8,15,21,30,42,57,63,77],[63,20]);
+
+W.recBinary = el => {
+  labTitle(el,'Recursive trace: key = 23');
+  const v=[5,8,10,13,21,23,25,43,54,75];
+  const S=[
+    {l:0,h:9,mid:4,stack:['binarySearch(myarray, 0, 9, 23)'],msg:'mid = (0 + 9) / 2 = 4. 21 &lt; 23 → search right: <code>return binarySearch(…, 5, 9, 23)</code>'},
+    {l:5,h:9,mid:7,stack:['binarySearch(myarray, 0, 9, 23)','binarySearch(myarray, 5, 9, 23)'],msg:'mid = (5 + 9) / 2 = 7. 43 &gt; 23 → search left: <code>return binarySearch(…, 5, 6, 23)</code>'},
+    {l:5,h:6,mid:5,f:true,stack:['binarySearch(myarray, 0, 9, 23)','binarySearch(myarray, 5, 9, 23)','binarySearch(myarray, 5, 6, 23)'],msg:'mid = (5 + 6) / 2 = 5. 23 = 23 → <b>return 5</b>.'},
+    {l:5,h:6,mid:5,f:true,stack:[],msg:'Each call does <code>return binarySearch(...)</code>, so the answer 5 is handed back up through every call to main.'}
+  ];
+  stepper(el,S,st=>cells(v,{cls:i=>st.f&&i===st.mid?'ok':i===st.mid?'w':(i<st.l||i>st.h)?'dim':'a',ptr:i=>i===st.mid?'mid':''})+`<div class="out">${st.stack.length?st.stack.map((c,i)=>'  '.repeat(i)+c).join('\n'):'location = 5  →  "Key found at location 5"'}</div>`);
+};
+
+/* simple sorts with counters */
+function genSelection(a){ const v=[...a],n=v.length,S=[]; let cmp=0,sw=0;
+  S.push({v:[...v],i:0,done:-1,msg:'Start: the whole array is unsorted.',cmp,sw});
+  for(let i=0;i<n-1;i++){ let min=i;
+    S.push({v:[...v],i,min,done:i,msg:`Pass ${i+1} (i = ${i}): minIndex = ${i}. Look for the smallest in the unsorted part.`,cmp,sw});
+    for(let j=i+1;j<n;j++){ cmp++; if(v[j]<v[min]){ const old=v[min]; min=j; S.push({v:[...v],i,j,min,done:i,msg:`v[${j}] = ${v[j]} &lt; ${old} → minIndex = ${j}.`,cmp,sw}); } else S.push({v:[...v],i,j,min,done:i,msg:`v[${j}] = ${v[j]} is not smaller than v[minIndex] = ${v[min]}.`,cmp,sw}); }
+    if(min!==i){ const a1=v[i],b1=v[min]; [v[i],v[min]]=[v[min],v[i]]; sw++; S.push({v:[...v],i,swp:[i,min],done:i+1,msg:`minIndex ≠ i → swap ${a1} ↔ ${b1}. v[${i}] is now in its final place.`,cmp,sw}); }
+    else S.push({v:[...v],i,done:i+1,msg:`The minimum ${v[i]} is already at index ${i} → no swap.`,cmp,sw});
+  }
+  S.push({v:[...v],done:n,msg:`Sorted. ${cmp} comparisons, ${sw} swaps. Selection sort always makes n(n−1)/2 = ${n*(n-1)/2} comparisons.`,cmp,sw});
+  return S; }
+function genInsertion(a){ const v=[...a],n=v.length,S=[]; let cmp=0,sh=0;
+  S.push({v:[...v],done:1,msg:'v[0] alone is a sorted part.',cmp,sw:sh});
+  for(let i=1;i<n;i++){ const nv=v[i]; let j=i; const show=[...v]; show[j]=null;
+    S.push({v:[...show],hole:j,hand:nv,done:i,msg:`i = ${i}: newValue = ${nv}. Lift it out, leaving a hole at index ${i}.`,cmp,sw:sh});
+    while(j>0){ cmp++; if(v[j-1]>nv){ v[j]=v[j-1]; sh++; j--; const sv=[...v]; sv[j]=null; S.push({v:sv,hole:j,hand:nv,moved:j+1,done:i,msg:`v[${j}] = ${v[j]} &gt; ${nv} → shift it right. Hole moves to ${j}.`,cmp,sw:sh}); } else { const sv=[...v]; sv[j]=null; S.push({v:sv,hole:j,hand:nv,done:i,msg:`v[${j-1}] = ${v[j-1]} is not &gt; ${nv} → stop shifting.`,cmp,sw:sh}); break; } }
+    v[j]=nv; S.push({v:[...v],ins:j,done:i+1,msg:`Insert ${nv} at index ${j}.`,cmp,sw:sh});
+  }
+  S.push({v:[...v],done:n,msg:`Sorted. ${cmp} comparisons, ${sh} shifts.${sh===0?' Already sorted input: no shifts, only n − 1 comparisons → O(n).':''}`,cmp,sw:sh});
+  return S; }
+function genBubble(a){ const v=[...a],n=v.length,S=[]; let cmp=0,sw=0;
+  S.push({v:[...v],tail:n,msg:'Compare neighbours and swap if they are out of order.',cmp,sw});
+  for(let i=0;i<n-1;i++){ let ps=0;
+    for(let j=0;j<n-i-1;j++){ cmp++; if(v[j]>v[j+1]){ const x=v[j],y=v[j+1]; [v[j],v[j+1]]=[v[j+1],v[j]]; sw++; ps++; S.push({v:[...v],pair:[j,j+1],swapped:true,tail:n-i,msg:`Pass ${i+1}: ${x} &gt; ${y} → swap.`,cmp,sw}); } else S.push({v:[...v],pair:[j,j+1],tail:n-i,msg:`Pass ${i+1}: ${v[j]} ≤ ${v[j+1]} → no swap.`,cmp,sw}); }
+    S.push({v:[...v],tail:n-i-1,msg:`End of pass ${i+1}: ${ps} swap${ps===1?'':'s'}. ${v[n-i-1]} has bubbled to its final place.${ps===0?' No swaps means it is already sorted, but this code still continues (Exercise 1 adds an early stop).':''}`,cmp,sw});
+  }
+  S.push({v:[...v],tail:0,msg:`Sorted. ${cmp} comparisons, ${sw} swaps.`,cmp,sw});
+  return S; }
+function sortLab(el, which){
+  const gens={selection:genSelection,insertion:genInsertion,bubble:genBubble};
+  const inputs=[[29,10,14,37,13],[5,2,9,1,6],[10,13,14,29,37],[37,29,14,13,10]];
+  labTitle(el, `${which[0].toUpperCase()+which.slice(1)} sort, one comparison at a time`);
+  const a=document.createElement('div'); el.appendChild(a);
+  chips(a,'Input',['slide trace 29 10 14 37 13','practice 5 2 9 1 6','already sorted','reversed'],i=>s.load(gens[which](inputs[i])));
+  const b=document.createElement('div'); el.appendChild(b);
+  const render=st=>{
+    let cls, ptr;
+    if(which==='selection'){ cls=i=> (st.swp&&st.swp.includes(i))?'a': i===st.min?'w': i===st.j?'a': i<st.done?'ok':''; ptr=i=>[i===st.i&&st.done<st.v.length?'i':'',i===st.j?'j':'',i===st.min?'min':''].filter(Boolean).join(' '); }
+    if(which==='insertion'){ cls=i=> st.v[i]===null?'gap': i===st.ins?'a': i===st.moved?'a': i<st.done?'ok':''; ptr=i=> i===st.hole?'hole':''; }
+    if(which==='bubble'){ cls=i=> st.pair&&st.pair.includes(i)?(st.swapped?'a':'w'): i>=st.tail?'ok':''; ptr=i=> st.pair&&i===st.pair[0]?'j':st.pair&&i===st.pair[1]?'j+1':''; }
+    const hand = which==='insertion' && st.hand!==undefined ? `<div class="lrow"><span class="rlabel">newValue</span><div class="cell w">${st.hand}</div></div>` : '';
+    const lbl = which==='insertion'?'shifts':'swaps';
+    return cells(st.v,{cls,ptr,blank:''}) + hand + `<p class="counter">comparisons: ${st.cmp} · ${lbl}: ${st.sw}</p>` + legend(which==='selection'?[['ok','sorted part'],['w','current minimum'],['a','j / swapped']]: which==='insertion'?[['ok','sorted part'],['w','value being inserted'],['a','just moved']]:[['ok','in final place (grows from the end)'],['w','compared, no swap'],['a','swapped']]);
+  };
+  const s=stepper(b,gens[which](inputs[0]),render);
+}
+W.selection=el=>sortLab(el,'selection'); W.insertion=el=>sortLab(el,'insertion'); W.bubble=el=>sortLab(el,'bubble');
+
+W.findMax = el => {
+  labTitle(el,'findMax on {3, 9, 4, 7}');
+  const G=(arr,c)=>`<div class="grp">${arr.map(x=>`<div class="cell ${c||''}">${x}</div>`).join('')}</div>`;
+  const S=[
+    {rows:[[[3,9,4,7]]],msg:'findMax(v, 0, 3): more than one element, so <b>divide</b> at mid = (0 + 3) / 2 = 1.'},
+    {rows:[[[3,9,4,7]],[[3,9],[4,7]]],msg:'<b>Divide</b> again: findMax(v, 0, 1) and findMax(v, 2, 3).'},
+    {rows:[[[3,9,4,7]],[[3,9],[4,7]],[[3],[9],[4],[7]]],base:true,msg:'<b>Base case</b>: left == right, one element, return it.'},
+    {rows:[[[3,9,4,7]],[[3,9],[4,7]],[[3],[9],[4],[7]],[[9],[7]]],msg:'<b>Combine</b>: max(3, 9) = 9 and max(4, 7) = 7.'},
+    {rows:[[[3,9,4,7]],[[3,9],[4,7]],[[3],[9],[4],[7]],[[9],[7]],[[9]]],msg:'<b>Combine</b>: max(9, 7) = 9. <code>cout &lt;&lt; findMax(v, 0, 3);</code> prints 9.'}
+  ];
+  const lab=['divide','divide','base case','combine','combine'];
+  stepper(el,S,st=>`<div class="levels">${st.rows.map((r,k)=>`<div class="lv"><span class="rlabel">${lab[k]}</span>${r.map(g=>G(g,k===2?'w':k>=3?'ok':'')).join('')}</div>`).join('')}</div>`);
+};
+
+W.mergeTable = el => {
+  labTitle(el,'Merging [3 27 38 43] with [9 10 82]');
+  const L=[3,27,38,43],R=[9,10,82]; const S=[{i:0,j:0,out:[],msg:'Both halves are sorted. Only the two fronts matter.'}];
+  let i=0,j=0,out=[],step=0;
+  while(i<L.length&&j<R.length){ step++; const t=L[i]<=R[j]?L[i]:R[j]; const msg=`Step ${step}: compare the fronts ${L[i]} vs ${R[j]} → take ${t}.`; if(L[i]<=R[j]) i++; else j++; out=[...out,t]; S.push({i,j,out,msg}); }
+  while(j<R.length){ step++; out=[...out,R[j]]; j++; S.push({i,j,out,msg:`Step ${step}: the left half is empty → copy the rest of the right half (82).`}); }
+  while(i<L.length){ step++; out=[...out,L[i]]; i++; S.push({i,j,out,msg:`Step ${step}: copy the rest of the left half.`}); }
+  S[S.length-1].msg+=' Merging looked at each element once: <b>O(n)</b>.';
+  stepper(el,S,st=>`<div class="lrow"><span class="rlabel">left half</span>${cells(L,{idx:false,cls:k=>k<st.i?'dim':k===st.i?'a':''})}</div><div class="lrow"><span class="rlabel">right half</span>${cells(R,{idx:false,cls:k=>k<st.j?'dim':k===st.j?'a':''})}</div><div class="lrow"><span class="rlabel">merged</span>${st.out.length?cells(st.out,{idx:false,cls:k=>k===st.out.length-1?'ok':''}):'<span class="ix">(empty)</span>'}</div>`);
+};
+
+W.mergeSort = el => {
+  labTitle(el,'mergeSort(v, 0, 6) on {38, 27, 43, 3, 9, 82, 10}');
+  const L=['void mergeSort(vector<int>& v, int left, int right) {','    if (left >= right)','        return;','    int mid = (left + right) / 2;','    mergeSort(v, left, mid);','    mergeSort(v, mid + 1, right);','    merge(v, left, mid, right);','}'];
+  const v=[38,27,43,3,9,82,10]; const S=[]; let calls=0;
+  const snap=(line,l,r,msg,t,mg)=>S.push({line,l,r,msg,v:[...v],t:t||null,mg:!!mg,calls});
+  function ms(l,r){ calls++;
+    snap(1,l,r,`Call mergeSort(v, ${l}, ${r}). Is ${l} &gt;= ${r}?`);
+    if(l>=r){ snap(2,l,r,`Yes: one element (${v[l]}), already sorted. Return.`); return; }
+    const m=Math.floor((l+r)/2);
+    snap(3,l,r,`No. <b>Divide</b>: mid = (${l} + ${r}) / 2 = ${m}. Nothing is moved, O(1).`);
+    snap(4,l,r,`<b>Conquer</b> the left half [${l}..${m}]. This call waits until it is completely done.`);
+    ms(l,m);
+    snap(5,l,r,`Back in (${l}, ${r}). Now <b>conquer</b> the right half [${m+1}..${r}].`);
+    ms(m+1,r);
+    const t=[]; let i=l,j=m+1; while(i<=m&&j<=r){ if(v[i]<=v[j]) t.push(v[i++]); else t.push(v[j++]); } while(i<=m) t.push(v[i++]); while(j<=r) t.push(v[j++]);
+    snap(6,l,r,`<b>Combine</b>: merge [${v.slice(l,m+1).join(' ')}] and [${v.slice(m+1,r+1).join(' ')}] into temp.`,t);
+    for(let k=0;k<t.length;k++) v[l+k]=t[k];
+    snap(7,l,r,`Copied back: [${t.join(' ')}] is sorted.${l===0&&r===6?` Done. mergeSort was called ${calls} times.`:''}`,null,true);
+  }
+  S.push({line:-1,l:-1,r:-1,msg:'main calls mergeSort(v, 0, v.size() − 1).',v:[...v],calls:0});
+  ms(0,6);
+  stepper(el,S,st=>codeHL(L,st.line)+cells(st.v,{cls:i=>st.l<0?'':(i<st.l||i>st.r)?'dim':st.mg?'ok':'a'})+(st.t?`<div class="lrow"><span class="rlabel">temp</span>${cells(st.t,{idx:false,cls:()=>'ok'})}</div>`:'')+`<p class="counter">calls so far: ${st.calls}</p>`);
+};
+
+W.quickManual = el => {
+  labTitle(el,'Slide example: pivot 34');
+  const S=[
+    {a:[43,86,69,73,11,17,1,74,34,5],msg:'Initial dataset. Choose pivot 34.'},
+    {a:[43,86,69,73,11,17,1,74,34,5],h:[0,9],msg:'From the start: 43 &gt;= 34. From the end: 5 &lt;= 34. Swap them.'},
+    {a:[5,86,69,73,11,17,1,74,34,43],h:[0,9],sw:true,msg:'Swapped.'},
+    {a:[5,86,69,73,11,17,1,74,34,43],h:[1,8],msg:'86 &gt;= 34 and 34 &lt;= 34. Swap.'},
+    {a:[5,34,69,73,11,17,1,74,86,43],h:[1,8],sw:true,msg:'Swapped. The pivot itself moves.'},
+    {a:[5,34,69,73,11,17,1,74,86,43],h:[1,6],msg:'34 &gt;= 34 and 1 &lt;= 34. Swap.'},
+    {a:[5,1,69,73,11,17,34,74,86,43],h:[1,6],sw:true,msg:'Swapped.'},
+    {a:[5,1,69,73,11,17,34,74,86,43],h:[2,6],msg:'69 &gt;= 34 and 34 &lt;= 34. Swap.'},
+    {a:[5,1,34,73,11,17,69,74,86,43],h:[2,6],sw:true,msg:'Swapped.'},
+    {a:[5,1,34,73,11,17,69,74,86,43],h:[2,5],msg:'34 &gt;= 34 and 17 &lt;= 34. Swap.'},
+    {a:[5,1,17,73,11,34,69,74,86,43],h:[2,5],sw:true,msg:'Swapped.'},
+    {a:[5,1,17,73,11,34,69,74,86,43],h:[3,5],msg:'73 &gt;= 34 and 34 &lt;= 34. Swap.'},
+    {a:[5,1,17,34,11,73,69,74,86,43],h:[3,5],sw:true,msg:'Swapped.'},
+    {a:[5,1,17,34,11,73,69,74,86,43],h:[3,4],msg:'34 &gt;= 34 and 11 &lt;= 34. Swap.'},
+    {a:[5,1,17,11,34,73,69,74,86,43],h:[3,4],sw:true,done:true,msg:'The selectors meet at the pivot. <b>The array is partitioned</b>: 5 1 17 11 are smaller, 73 69 74 86 43 are bigger, and 34 is in its correct place. Now apply the same thing to each part, until every part has 0 or 1 elements.'}
+  ];
+  stepper(el,S,st=>cells(st.a,{cls:(i,v)=> st.done?(i<4?'ok':i===4?'w':''): (st.h&&st.h.includes(i))?(st.sw?'a':'bad'): v===34?'w':''}) + legend([['w','pivot 34'],['bad','found on the wrong side'],['a','just swapped']]));
+};
+
+W.quickCode = el => {
+  labTitle(el,'quickSort(v, 0, 9): pivot = v[(left + right) / 2]');
+  const L=['int i = left, j = right;','int pivot = v[(left + right) / 2];','while (i <= j) {','    while (v[i] < pivot) i++;','    while (v[j] > pivot) j--;','    if (i <= j) { swap v[i], v[j]; i++; j--; }','}','if (left < j)  quickSort(v, left, j);','if (i < right) quickSort(v, i, right);'];
+  const v=[43,86,69,73,11,17,1,74,34,5]; const S=[]; const fin=new Set();
+  const snap=(line,l,r,i,j,p,msg,sw)=>S.push({line,l,r,i,j,p,msg,v:[...v],sw:sw||[],fin:new Set(fin)});
+  function qs(l,r){ let i=l,j=r; const pm=Math.floor((l+r)/2), p=v[pm];
+    snap(1,l,r,i,j,p,`quickSort(v, ${l}, ${r}): pivot = v[${pm}] = <b>${p}</b>.`);
+    while(i<=j){ while(v[i]<p) i++; while(v[j]>p) j--;
+      snap(4,l,r,i,j,p,`i stops at ${v[i]} (not &lt; ${p}), j stops at ${v[j]} (not &gt; ${p}).${i<=j?' i &lt;= j → swap.':' i &gt; j → stop.'}`);
+      if(i<=j){ const a=v[i],b=v[j]; [v[i],v[j]]=[v[j],v[i]]; snap(5,l,r,i,j,p,i===j?`Same position: the swap changes nothing. i++, j--.`:`Swapped ${a} ↔ ${b}. i++, j--.`,[i,j]); i++; j--; } }
+    for(let k=j+1;k<i;k++) fin.add(k);
+    snap(6,l,r,i,j,p,`Partitioned: [${l}..${j}] ≤ ${p} ≤ [${i}..${r}]. Next: ${l<j?`quickSort(v, ${l}, ${j})`:'no left call'}${' and '}${i<r?`quickSort(v, ${i}, ${r})`:'no right call'}.`);
+    if(l<j) qs(l,j); else if(l===j) fin.add(l);
+    if(i<r) qs(i,r); else if(i===r) fin.add(r);
+  }
+  S.push({line:-1,l:-1,r:-1,i:-1,j:-1,p:null,msg:'Start. The code picks the middle element as the pivot (the slide example before picked 34: a different pivot gives different swaps).',v:[...v],sw:[],fin:new Set()});
+  qs(0,9);
+  S.push({line:-1,l:-1,r:-1,i:-1,j:-1,p:null,msg:'Sorted. There was nothing to combine: each partition already put values on the correct side.',v:[...v],sw:[],fin:new Set(v.map((_,k)=>k))});
+  stepper(el,S,st=>codeHL(L,st.line)+cells(st.v,{cls:(i,x)=> st.sw.includes(i)?'a': st.fin.has(i)?'ok': st.l>=0&&(i<st.l||i>st.r)?'dim': x===st.p?'w':'', ptr:i=>[i===st.i?'i':'',i===st.j?'j':''].filter(Boolean).join(' ')})+(st.l>=0?`<p class="counter">range [${st.l}..${st.r}] · pivot ${st.p}</p>`:'')+legend([['w','pivot value'],['a','swapping'],['ok','final position']]));
+};
+
+W.levels = el => {
+  labTitle(el,'Merge sort on n = 8 elements');
+  const rows=[[8],[4,4],[2,2,2,2],[1,1,1,1,1,1,1,1]];
+  const notes=['level 0: 1 part of 8, built by merging: 8 steps','level 1: 2 parts of 4, built by merging: 8 steps','level 2: 4 parts of 2, built by merging: 8 steps','level 3: 8 parts of 1: 1 element = sorted'];
+  el.insertAdjacentHTML('beforeend',`<div class="levels">${rows.map((r,k)=>`<div class="lv">${r.map(x=>`<div class="cell ${k===3?'ok':'a'}" style="min-width:${Math.max(34,x*34)}px">${x}</div>`).join('')}<span class="ix">${notes[k]}</span></div>`).join('')}</div><p class="counter">log₂ 8 = 3 levels of merging × about n work per level → n · log₂ n</p>`);
+};
+
+/* ---------- content ---------- */
+const LECS = [
+{ id:'vectors', num:'L5', title:'Vectors', sub:'A dynamic array from the STL: what it is, how it grows in memory, and how to add, remove and loop over elements.',
+steps:[
+ {t:'What is a vector?', h:`<ul><li>A vector is like a <b>dynamic array</b>: it can grow or shrink while the program runs. You don't have to know the size beforehand.</li><li>It is part of the <b>Standard Template Library (STL)</b>, with built-in automatic resizing, insertion/removal, range-based iteration and size tracking.</li><li>All elements sit <b>side by side in one block of memory</b> (contiguous), which is fast for the CPU cache.</li><li>Any element is reached directly by its index: <b>random access O(1)</b>. Index starts at 0.</li><li>When <code>push_back</code> needs more room, the vector allocates a bigger block and moves the elements. You never manage this yourself.</li></ul>`, w:'access'},
+ {t:'Array vs vector', h:code(`
+int arr[5] = {1, 2, 3, 4, 5};   // cannot grow, cannot shrink
+int n = 10;
+int arr2[n];                     // not standard C++!
+
+vector<int> v = {1, 2, 3, 4, 5};
+v.push_back(6);                  // now has 6
+v.push_back(7);                  // now has 7
+v.pop_back();                    // back to 6
+vector<int> v2(n);               // OK: size n at runtime`)+tbl(['','Array','vector'],[['Size decided','when compiling','while the program runs'],['Grow / shrink','No','Yes: push_back / pop_back'],['Knows its own size','No: keep a separate count','Yes: v.size()'],['Checked access','No','Yes: v.at(i)']])},
+ {t:'Including, declaring and creating', h:`<p>Include the header <code>#include &lt;vector&gt;</code>. The element type goes inside <code>&lt; &gt;</code>: <code>vector&lt;int&gt;</code>, <code>vector&lt;double&gt;</code>, <code>vector&lt;string&gt;</code>, <code>vector&lt;vector&lt;int&gt;&gt;</code> (2D).</p>`+code(`
+vector<int> v1;                         // 1. empty vector
+vector<int> v2(5);                      // 2. initial size (all zeros)
+vector<int> v3(5, 99);                  // 3. size and default value
+vector<int> v4 = {10, 20, 30, 40, 50};  // 4. initialiser list
+vector<int> v5 = v4;                    // 5. copy of another vector`)+`<div class="lab"><p class="lab-title">What each vector holds</p><div class="lrow"><span class="rlabel">v1</span><span class="ix">(empty, size 0)</span></div><div class="lrow"><span class="rlabel">v2</span>${cells([0,0,0,0,0],{idx:false})}</div><div class="lrow"><span class="rlabel">v3</span>${cells([99,99,99,99,99],{idx:false})}</div><div class="lrow"><span class="rlabel">v4</span>${cells([10,20,30,40,50],{idx:false})}</div><div class="lrow"><span class="rlabel">v5 (copy)</span>${cells([10,20,30,40,50],{idx:false,cls:()=>'a'})}</div></div><p><code>v5 = v4</code> makes an <b>independent copy</b>: changing v5 does not change v4.</p>`},
+ {t:'Accessing elements', h:code(`
+vector<int> v4 = {10, 20, 30, 40, 50};
+v4[2];       // 30 (no bounds check)
+v4.at(2);    // 30 (checked)
+v4.front();  // 10 (first element)
+v4.back();   // 50 (last element)
+v4[0] = 99;  // change an element`)+`<ul><li><code>v[i]</code>: fast, but does <b>not</b> check i. Out of range → undefined behaviour.</li><li><code>v.at(i)</code>: checks i and throws <code>std::out_of_range</code> if it is invalid. It stops the program at the exact line with a clear message, which is much easier to debug.</li><li><code>front()</code> / <code>back()</code>: same as <code>v[0]</code> and <code>v[v.size()-1]</code>. Undefined on an empty vector.</li></ul><p class="note">Use <code>v[i]</code> when you are sure 0 ≤ i &lt; v.size(); use <code>v.at(i)</code> while testing or when unsure.</p>`, w:'at'},
+ {t:'push_back and pop_back', h:`<p><code>nums.push_back(40);</code> adds 40 to the end. <code>nums.pop_back();</code> removes the last element. Watch what happens to memory as elements are added:</p>`, w:'pushback'},
+ {t:'Size vs capacity', h:`<ul><li><code>size()</code>: how many elements are in the vector now.</li><li><code>capacity()</code>: how many elements fit before the vector must grow.</li><li><code>reserve(n)</code>: make room for n elements in advance (size does not change).</li><li><code>shrink_to_fit()</code>: ask the vector to give back unused capacity.</li><li><code>clear()</code>: size becomes 0; the capacity stays the same.</li></ul>`+code(`
+vector<int> v;
+v.reserve(8);
+v.push_back(10); v.push_back(20); v.push_back(30);
+cout << v.size();      // 3
+cout << v.capacity();  // 8
+cout << v.empty();     // 0 (false)`)+`<p class="note">Know the final size? Call <code>reserve(n)</code> first, so the vector never has to copy its elements.</p><p>Other methods: <code>empty()</code>, <code>clear()</code>, <code>begin()/end()</code>, <code>insert(pos, e)</code>, <code>swap(v2)</code> (exchange contents with v2), <code>erase(pos)</code>, <code>rbegin()/rend()</code> (reverse iterators, last → first).</p>`},
+ {t:'insert: shifting right', h:code(`
+vector<int> v = {10, 20, 30, 40};
+v.insert(v.begin() + 1, 99);   // insert BEFORE index 1 → {10, 99, 20, 30, 40}
+v.insert(v.begin(), 3, 0);     // 3 copies of 0 → {0, 0, 0, 10, 99, 20, 30, 40}`), w:'insert', h2:tbl(['Method','Adds where','Cost','Example'],[['push_back(x)','at the end','O(1) on average','v.push_back(40);'],['insert(pos, x)','before pos','O(n): shifts','v.insert(v.begin() + 1, 99);'],['insert(pos, n, x)','n copies before pos','O(n): shifts','v.insert(v.begin(), 3, 0);'],['emplace_back(args)','at the end, built in place','O(1) on average','names.emplace_back("Alice");']])+`<p><code>emplace_back</code> builds the object directly inside the vector, so no temporary object is created. For simple types like int there is no difference.</p><p class="note warn">Inserting at the front of a vector with 1,000,000 elements moves all 1,000,000. Building a vector from scratch? Use push_back and avoid insert at the front inside a loop.</p>`},
+ {t:'pop_back, erase and clear', h:`<p><code>pop_back()</code> removes the last element with no shifting: <b>O(1)</b>. <code>erase(pos)</code> removes the element at a position, and everything after it shifts left: <b>O(n)</b>.</p>`, w:'erase', h2:code(`
+// v = {10, 30, 40, 60}
+v.erase(v.begin(), v.begin() + 2);   // v = {40, 60}
+v.clear();
+cout << v.size();       // 0
+cout << v.capacity();   // unchanged`)+`<ul><li><code>v.begin() + 1</code> is an <b>iterator</b> to index 1: erase and insert take iterators, not plain index numbers.</li><li>STL ranges are <b>half-open [first, last)</b>: first is included, last is not. So in <code>erase(v.begin(), v.begin() + 2)</code> the 40 at <code>last</code> is NOT removed.</li><li><code>clear()</code> removes everything: size 0, memory is kept.</li></ul>`},
+ {t:'Removing by value: the erase-remove expression', h:code(`
+#include <algorithm>
+vector<int> v2 = {1, 2, 3, 2, 4, 2};
+v2.erase(remove(v2.begin(), v2.end(), 2), v2.end());   // v2 = {1, 3, 4}`)+`<p>To erase inside an iterator loop, write <code>it = v.erase(it)</code>.</p>`, w:'eraseRemove'},
+ {t:'Iterating: four styles', h:code(`
+vector<int> v = {10, 20, 30};
+for (int x : v) cout << x << " ";        // 1. range-for: read     → 10 20 30
+for (int& x : v) x *= 2;                 // 2. range-for with &    → v = {20, 40, 60}
+for (int i = 0; i < v.size(); i++)       // 3. index loop          → 0:20 1:40 2:60
+    cout << i << ":" << v[i] << " ";
+for (auto it = v.begin(); it != v.end(); ++it)
+    cout << *it << " ";                  // 4. iterator loop       → 20 40 60`)+`<ul><li><b>Range-for</b>: simplest and safest, use it by default.</li><li><b>Range-for with &amp;</b>: without &amp;, x is a copy.</li><li><b>Index loop</b>: when you need the position i as well as the value.</li><li><b>Iterator loop</b>: <code>it</code> points to an element and <code>*it</code> is its value. Needed for erase and STL algorithms.</li></ul>`, w:'ref'},
+ {t:'Practice: trace it', h:`<p>Draw the final state of the vector and write what is printed. Try it on paper first, then step through.</p>`, w:'vecPractice'},
+ {t:'Exercises', h:`<p><b>Exercise 1</b>: read n then n numbers into a vector, print them in order and in reverse, print capacity and size. Then erase the even numbers and print the vector, capacity and size. Hint: in an iterator loop write <code>it = v.erase(it)</code> when you erase, and <code>it++</code> only when you do not.</p><p><b>Exercise 2</b>: read n numbers into a vector, multiply every number by 3, then display the vector and its smallest number. Hint: <code>for (int&amp; x : v)</code>.</p>`}
+],
+quiz:[
+ {q:'What does a vector give you that a normal array does not?', o:['It can grow or shrink while the program runs','Elements are stored in a tree','Access by index is O(log n)','It cannot hold duplicates'], a:0, e:'A vector is a dynamic array: it can grow or shrink during runtime, and you do not need to know the size beforehand.'},
+ {q:'Why is v[999] as fast as v[0]?', o:['Elements sit side by side in one block of memory, so the index leads straight to the element (O(1))','The vector is sorted','The vector caches the last element','It is not; v[999] is slower'], a:0, e:'Contiguous memory gives random access in O(1).'},
+ {q:'Which line is NOT standard C++?', c:'int n = 10;', o:['int arr2[n];','vector<int> v2(n);','int arr[5] = {1, 2, 3, 4, 5};','vector<int> v = {1, 2, 3};'], a:0, e:'An array size must be decided when compiling. vector<int> v2(n) is fine because a vector decides its size while the program runs.'},
+ {q:'What does vector<int> v3(5, 99); hold?', o:['Five elements, all 99','The two elements 5 and 99','99 elements, all 5','Five zeros and then 99'], a:0, e:'Size and default value: 99 99 99 99 99.'},
+ {q:'v5 = v4; then v5[0] = 1; What happens to v4?', o:['Nothing: v5 is an independent copy','v4[0] becomes 1 as well','It does not compile','v4 becomes empty'], a:0, e:'v5 = v4 makes an independent copy.'},
+ {q:'vector<int> v = {10, 20, 30}; cout << v.at(5); What happens?', o:['It throws std::out_of_range and stops at that line with a clear message','Undefined behaviour: maybe garbage, a crash, or it seems to work','It prints 0','It prints 30'], a:0, e:'at() checks the index. v[5] would be undefined behaviour instead.'},
+ {q:'Starting from an empty vector, after 5 push_back calls with g++, what are size and capacity?', o:['size 5, capacity 8','size 5, capacity 5','size 5, capacity 10','size 8, capacity 8'], a:0, e:'g++ doubles the block: capacities go 1, 2, 4, 4, 8.'},
+ {q:'What does clear() do to size and capacity?', o:['size becomes 0, capacity stays the same','both become 0','size stays, capacity becomes 0','both stay the same'], a:0, e:'clear(): size becomes 0; the capacity (memory) is kept.'},
+ {q:'What does reserve(8) on an empty vector change?', o:['capacity becomes 8, size stays 0','size becomes 8 with zeros','size and capacity both become 8','nothing'], a:0, e:'reserve(n) makes room in advance; size does not change.'},
+ {q:'Why is v.insert(v.begin(), x) on a big vector slow?', o:['Every element after the position must move one place right: O(n)','It sorts the vector first','It copies the vector twice','It is not slow: O(1)'], a:0, e:'insert shifts elements right, so it is O(n).'},
+ {q:'v = {10, 30, 40, 60}; v.erase(v.begin(), v.begin() + 2); What is v?', o:['{40, 60}','{60}','{10, 60}','{30, 40, 60}'], a:0, e:'Ranges are half-open [first, last): index 0 and 1 are removed, the 40 at last is not.'},
+ {q:'v2 = {1, 2, 3, 2, 4, 2}. Right after remove(v2.begin(), v2.end(), 2) (before erase), what is v2.size()?', o:['6','3','0','4'], a:0, e:'remove only moves the kept values to the front. The size is still 6 until erase cuts off the leftovers.'},
+ {q:'v = {10, 20, 30}; for (int x : v) x *= 2; What is v now?', o:['{10, 20, 30}','{20, 40, 60}','{0, 0, 0}','It does not compile'], a:0, e:'Without &, x is a copy, so the vector does not change.'},
+ {q:'What does push_back cost vs emplace_back for int?', o:['No difference for simple types like int','emplace_back is O(n)','push_back is O(n)','emplace_back cannot add ints'], a:0, e:'emplace_back builds in place, which only matters for objects; for int there is no difference.'},
+ {q:'v = {5, 18, 12}; push_back(25); pop_back(); insert(begin(), 7); erase(begin() + 2); push_back(14); v[1] = 0; pop_back(); What is printed by size, front, back?', o:['3 7 12','4 7 14','3 5 12','3 7 14'], a:0, e:'Final v = {7, 0, 12}.'}
+]},
+{ id:'sets', num:'L6', title:'Sets', sub:'A container of unique values, always sorted, stored as a balanced binary search tree.',
+steps:[
+ {t:'Containers', h:`<ul><li>A container is a holder object that stores a collection of other objects (its elements).</li><li>They are implemented as <b>class templates</b>, which allows great flexibility in the types supported as elements.</li><li>Examples: <code>&lt;vector&gt;</code>, <code>&lt;list&gt;</code>, <code>&lt;set&gt;</code>. <code>&lt;queue&gt;</code> and <code>&lt;stack&gt;</code> are container <b>adaptors</b> built on top of these.</li><li>The container manages the storage space and gives member functions to access elements, directly or through iterators. Many containers share member functions.</li></ul>`},
+ {t:'What is a set?', h:`<ul><li>A collection of <b>unique values</b> (no duplicates) that can add, remove and search (contains) efficiently.</li><li>No indexes: we add things to the set and don't worry about positions.</li><li>Stored in <b>sorted order</b> (smallest to largest by default).</li><li>The value of an element also identifies it: the value is itself the <b>key</b>, and each must be unique.</li><li>Values <b>cannot be modified</b> once in the container (they are constant), but they can be inserted or removed.</li></ul>`},
+ {t:'Set vs vector', h:`<p>Same five values into both. The set below follows the slide's insert table step by step.</p>`, w:'setVsVec', h2:tbl(['','vector','set'],[['Header','#include &lt;vector&gt;','#include &lt;set&gt;'],['Duplicates','allowed','ignored: each value once'],['Order','order of insertion','always sorted'],['Access by index','v[i]','not supported: use iterators / range-for'],['Search for a value','find(…): O(n)','s.find(x) / s.count(x): O(log n)'],['Add','push_back: at the end','insert: goes to its sorted place']])},
+ {t:'How a set stores its elements', h:`<ul><li>A set is a <b>balanced binary search tree</b> (usually a red-black tree).</li><li>Every node has smaller values on its left and bigger values on its right.</li><li>Searching starts at the root and goes left or right: the same halving idea as binary_search.</li><li>Balanced, so insert, erase and find are all <b>O(log n)</b>. 1,000,000 elements → about 20 steps.</li><li>Sorted for free: begin() → end() visits the nodes from smallest to largest. You never build the tree yourself.</li></ul>`, w:'setTree'},
+ {t:'Set operations', h:tbl(['Operation','Description'],[['insert(x)','insert elements into a set'],['erase(x)','delete elements from a set'],['clear()','remove all the elements'],['empty()','check if the set is empty'],['size()','number of elements'],['count(x)','1 if x is in the set, 0 if not'],['contains(x)','true if x is in the set (C++20 and above)'],['begin() / end()','iterator to the first element / to the theoretical element after the last'],['max_size()','maximum number of elements the set can hold'],['swap()','swap content of two sets'],['find(x)','iterator to x, or set.end() if not found']])},
+ {t:'erase, find and count', h:code(`
+set<int> s = {10, 20, 30, 50};
+s.erase(20);                  // s = {10, 30, 50}
+s.erase(99);                  // not there: no change
+if (s.find(30) != s.end())
+    cout << "30 found" << endl;
+cout << s.count(30);          // 1
+cout << s.count(99);          // 0`)+`<ul><li><code>erase(x)</code> returns how many were removed: 1 or 0.</li><li><code>find(x)</code> returns an iterator to x, or <code>s.end()</code> if x is missing, the same idea as find on a vector.</li><li><code>count(x)</code> is only 0 or 1 in a set: an easy way to ask "is x in the set?". <code>contains(x)</code> also works, but only in C++20; count works with every compiler.</li></ul>`, w:'setOps'},
+ {t:'Example 1: random numbers into a set', h:code(`
+set<int> st;
+srand(time(NULL));             // initialize random seed
+for (int i = 0; i < 20; i++)
+    st.insert(rand() % 30);
+cout << "size of the set: " << st.size() << endl;
+set<int>::iterator it;
+for (it = st.begin(); it != st.end(); it++)
+    cout << *it << " ";
+// or: for (int i : st) cout << i << " ";`)+`<ul><li><b>rand()</b> gives pseudo-random numbers from a formula. <b>srand(seed)</b> sets the starting point; the same seed gives the exact same sequence, a different seed gives a different one.</li><li><b>time(NULL)</b> returns the Unix timestamp: seconds since January 1, 1970 (UTC), not the wall clock time. Tomorrow at the same time it is 86,400 larger, so the seed and the numbers are different.</li></ul>`, w:'randSet'},
+ {t:'Example 2: 1 to 100', h:code(`
+set<int> s;
+for (int i = 1; i <= 100; i++) s.insert(i);   // [1..100]
+s.insert(42);                                  // 42 exists: no change
+for (int i = 2; i <= 100; i += 2) s.erase(i);  // erase even values
+int n = int(s.size());                         // n will be 50
+if (s.find(42) != s.end())  cout << "42 is in set";
+else                         cout << "42 not in set";`)+`<p>42 is even, so it was erased: the program prints <b>size of the set: 50</b> and <b>42 not in set</b>.</p>`},
+ {t:'A set of strings', h:code(`
+set<string> words = {"to", "be", "or", "not", "to", "be"};
+cout << words.size() << endl;     // 4
+for (string w : words) cout << w << " ";   // be not or to`)+`<p>Strings are kept in dictionary order (be &lt; not &lt; or &lt; to), and duplicates are stored once. Trick: put all the words of a text in a set, and <code>size()</code> is the number of different words.</p>`},
+ {t:'Union, intersection, difference', h:code(`
+set<int> a = {1, 2, 3, 4}, b = {3, 4, 5};
+set<int> u = a;              // copy of a
+for (int x : b) u.insert(x); // {1, 2, 3, 4, 5}`)+`<p>For ∩ and −, loop over a and use <code>b.count(x)</code> to check whether x is also in b.</p>`, w:'setAlgebra'},
+ {t:'Practice: trace it', h:'', w:'setPractice'},
+ {t:'Practice: set or vector?', h:`<details><summary>a) Record the IDs of students who attended today, then check quickly whether a student attended.</summary><b>set</b>: each ID once, and count(id) answers quickly.</details><details><summary>b) Store quiz marks in the order students submitted, then print them in that order.</summary><b>vector</b>: a set would sort the marks and drop equal ones.</details><details><summary>c) Count how many different words appear in a text.</summary><b>set</b>: duplicates are ignored, so the answer is size().</details><details><summary>d) Store the temperature of each day of a month (the same value can appear on several days).</summary><b>vector</b>: a set would lose the repeated temperatures.</details>`},
+ {t:'Exercises', h:`<p><b>1</b>: read six numbers into a set, let the user pick two to remove, print the result. <b>2</b>: two sets of three numbers, print the intersection. <b>3</b>: the union. <b>4</b>: the difference. <b>5</b>: five numbers into a set, print max and min. <b>6</b>: 5 numbers into a linked list, remove duplicates using a set, sort, print.</p>`}
+],
+quiz:[
+ {q:'You insert 30, 10, 50, 10, 20 into a set<int>. What does it contain?', o:['10 20 30 50','30 10 50 10 20','30 10 50 20','10 10 20 30 50'], a:0, e:'Always sorted, and the second 10 is ignored.'},
+ {q:'How is a set stored?', o:['As a balanced binary search tree (usually red-black)','As a contiguous block like a vector','As a linked list in insertion order','As a hash table'], a:0, e:'Left = smaller, right = bigger, balanced → O(log n).'},
+ {q:'What is the cost of s.find(x) in a set?', o:['O(log n)','O(n)','O(1)','O(n²)'], a:0, e:'The search halves the tree each step, like binary search.'},
+ {q:'In the tree with root 40, children 20 and 60, and leaves 10 30 50 70, how many steps to find 50?', o:['3','2','4','7'], a:0, e:'40 (go right) → 60 (go left) → 50 found.'},
+ {q:'Can you write s[2] for a set?', o:['No: sets have no indexes; use iterators or range-for','Yes, it returns the third smallest value','Yes, but only in C++20','Only for set<string>'], a:0, e:'Access by index is not supported.'},
+ {q:'What does s.find(x) return when x is not in the set?', o:['s.end()','-1','0','It throws an error'], a:0, e:'An iterator to the past-the-end element.'},
+ {q:'What can s.count(x) return for a set?', o:['Only 0 or 1','Any number of copies','true or false only in C++20','The position of x'], a:0, e:'Each value appears at most once.'},
+ {q:'Which is true about the elements of a set?', o:['They cannot be modified in the container, but can be inserted or removed','They can be changed with s[i] = x','They keep insertion order','They can repeat'], a:0, e:'Elements are constant once inside.'},
+ {q:'Example 1 inserts rand() % 30 twenty times but prints a size below 20. Why?', o:['Some numbers repeat and a set ignores duplicates','rand() skips numbers','The loop runs fewer times','The set has a maximum size of 16'], a:0, e:'Duplicates are stored once.'},
+ {q:'What does srand(seed) do?', o:['Sets the starting point of the pseudo-random sequence; the same seed gives the same sequence','Generates a truly random number','Returns the current time','Sorts the random numbers'], a:0, e:'rand() follows a formula; srand picks where it starts.'},
+ {q:'What does time(NULL) return?', o:['Seconds since January 1, 1970 (UTC)','The wall clock time like "11:00 AM"','Milliseconds since the program started','A random number'], a:0, e:'The Unix timestamp.'},
+ {q:'Example 2 inserts 1..100, inserts 42 again, then erases all even values. What is printed?', o:['size 50 and "42 not in set"','size 50 and "42 is in set"','size 51 and "42 is in set"','size 100 and "42 is in set"'], a:0, e:'42 is even, so it was erased.'},
+ {q:'set<string> words = {"to","be","or","not","to","be"}; What is words.size() and the printed order?', o:['4, be not or to','6, to be or not to be','4, to be or not','3, be or to'], a:0, e:'Dictionary order, duplicates once.'},
+ {q:'A = {1, 2, 3, 4}, B = {3, 4, 5}. What is A − B?', o:['{1, 2}','{5}','{3, 4}','{1, 2, 5}'], a:0, e:'In A but not in B.'},
+ {q:'Which function says "is x in the set?" in C++20 only?', o:['contains(x)','count(x)','find(x)','has(x)'], a:0, e:'count(x) works with every compiler.'},
+ {q:'s.insert 5, 18, 12, 5; erase 18; insert 7; erase 100. What do size, *s.begin(), count(12) print?', o:['3 5 1','4 5 1','3 7 1','3 5 0'], a:0, e:'Final set {5, 7, 12}.'},
+ {q:'Store the temperature of each day of a month. Set or vector?', o:['vector: a set would lose repeated temperatures','set: it keeps them sorted','set: it is faster','either, no difference'], a:0, e:'Repeated values must be kept.'}
+]},
+{ id:'maps', num:'L7', title:'Maps', sub:'Key → value pairs, unique keys, kept sorted by key in a tree.',
+steps:[
+ {t:'Keys and values', h:`<ul><li>A map stores entries that each have a <b>key</b> and a <b>value</b>.</li><li>Keys must be unique, but several keys can map to the same value (values need not be unique).</li><li>Keys are kept in sorted order.</li></ul>`+`<div class="lab"><p class="lab-title">Look up by position vs by key</p><div class="lrow"><span class="rlabel">vector</span>${cells([32.4,25,13.1])}</div><div class="lrow"><span class="rlabel">map</span>${pairCells({adel:32.4,ahmed:13.1,leila:25},'leila')}</div></div>`+code(`
+vector<float> v = {32.4, 25, 13.1};
+cout << v[1];            // 25, by position
+
+map<string, float> m;
+m["adel"] = 32.4;
+m["leila"] = 25;
+m["ahmed"] = 13.1;
+cout << m["leila"];      // 25, by name`)+`<p>The key can be a string, an int, a char…</p>`},
+ {t:'A map is like a set of pairs', h:`<ul><li>The map behaves like a set of <b>pairs</b> whose comparison looks only at the key. So it supports begin, end, size and empty.</li><li>For an iterator <code>it</code>, <code>*it</code> is of type <code>pair&lt;const KeyType, ValueType&gt;</code>.</li><li>It supports insert, find and erase. For insert you give a pair.</li><li>It is a tree where each node holds a pair, <b>ordered by key only</b>: values play no part in where a node goes. find, insert and erase are O(log n).</li></ul>`, w:'mapTree'},
+ {t:'Map operations', h:tbl(['Operation','Description'],[['begin() / end()','iterator to the first element / past the last'],['size()','number of elements'],['max_size()','maximum number of elements'],['swap()','swap content'],['insert({key, value})','adds a pair (no change if the key exists)'],['erase(key)','removes the element with this key'],['clear()','removes all the elements'],['find(key)','iterator to the key, or end() if not there'],['count(key)','1 if the key exists, 0 if not'],['empty()','true if the map is empty']])},
+ {t:'Adding and updating: [ ] vs insert', h:`<ul><li><code>m[key] = value</code> adds a new key <b>or replaces</b> the old value.</li><li><code>insert({key, value})</code> only adds: it <b>never changes</b> an existing value.</li><li>Both keep the map sorted by key and never allow two elements with the same key.</li></ul>`, w:'mapUpdate'},
+ {t:'Pitfall: [ ] creates missing keys', h:``, w:'mapPitfall', h2:code(`
+if (months.count("jnue") == 1)        // 1. check first with count
+    cout << months["jnue"];
+auto it = months.find("jnue");        // 2. find: no new key is added
+if (it != months.end())
+    cout << it->second;
+cout << months.at("jnue");            // 3. at: throws out_of_range`)+`<p class="note">Use [ ] to add or change a value. To only read, check with count or find first, or use at().</p>`},
+ {t:'find, count and erase', h:code(`
+map<string, int> g = {{"adel", 32}, {"leila", 25}, {"muna", 8}};
+auto it = g.find("leila");
+if (it != g.end())
+    cout << it->first << " " << it->second;   // leila 25
+cout << g.count("zaid");    // 0
+g.erase("muna");            // returns 1: removed
+g.erase("zaid");            // returns 0: not there`)+`<ul><li><code>find(key)</code>: iterator to the pair, or g.end(). <code>it-&gt;first</code> is the key, <code>it-&gt;second</code> the value.</li><li><code>count(key)</code>: only 0 or 1, and unlike [ ], it never adds a key.</li><li><code>erase(key)</code>: returns 1 or 0.</li></ul>`},
+ {t:'Looping over a map', h:code(`
+map<string, int> g = {{"muna", 8}, {"adel", 32}, {"leila", 25}};
+for (auto it = g.begin(); it != g.end(); it++)        // 1. iterator loop
+    cout << it->first << ": " << it->second << endl;
+for (auto p : g)                                       // 2. range-for: each p is a pair
+    cout << p.first << ": " << p.second << endl;
+// both print: adel: 32  leila: 25  muna: 8`)+`<ul><li>Always in <b>key order</b>, not the order the pairs were added.</li><li>To change values in a loop: <code>for (auto&amp; p : g) p.second += 5;</code> The key cannot be changed (it is const).</li></ul>`},
+ {t:'Examples 1–5', h:`<p><b>Example 1</b>: print the names of students with ≥ 15.</p>`+code(`
+map<string,float> mymap;
+mymap["adel"]=32.4; mymap["leila"]=25; mymap["ahmed"]=13.1;
+mymap["muna"]=8;    mymap["salem"]=11; mymap["fahad"]=19.7;
+for (im = mymap.begin(); im != mymap.end(); im++)
+    if (im->second >= 15) cout << im->first << " ";
+// Output (alphabetical): adel fahad leila`)+`<p><b>Example 2</b>: <code>map&lt;int, string&gt; Employees</code> with IDs 5234, 3374, 1923, 7582, 5328. Natural order prints by ID from smallest to largest (1923, 3374, 5234, 5328, 7582). A <code>reverse_iterator</code> with <code>rbegin()</code> / <code>rend()</code> walks from the largest key down. <code>Employees[3374]</code> reads an existing key; with a missing key, [ ] would add it.</p><p><b>Example 3</b>: four ways to add a pair:</p>`+code(`
+Employees["Mike C."] = 5234;                                     // 1) [ ]
+Employees.insert(pair<string, int>("David D.", 1923));           // 2) pair
+Employees.insert(map<string, int>::value_type("John A.", 7582)); // 3) value_type
+Employees.insert(make_pair("Peter Q.", 5328));                   // 4) make_pair
+// output sorted by name: Charlie M., David D., John A., Mike C., Peter Q.`)+`<p><b>Example 4</b>: the value can be any type, even a struct: <code>map&lt;int, Employee&gt; id; id[10] = emp;</code> then <code>id[10].name</code> → ali.</p><p><b>Example 5</b>: months in a map. Keys are in alphabetical order: april, august, december, february, january, july, june, march, may, … So from <code>find("june")</code>, <code>--prev</code> gives <b>july</b> and <code>++next</code> gives <b>march</b>.</p>`},
+ {t:'Counting with a map', h:`<p>Here [ ] is useful: a missing key is added with 0, so <code>votes[s]++</code> works the first time too. Exercise 6 uses the same idea with <code>map&lt;char, int&gt;</code>.</p>`, w:'votes'},
+ {t:'Practice: trace it', h:'', w:'mapPractice'},
+ {t:'Practice: vector, set or map?', h:`<details><summary>a) Phone number of each student, looked up by name.</summary><b>map&lt;string, string&gt;</b>: name (key) → phone (value).</details><details><summary>b) The list of different countries visitors came from.</summary><b>set&lt;string&gt;</b>: each country once, no value needed.</details><details><summary>c) Quiz marks in the order students submitted.</summary><b>vector&lt;int&gt;</b>: order matters and equal marks must be kept.</details><details><summary>d) How many times each grade (A, B, C…) appears.</summary><b>map&lt;char, int&gt;</b>: grade → count.</details>`},
+ {t:'Exercises', h:`<p><b>1</b>: map from 1..n to the squares. <b>2</b>: 5 string→int pairs, print max and min value, remove duplicate values. <b>3</b>: function that checks if a map is empty. <b>4</b>: combine two maps by adding values for common keys (a: 400 b: 400 c: 300 d: 400). <b>5</b>: print all distinct values. <b>6</b>: letter frequency map of a string ("w3resource" → '3':1, 'c':1, 'e':2, …). <b>7</b>: courses map (codes C5, C2, C10, C7).</p>`}
+],
+quiz:[
+ {q:'Which is true for a map?', o:['Keys are unique, values may repeat','Values are unique, keys may repeat','Both may repeat','Neither may repeat'], a:0, e:'Several keys can map to the same value.'},
+ {q:'How is a map ordered?', o:['By key only','By value','By insertion order','Randomly'], a:0, e:'Values play no part in where a node goes.'},
+ {q:'For a map iterator it, what is *it?', o:['pair<const KeyType, ValueType>','Just the value','Just the key','An index number'], a:0, e:'it->first is the key and it->second is the value.'},
+ {q:'m["muna"] = 8; then m["muna"] = 12; What is m["muna"] and the size?', o:['12, size 1','8, size 1','12, size 2','8 and 12, size 2'], a:0, e:'[ ] replaces the value of an existing key.'},
+ {q:'m has adel = 32. m.insert({"adel", 99}); What is adel now?', o:['32: insert never changes an existing value','99','It throws an error','adel appears twice'], a:0, e:'insert only adds.'},
+ {q:'months has only june. cout << months["jnue"]; What happens?', o:['Prints 0 and adds "jnue" to the map','Throws out_of_range','Prints nothing and adds nothing','Does not compile'], a:0, e:'[ ] creates a missing key with value 0. size becomes 2.'},
+ {q:'Which way of reading a key can add a new key by accident?', o:['months["x"]','months.find("x")','months.count("x")','months.at("x")'], a:0, e:'find and count never add; at throws if the key is missing.'},
+ {q:'g.erase("zaid") when zaid is not a key returns:', o:['0','1','-1','g.end()'], a:0, e:'erase(key) returns how many were removed: 1 or 0.'},
+ {q:'In which order does for (auto p : g) visit a map built with muna, adel, leila?', o:['adel, leila, muna','muna, adel, leila','leila, muna, adel','random'], a:0, e:'Always in key order.'},
+ {q:'Which loop lets you add 5 to every value?', o:['for (auto& p : g) p.second += 5;','for (auto p : g) p.second += 5;','for (auto& p : g) p.first += 5;','for (auto p : g) p += 5;'], a:0, e:'Needs & to change the real pair, and only second can change (the key is const).'},
+ {q:'Example 2 adds IDs 5234, 3374, 1923, 7582, 5328. What does rbegin() → rend() print first?', o:['7582','1923','5234','5328'], a:0, e:'A reverse iterator walks from the largest key down.'},
+ {q:'Example 5: keys are month names. Which key comes right before "june"?', o:['july','may','january','march'], a:0, e:'Alphabetical: …, january, july, june, march, … so prev is july and next is march.'},
+ {q:'votes counts "ali", "sara", "ali", "omar", "ali" with votes[s]++. What is printed?', o:['ali: 3, omar: 1, sara: 1','ali: 3, sara: 1, omar: 1','sara: 1, ali: 3, omar: 1','ali: 1, sara: 1, omar: 1'], a:0, e:'Key order, and a new key starts at 0 then +1.'},
+ {q:'s["kiwi"]=2; s["apple"]=5; s["kiwi"]=7; s.insert({"apple",1}); s["mango"]; s.erase("pear"); Final size?', o:['3','2','4','5'], a:0, e:'apple=5, kiwi=7, mango=0. s["mango"] alone added mango.'},
+ {q:'Count how many times each grade A, B, C appears. Best container?', o:['map<char, int>','set<char>','vector<char>','map<int, char>'], a:0, e:'grade (key) → how many times (value).'},
+ {q:'Which of these adds a pair to a map?', o:['All of them','insert(pair<string,int>("x", 1))','insert(make_pair("x", 1))','insert(map<string,int>::value_type("x", 1))'], a:0, e:'All four ways in Example 3 (including [ ]) add a pair.'}
+]},
+{ id:'searching', num:'L8', title:'Searching', sub:'Linear search works on anything. Binary search needs sorted data but needs only about log₂ n steps.',
+steps:[
+ {t:'Two search techniques', h:`<ul><li>The choice depends on whether the list is <b>sorted</b>, and whether it has <b>duplicates</b> (we assume none).</li><li><b>Linear search</b> works on any list, sorted or not.</li><li><b>Binary search</b> works only on sorted lists.</li></ul>`},
+ {t:'Linear search', h:`<p>Compare the target with each element in turn.</p>`+code(`
+for all elements in the list do
+    if element == value_to_find
+        return position_of(element)
+return -1      # not found`)+`<ul><li>Best case: <b>1 comparison</b> (it is the first element).</li><li>Worst case: <b>n comparisons</b> (last element, or not in the list).</li><li>Time <b>O(n)</b>: double the list → double the work.</li></ul>`, w:'linear'},
+ {t:'Linear search in C++', h:code(`
+int search(vector<int>& v, int x) {
+    for (int i = 0; i < v.size(); i++)
+        if (v[i] == x)
+            return i;
+    return -1;
+}
+// with an array, the size is passed in:  int size = sizeof(arr) / sizeof(arr[0]);`)},
+ {t:'Binary search: the idea', h:`<ol><li>Make sure the list is sorted.</li><li>Look at the <b>middle</b> element.</li><li>Equal → found. Target smaller → repeat on the <b>left</b> half. Target bigger → repeat on the <b>right</b> half.</li><li>Repeat until found or the range is empty.</li></ol><ul><li>Each step halves the range: <b>O(log n)</b>. 10 → 4 → 2 → 1. 1,000,000 elements → about 20 steps.</li><li>If the list is unsorted it must be sorted first. If searches are rare, sorting may not be worth it. If the list rarely changes, sort once and search many times.</li></ul><p>Slide example: 205, 176, 2, 300, 60, 98, 210, 7, 105, 190 sorted → 2 7 60 98 105 176 190 205 210 300.</p>`},
+ {t:'Binary search step by step', h:`<p><code>mid = low + (high - low) / 2;</code> uses integer division, so 3 / 2 = 1. When there are two middles, it picks the left one.</p>`, w:'binary'},
+ {t:'Non-recursive code', h:code(`
+int binarySearch(int arr[], int low, int high, int x) {
+    while (low <= high) {
+        int mid = low + (high - low) / 2;
+        if (arr[mid] == x) return mid;      // found
+        if (arr[mid] < x)  low = mid + 1;   // x greater: ignore left half
+        else               high = mid - 1;  // x smaller: ignore right half
+    }
+    return -1;                              // not present
+}`)+`<p>When low &gt; high the range is empty, so the loop stops and the function returns -1.</p>`},
+ {t:'Recursive code', h:code(`
+int binarySearch(int myarray[], int low, int high, int key) {
+    int mid;
+    if (high >= low) {
+        mid = (low + high) / 2;
+        if (myarray[mid] == key)     return mid;
+        else if (myarray[mid] < key) return binarySearch(myarray, mid + 1, high, key);
+        else                         return binarySearch(myarray, low, mid - 1, key);
+    }
+    return -1;
+}`)+`<p>Each call works on a smaller range, and the answer is returned back up through every call.</p>`, w:'recBinary'},
+ {t:'Linear vs binary', h:tbl(['','Linear search','Binary search'],[['List must be sorted?','No','Yes'],['Best case','1 comparison','1 comparison'],['Worst case','n comparisons: O(n)','about log₂ n: O(log n)'],['1,000 elements','up to 1,000','about 10'],['1,000,000 elements','up to 1,000,000','about 20'],['Needs jumping to the middle','No: works on a linked list','Yes: needs an array or vector'],['In the STL (Lecture 5)','find(v.begin(), v.end(), x)','binary_search(v.begin(), v.end(), x)']])+`<p class="note">Sort once, search many times → binary search wins. Search once in unsorted data → linear search is enough.</p>`},
+ {t:'Practice', h:`<p>For each search write mid at every step, the result, and the number of comparisons. How many would linear search need?</p>`, w:'binaryPractice', h2:`<details><summary>Answer</summary>${tbl(['Search','mid values (arr[mid])','Result','Linear search'],[['63','4 (30) → 6 (57) → 7 (63)','index 7, 3 comparisons','8 comparisons'],['20','4 (30) → 1 (8) → 2 (15) → 3 (21)','-1, 4 comparisons','9 comparisons']])}<p>In b) the loop stops when low = 3 and high = 2.</p></details>`},
+ {t:'Exercises', h:`<p><b>1</b>: read words until #, search for a word, remove a word. <b>2</b>: linear search that counts how many times x appears and prints every index (the slide version stops at the first match). <b>3</b>: sort with sort(), then search with both linear and binary and print the comparisons. <b>4</b>: your own binary search on 8 names in alphabetical order.</p>`}
+],
+quiz:[
+ {q:'Which search works on an unsorted list?', o:['Linear search','Binary search','Both','Neither'], a:0, e:'Binary search requires a sorted list.'},
+ {q:'When does linear search need n comparisons?', o:['When the value is last or not in the list','When the value is first','When the list is sorted','Never'], a:0, e:'That is the worst case.'},
+ {q:'Which formula does the slide use for mid?', o:['low + (high - low) / 2','(high - low) / 2','low + high','high / 2 + 1'], a:0, e:'Integer division: 3 / 2 = 1.'},
+ {q:'Sorted 2 7 60 98 105 176 190 205 210 300. Searching 98, what are the mid indices?', o:['4, 1, 2, 3','4, 2, 3','5, 2, 3','4, 1, 3'], a:0, e:'98 < 105 → high 3; 98 > 7 → low 2; 98 > 60 → low 3; mid 3 = 98.'},
+ {q:'If arr[mid] < x, what does the non-recursive code do?', o:['low = mid + 1','high = mid - 1','return mid','return -1'], a:0, e:'x is bigger, so ignore the left half.'},
+ {q:'When does the while loop stop if the value is not there?', o:['When low > high (the range is empty)','When mid = 0','After 10 steps','When low = high'], a:0, e:'Then it returns -1.'},
+ {q:'About how many steps does binary search need for 1,000,000 elements?', o:['About 20','About 1,000','About 500,000','About 1,000,000'], a:0, e:'log₂ 1,000,000 ≈ 20.'},
+ {q:'Why can binary search not be used on a linked list?', o:['It needs to jump to the middle, which needs an array or vector','Linked lists are always sorted','Linked lists cannot hold numbers','It can, with the same speed'], a:0, e:'Linear search works on a linked list.'},
+ {q:'arr = 3 8 15 21 30 42 57 63 77. Searching 63: how many comparisons?', o:['3','2','4','8'], a:0, e:'mid 4 (30) → 6 (57) → 7 (63). Linear would need 8.'},
+ {q:'Same array, search 20: result and comparisons?', o:['-1, 4 comparisons','-1, 3 comparisons','index 3, 4 comparisons','-1, 9 comparisons'], a:0, e:'mid 4 → 1 → 2 → 3, then low 3 > high 2.'},
+ {q:'Recursive search for 23 in {5,8,10,13,21,23,25,43,54,75}: which calls happen?', o:['(0,9) → (5,9) → (5,6), returns 5','(0,9) → (0,3) → returns 5','(0,9) → (5,9) → (8,9)','(0,9) → returns 5'], a:0, e:'21 < 23 → right; 43 > 23 → left; mid 5 = 23.'},
+ {q:'The STL function for binary search from the comparison table is:', o:['binary_search(v.begin(), v.end(), x)','find(v.begin(), v.end(), x)','search(v, x)','v.binary(x)'], a:0, e:'find is the linear one.'},
+ {q:'You search unsorted data only once. Which is enough?', o:['Linear search','Sort first, then binary search','Binary search without sorting','Neither works'], a:0, e:'Sorting is not worth it for a single search.'}
+]},
+{ id:'sorting1', num:'L9.1', title:'Sorting part 1', sub:'Selection, insertion and bubble sort: three O(n²) sorts that are the foundations for faster ones.',
+steps:[
+ {t:'What sorting is', h:`<ul><li>Sorting organizes data into ascending or descending order.</li><li>An <b>internal sort</b> needs the data to fit entirely in main memory. An <b>external sort</b> is used when it cannot, and the data stays on disk. We analyze only internal sorts.</li><li>Sorted output is easier to interpret, an initial sort can speed up other algorithms, and in many projects the sorting cost decides the running time.</li><li>Algorithms: selection, insertion, bubble, merge, quick. The first three are the foundations for faster algorithms.</li></ul>`},
+ {t:'Selection sort: the idea', h:`<ul><li>Two parts: a <b>sorted</b> sublist built from left to right at the front, and an <b>unsorted</b> sublist with the rest. At first the sorted part is empty.</li><li>Each pass finds the smallest element in the unsorted part, swaps it with the leftmost unsorted element, and moves the boundary one element right.</li></ul><div class="lab"><p class="lab-title">23 78 45 8 32 56</p>${[[23,78,45,8,32,56,0],[8,78,45,23,32,56,1],[8,23,45,78,32,56,2],[8,23,32,78,45,56,3],[8,23,32,45,78,56,4],[8,23,32,45,56,78,6]].map((r,k)=>`<div class="lrow"><span class="rlabel">${k?'after pass '+k:'original'}</span>${cells(r.slice(0,6),{idx:false,cls:i=>i<r[6]?'ok':''})}</div>`).join('')}</div>`},
+ {t:'Selection sort: code and trace', h:code(`
+for (int i = 0; i < n - 1; i++) {
+    minIndex = i;
+    for (int j = i + 1; j < n; j++)      // loop on the unsorted part
+        if (v[j] < v[minIndex])
+            minIndex = j;
+    if (minIndex != i) {                  // found something smaller: swap
+        temp = v[i];
+        v[i] = v[minIndex];
+        v[minIndex] = temp;
+    }
+}`), w:'selection'},
+ {t:'Selection sort: analysis', h:`<ul><li>Always <b>n(n−1)/2 comparisons</b> (10 for n = 5), even when the array is already sorted.</li><li><b>O(n²)</b> and it does not depend on the initial order of the data. Only appropriate for small n.</li><li>Only <b>O(n) moves</b>, so it can be a good choice when moving data is costly but comparisons are not.</li></ul>`},
+ {t:'Insertion sort: the idea and code', h:`<ul><li>Simple, good for small inputs; the technique card players use.</li><li>Sorted and unsorted parts. Each pass picks the first element of the unsorted part and inserts it at the right place in the sorted part.</li><li>n elements take at most n − 1 passes.</li></ul>`+code(`
+void insertionSort(vector<int>& v, int length) {
+    int i, j, newValue;
+    for (i = 1; i < length; i++) {
+        newValue = v[i];
+        for (j = i; j > 0 && v[j - 1] > newValue; j--)
+            v[j] = v[j - 1];             // shift right
+        v[j] = newValue;                 // insert
+    }
+}`), w:'insertion'},
+ {t:'Insertion sort: analysis', h:`<ul><li><b>O(n²)</b>.</li><li>Already sorted input: no shifts and only <b>n − 1 comparisons → O(n)</b>. Good for nearly sorted data.</li></ul>`},
+ {t:'Bubble sort: the idea and code', h:`<ul><li>Compare each pair of adjacent elements and swap them if the larger comes first.</li><li>After each pass the largest unsorted element "bubbles up" to its final place at the end. The sorted part grows <b>from the end</b>.</li></ul>`+code(`
+void bubbleSort(vector<int>& v, int n) {
+    int i, j, temp;
+    for (i = 0; i < n-1; i++)
+        for (j = 0; j < n-i-1; j++)      // last i elements are already in place
+            if (v[j] > v[j+1]) {
+                temp = v[j]; v[j] = v[j+1]; v[j+1] = temp;
+            }
+}`), w:'bubble'},
+ {t:'Bubble sort: analysis', h:`<ul><li><b>O(n²)</b>.</li><li>In the slide trace, pass 4 makes no swaps (already sorted), but the code still does it. If a pass makes no swaps the array is sorted and we could stop early (Exercise 1).</li></ul>`+tbl(['Algorithm','Idea','Best','Worst'],[['Selection','find the smallest, swap it to the front','O(n²)','O(n²)'],['Insertion','insert each element into the sorted part','O(n)','O(n²)'],['Bubble','swap neighbours; the largest bubbles to the end','O(n²) (O(n) with early stop)','O(n²)']])},
+ {t:'Practice', h:`<p>Show the array after pass 1 and pass 2 of each algorithm on <b>5 2 9 1 6</b>. Pick "practice" as the input in the labs above to check yourself.</p><details><summary>Answer</summary>${tbl(['Algorithm','After pass 1','After pass 2'],[['Selection','1 2 9 5 6','1 2 9 5 6 (2 already in place)'],['Insertion','2 5 9 1 6','2 5 9 1 6 (9 needs no shift)'],['Bubble','2 5 1 6 9','2 1 5 6 9']],[1,2])}</details>`},
+ {t:'Exercises', h:`<p><b>1</b>: bubble sort that stops when a pass makes no swaps (bool swapped); print the passes for sorted and reversed input. <b>2</b>: insertion sort on a vector&lt;string&gt; of names. <b>3</b>: add comparison and swap/shift counters to all three and compare on random, sorted and reversed input. <b>4</b>: sort students by mark (highest first) with selection sort, swapping in both vectors.</p>`}
+],
+quiz:[
+ {q:'What is an internal sort?', o:['One where all the data fits in main memory','One that sorts on disk','One that uses recursion','One built into the STL'], a:0, e:'External sorts are for data that must stay on disk.'},
+ {q:'Selection sort on 5 elements makes how many comparisons?', o:['Always 10','10 only when unsorted','5','4 when already sorted'], a:0, e:'n(n−1)/2 = 10, even for sorted input.'},
+ {q:'When can selection sort be a good choice?', o:['When moving data is costly but comparisons are not','When the data is nearly sorted','For very large n','When there are duplicates'], a:0, e:'It needs O(n²) comparisons but only O(n) moves.'},
+ {q:'Selection sort, pass 3 (i = 2) on 10 13 14 37 29: what happens?', o:['No swap: the minimum 14 is already in place','Swap 14 and 29','Swap 37 and 29','Swap 13 and 14'], a:0, e:'From the slide trace.'},
+ {q:'Insertion sort on already sorted input needs:', o:['n − 1 comparisons and no shifts: O(n)','n(n−1)/2 comparisons','no comparisons','n² shifts'], a:0, e:'That is why it is good for nearly sorted data.'},
+ {q:'In insertion sort, what does this loop do: for (j = i; j > 0 && v[j-1] > newValue; j--) v[j] = v[j-1];', o:['Shifts bigger values one place right to make room for newValue','Swaps neighbours','Finds the minimum','Copies the array'], a:0, e:'Then v[j] = newValue puts it in the gap.'},
+ {q:'In bubble sort, where does the sorted part grow?', o:['From the end of the list','From the beginning','From the middle','It has no sorted part'], a:0, e:'The largest unsorted value bubbles to the end each pass.'},
+ {q:'Why does the inner bubble loop run while j < n-i-1?', o:['The last i elements are already in place','To avoid duplicates','To skip the first element','So it runs n times'], a:0, e:'Each pass fixes one more element at the end.'},
+ {q:'5 2 9 1 6, selection sort: array after pass 1?', o:['1 2 9 5 6','2 5 9 1 6','2 5 1 6 9','1 5 9 2 6'], a:0, e:'1 swaps with 5.'},
+ {q:'5 2 9 1 6, insertion sort: array after pass 1?', o:['2 5 9 1 6','1 2 9 5 6','2 5 1 6 9','5 2 9 1 6'], a:0, e:'2 is inserted before 5.'},
+ {q:'5 2 9 1 6, bubble sort: array after pass 2?', o:['2 1 5 6 9','2 5 1 6 9','1 2 5 6 9','2 5 9 1 6'], a:0, e:'Pass 1: 2 5 1 6 9. Pass 2: 2 1 5 6 9.'},
+ {q:'Bubble sort, slide trace: pass 4 makes no swaps. What does the slide code do?', o:['Still does that pass; an early stop needs a swapped flag (Exercise 1)','Stops automatically','Throws an error','Starts over'], a:0, e:'The basic version always does n − 1 passes.'},
+ {q:'Which of the three has an O(n) best case without changing the code?', o:['Insertion sort','Selection sort','Bubble sort','None'], a:0, e:'Bubble needs the early-stop version for O(n).'}
+]},
+{ id:'sorting2', num:'L9.2', title:'Sorting part 2', sub:'Divide and conquer: merge sort and quick sort, about n log n steps instead of n².',
+steps:[
+ {t:'The problem with O(n²)', h:tbl(['Algorithm','Idea','Best','Worst'],[['Selection','find the smallest, swap it to the front','O(n²)','O(n²)'],['Insertion','insert each element into the sorted part','O(n)','O(n²)'],['Bubble','swap neighbours; the largest bubbles to the end','O(n²)*','O(n²)']])+`<p>* O(n) with the early-stop version.</p><p>For n = 1,000,000 an O(n²) sort needs about <b>10¹² steps</b>: more than 15 minutes, even at a billion steps per second. Merge sort and quick sort need about <b>n log n</b>: ≈ 20,000,000.</p>`},
+ {t:'Divide and conquer', h:`<ol><li><b>Divide</b>: split the problem into smaller sub-problems of the same kind.</li><li><b>Conquer</b>: solve each sub-problem recursively. A very small one (e.g. 1 element) is solved directly: the <b>base case</b>.</li><li><b>Combine</b>: put the answers together into the answer for the whole problem.</li></ol><p>You saw it before: recursive binary search divides the array and keeps only one half.</p>`+code(`
+int findMax(vector<int>& v, int left, int right) {
+    if (left == right)              // base case
+        return v[left];
+    int mid = (left + right) / 2;   // divide
+    int a = findMax(v, left, mid);  // conquer
+    int b = findMax(v, mid + 1, right);
+    if (a > b) return a;            // combine
+    return b;
+}`), w:'findMax'},
+ {t:'Merge sort: merging two sorted halves', h:`<ul><li>Divide the list into halves, sort each half separately, then <b>merge</b> the sorted halves into one sorted array. It is recursive.</li><li>Merging: compare the fronts, take the smaller, move that side forward. When one half is empty, copy the rest of the other.</li></ul>`, w:'mergeTable'},
+ {t:'Merge sort: the code', h:code(`
+void mergeSort(vector<int>& v, int left, int right) {
+    if (left >= right)                 // 0 or 1 element:
+        return;                        // already sorted
+    int mid = (left + right) / 2;      // 1. divide
+    mergeSort(v, left, mid);           // 2. conquer the
+    mergeSort(v, mid + 1, right);      //    two halves
+    merge(v, left, mid, right);        // 3. combine
+}`)+`<ul><li><b>Divide</b>: find the middle. Nothing is moved: O(1).</li><li><b>Conquer</b>: two recursive calls sort the left and right halves.</li><li><b>Combine</b>: merge() joins the two sorted halves: O(n). This is where the real work happens.</li></ul>`, w:'mergeSort'},
+ {t:'merge()', h:code(`
+void merge(vector<int>& v, int left, int mid, int right) {
+    vector<int> temp;
+    int i = left, j = mid + 1;               // fronts of the two halves
+    while (i <= mid && j <= right) {
+        if (v[i] <= v[j]) { temp.push_back(v[i]); i++; }
+        else              { temp.push_back(v[j]); j++; }
+    }
+    while (i <= mid)   { temp.push_back(v[i]); i++; }   // leftovers
+    while (j <= right) { temp.push_back(v[j]); j++; }
+    for (int k = 0; k < temp.size(); k++)               // copy back
+        v[left + k] = temp[k];
+}`)+`<ul><li><b>Compare the fronts</b>: take the smaller of v[i] and v[j] and move that side forward.</li><li><b>Leftovers</b>: when one half is empty, copy the rest of the other half.</li><li><b>Extra memory</b>: merge() needs a temp vector as big as the part being merged.</li></ul>`},
+ {t:'Why O(n log n)?', h:`<p>Halving gives about log n levels, and each level merges all n elements once.</p>`, w:'levels', h2:tbl(['n','n²','n log₂ n'],[['1,000','1,000,000','≈ 10,000'],['1,000,000','10¹²','≈ 20,000,000']],[0,1,2])+`<p>Merge sort is <b>O(n log n)</b>.</p>`},
+ {t:'Quick sort: the idea', h:`<p>Also divide and conquer, and one of the fastest sorting algorithms in practice. Sorting an array S takes 4 steps:</p><ol><li>If S has 0 or 1 elements, return.</li><li>Pick any element v in S: the <b>pivot</b>.</li><li>Partition S − {v} into S1 = {x ≤ v} and S2 = {x ≥ v}.</li><li>Return {quicksort(S1), v, quicksort(S2)}.</li></ol><p>The partition step is ambiguous for elements equal to the pivot.</p><ul><li><b>Divide</b>: partition. Choose a pivot that we hope has about half the elements before and half after; smaller values go in one sublist, greater in another.</li><li><b>Recursion</b>: sort the sublists separately.</li><li><b>Conquer</b>: put the sorted sublists together.</li><li>Partitioning places the pivot in its correct position, and creates two smaller sorting problems.</li></ul>`},
+ {t:'Choosing the pivot and partitioning', h:`<ul><li>We hope the pivot gives a good partitioning. If items are arranged randomly, choose a pivot randomly.</li><li>The first or last element can be a pivot, but it may not give a good partitioning. Different techniques exist.</li><li>Partition: from the beginning pick elements ≥ pivot, from the end pick elements ≤ pivot. When one of each is found, swap them, move the selectors toward each other, and repeat until they meet at the pivot.</li><li>Then apply partition recursively on each part until every part has 0 or 1 elements.</li></ul>`, w:'quickManual'},
+ {t:'Quick sort: the code', h:code(`
+void quickSort(vector<int>& v, int left, int right) {
+    int i = left, j = right;
+    int tmp;
+    int pivot = v[(left + right) / 2];
+    /* partition */
+    while (i <= j) {
+        while (v[i] < pivot) i++;
+        while (v[j] > pivot) j--;
+        if (i <= j) {
+            tmp = v[i]; v[i] = v[j]; v[j] = tmp;
+            i++; j--;
+        }
+    }
+    /* recursion */
+    if (left < j)  quickSort(v, left, j);
+    if (i < right) quickSort(v, i, right);
+}`)+`<p>Code trace from the slides: pivot = v[(0 + 9) / 2] = v[4] = 11. Swaps 43↔5, 86↔1, 69↔11, then i = 3 &gt; j = 2 → stop, calls quickSort(v, 0, 2) and quickSort(v, 3, 9). The lab continues all the way to sorted.</p>`, w:'quickCode'},
+ {t:'Quick sort in 3 steps', h:`<ol><li><b>Divide = partition</b>: move small values left and large values right of the pivot: O(n). This is the real work.</li><li><b>Conquer</b>: two recursive calls sort the left part and the right part.</li><li><b>Combine = nothing!</b> Every value on the left is ≤ every value on the right, so the array is already in order.</li></ol><p>Quick sort is <b>O(n log n) on average</b> and <b>O(n²) in the worst case</b> (when the pivot is always the smallest or largest element).</p>`},
+ {t:'Merge sort vs quick sort', h:tbl(['','Merge sort','Quick sort'],[['1. Divide','split at the middle: easy, O(1)','partition around the pivot: the hard part, O(n)'],['2. Conquer','sort both halves recursively','sort both parts recursively'],['3. Combine','merge the halves: the hard part, O(n)','nothing to do'],['Size of the parts','always two equal halves','depends on the pivot'],['Worst case','O(n log n)','O(n²): pivot always the smallest or largest'],['Extra memory','yes: the temp vector','no']])+`<p class="note">Both are divide and conquer: merge sort does its work when combining, quick sort when dividing.</p>`+tbl(['Algorithm','Best','Average','Worst','Extra memory'],[['Selection','O(n²)','O(n²)','O(n²)','no'],['Insertion','O(n)','O(n²)','O(n²)','no'],['Bubble','O(n²)*','O(n²)','O(n²)','no'],['Merge','O(n log n)','O(n log n)','O(n log n)','yes: a temporary array'],['Quick','O(n log n)','O(n log n)','O(n²)','no (recursion only)']])+`<p>In real programs use <code>sort(v.begin(), v.end())</code> from &lt;algorithm&gt;: it is O(n log n).</p>`},
+ {t:'Practice 2', h:`<p><b>Q1</b>: follow mergeSort(v, 0, 3) on <b>5 2 4 1</b>. Write the array after each merge() call. How many times is mergeSort called?</p><details><summary>Answer</summary>${tbl(['merge call','v after the merge'],[['merge(v, 0, 0, 1)','2 5 4 1'],['merge(v, 2, 2, 3)','2 5 1 4'],['merge(v, 0, 1, 3)','1 2 4 5']],[0,1])}<p>mergeSort is called <b>7</b> times: once for the whole vector, twice for the halves, and 4 times for single elements.</p></details><p><b>Q2</b>: run the partition step of quickSort(v, 0, 4) on <b>7 2 4 9 3</b>. Pivot? Swaps? Which two calls follow?</p><details><summary>Answer</summary>${tbl(['step','v'],[['pivot = v[2] = 4','7 2 4 9 3'],['swap i=0, j=4','3 2 4 9 7'],['swap i=2, j=2 (no change)','3 2 4 9 7']],[0,1])}<p>Stop with i = 3, j = 1 → quickSort(v, 0, 1) and quickSort(v, 3, 4).</p></details>`},
+ {t:'Exercises', h:`<p><b>Exercise 5</b>: like findMax, write sumRange(v, left, right) and countEven. Test with {5, 2, 8, 1, 9, 3}: sum 28, 2 even numbers. Draw the tree of calls for sumRange(v, 0, 5).</p><p><b>Exercise 6</b>: make mergeSort sort from largest to smallest (one character in merge() changes). Add a comparison counter in merge() and compare with your selection sort on 1,000 random numbers (rand() % 1000).</p>`}
+],
+quiz:[
+ {q:'What are the three steps of divide and conquer?', o:['Divide, conquer, combine','Split, sort, search','Pivot, partition, merge','Divide, sort, print'], a:0, e:'Conquer = solve each sub-problem recursively, with a base case.'},
+ {q:'For n = 1,000,000, about how many steps does n log n take?', o:['≈ 20,000,000','≈ 10¹²','≈ 1,000,000','≈ 20'], a:0, e:'An O(n²) sort would need about 10¹².'},
+ {q:'findMax on {3, 9, 4, 7}: what is combined last?', o:['max(9, 7) = 9','max(3, 4) = 4','max(3, 9) = 9','max(4, 7) = 7'], a:0, e:'max(3,9) and max(4,7) are combined into max(9,7).'},
+ {q:'Merging [3 27 38 43] with [9 10 82]: what is taken at step 2?', o:['9 (27 vs 9)','27 (27 vs 9)','10','3'], a:0, e:'Step 1 takes 3, step 2 compares 27 vs 9 and takes 9.'},
+ {q:'In mergeSort, what does the divide step cost?', o:['O(1): only the middle is found','O(n)','O(log n)','O(n²)'], a:0, e:'Nothing is moved. merge() is the O(n) part.'},
+ {q:'What does merge() need as extra memory?', o:['A temp vector as big as the part being merged','Nothing','A second copy of the whole program','A set'], a:0, e:'That is why merge sort uses extra memory and quick sort does not.'},
+ {q:'Merge sort on n = 8: how many levels of merging?', o:['3','8','4','2'], a:0, e:'log₂ 8 = 3, each with about n work.'},
+ {q:'mergeSort(v, 0, 3) on 5 2 4 1: array after the first merge() call?', o:['2 5 4 1','2 5 1 4','1 2 4 5','5 2 1 4'], a:0, e:'merge(v, 0, 0, 1) runs first.'},
+ {q:'How many times is mergeSort called for 4 elements?', o:['7','4','3','8'], a:0, e:'1 + 2 + 4.'},
+ {q:'Which pivot does the slide quickSort code pick?', o:['The middle element: v[(left + right) / 2]','The first element','The last element','A random element'], a:0, e:'The earlier slide example picked 34 by hand.'},
+ {q:'Partition of 7 2 4 9 3 with quickSort(v, 0, 4): which calls follow?', o:['quickSort(v, 0, 1) and quickSort(v, 3, 4)','quickSort(v, 0, 2) and quickSort(v, 2, 4)','quickSort(v, 0, 3) and quickSort(v, 4, 4)','quickSort(v, 1, 4) only'], a:0, e:'Pivot 4, swap 7↔3, self-swap at 2, stop with i = 3, j = 1.'},
+ {q:'Code trace on 43 86 69 73 11 17 1 74 34 5 with pivot 11: which swap happens first?', o:['43 ↔ 5','86 ↔ 1','69 ↔ 11','43 ↔ 11'], a:0, e:'43 ≥ 11 from the left, 5 ≤ 11 from the right.'},
+ {q:'What is the combine step of quick sort?', o:['Nothing: the left part is already ≤ the right part','Merging two halves','Swapping the pivot back','Copying from temp'], a:0, e:'Quick sort does its work when dividing.'},
+ {q:'When is quick sort O(n²)?', o:['When the pivot is always the smallest or largest element','When the pivot is the middle element','When the array has 0 elements','Never'], a:0, e:'Average is O(n log n).'},
+ {q:'Which is true?', o:['Merge sort is O(n log n) even in the worst case','Quick sort needs a temp vector','Merge sort split costs O(n)','Quick sort parts are always equal halves'], a:0, e:'Quick sort part sizes depend on the pivot.'},
+ {q:'To make merge sort sort largest to smallest, which change in merge() works?', o:['v[i] <= v[j] becomes v[i] >= v[j]','i <= mid becomes i >= mid','mid + 1 becomes mid - 1','Swap the two recursive calls'], a:0, e:'The comparison decides which front goes first (Exercise 6).'},
+ {q:'In real programs, the slides say to sort with:', o:['sort(v.begin(), v.end()) from <algorithm>: O(n log n)','bubble sort','your own merge sort always','set'], a:0, e:'From Lecture 5.'}
+]}
+];
+
+/* ---------- rendering ---------- */
+let store = {};
+try { store = JSON.parse(localStorage.getItem('ds-l5-9-quiz')||'{}'); } catch(e) { store = {}; }
+const saveStore = () => { try { localStorage.setItem('ds-l5-9-quiz', JSON.stringify(store)); } catch(e) {} };
+const shuffle = a => { const b=[...a]; for(let i=b.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [b[i],b[j]]=[b[j],b[i]]; } return b; };
+
+function renderNav(cur){
+  const items = [...LECS.map(l=>({id:l.id,num:l.num,title:l.title,total:l.quiz.length})),{id:'mixed',num:'All',title:'Mixed quiz',total:15}];
+  document.getElementById('nav').innerHTML = items.map(l=>{ const b=store[l.id]; return `<a href="#${l.id}"${l.id===cur?' aria-current="page"':''}><span class="ln">${l.num}</span><span>${l.title}</span><span class="sc${b===l.total?' done':''}">${b!==undefined?b+'/'+l.total:''}</span></a>`; }).join('');
+}
+
+function renderQuiz(container, id, getQs, title, sub){
+  const questions = getQs();
+  const qs = questions.map(q=>{ const order = shuffle(q.o.map((t,i)=>i)); return {...q, order}; });
+  const wrap = document.createElement('section'); wrap.className='quiz'; wrap.id='quiz';
+  wrap.innerHTML = `<h2>${title}</h2><div class="qbar"><span>${sub}</span><span class="score" id="score">0 / ${qs.length} answered</span><button class="btn ghost" id="qreset">New attempt</button></div>` +
+    qs.map((q,k)=>`<div class="q" data-k="${k}"><p class="qt"><span class="qn">${String(k+1).padStart(2,'0')}</span>${esc(q.q)}</p>${q.c?code(q.c):''}<div class="opts">${q.order.map((oi,pos)=>`<button class="opt" data-o="${oi}"><span class="k">${'abcd'[pos]}</span><span>${esc(q.o[oi])}</span></button>`).join('')}</div><div class="exp" hidden></div></div>`).join('') +
+    `<div class="final" id="final"></div>`;
+  container.appendChild(wrap);
+  let answered=0, right=0;
+  wrap.addEventListener('click', e=>{
+    if(e.target.closest('#qreset')){ wrap.remove(); renderQuiz(container,id,getQs,title,sub); document.getElementById('quiz').scrollIntoView({behavior:'smooth'}); return; }
+    const b=e.target.closest('.opt'); if(!b||b.disabled) return;
+    const qd=b.closest('.q'); const q=qs[+qd.dataset.k]; const pick=+b.dataset.o;
+    qd.querySelectorAll('.opt').forEach(o=>{ o.disabled=true; if(+o.dataset.o===q.a) o.classList.add('right'); });
+    const ok = pick===q.a; if(!ok) b.classList.add('wrong');
+    answered++; if(ok) right++;
+    const ex=qd.querySelector('.exp'); ex.hidden=false; ex.innerHTML=`<b>${ok?'Correct.':'Not quite.'}</b> ${esc(q.e)}`;
+    wrap.querySelector('#score').textContent = `${right} correct · ${answered} / ${qs.length} answered`;
+    if(answered===qs.length){
+      const prev=store[id]; if(prev===undefined||right>prev){ store[id]=right; saveStore(); renderNav(id); }
+      const f=wrap.querySelector('#final'); f.classList.add('show');
+      f.innerHTML = `You got <b>${right} / ${qs.length}</b>. ${right===qs.length?'Every idea in this lecture is solid.':'Scroll up to the red answers, reread their explanation, and step through that lab again. Press “New attempt” to reshuffle the options.'}`;
+    }
+  });
+}
+
+function renderLecture(id){
+  const main = document.getElementById('main');
+  if(id==='mixed'){
+    renderNav('mixed');
+    main.innerHTML = `<header class="lec-head"><div class="eyebrow">ALL LECTURES</div><h1>Mixed quiz</h1><p>15 questions drawn at random from every lecture quiz. Press “New attempt” for a different set.</p></header>`;
+    const pool = LECS.flatMap(l=>l.quiz.map(q=>({...q,q:`[${l.num}] `+q.q})));
+    renderQuiz(main,'mixed',()=>shuffle(pool).slice(0,15),'Mixed quiz','Questions from L5 to L9 part 2');
+    window.scrollTo(0,0); return;
+  }
+  const L = LECS.find(l=>l.id===id) || LECS[0];
+  renderNav(L.id);
+  main.innerHTML = `<header class="lec-head"><div class="eyebrow">LECTURE ${L.num}</div><h1>${L.title}</h1><p>${L.sub}</p><nav class="jump" aria-label="Steps">${L.steps.map((s,i)=>`<a href="#${L.id}" data-step="${i}">${i+1}. ${esc(s.t)}</a>`).join('')}<a href="#${L.id}" data-step="quiz">Quiz →</a></nav></header>` +
+    L.steps.map((s,i)=>`<section class="step" id="s-${i}"><div class="n">${String(i+1).padStart(2,'0')}</div><div><h2>${esc(s.t)}</h2>${s.h||''}${s.w?`<div class="lab" data-w="${s.w}"></div>`:''}${s.h2||''}</div></section>`).join('');
+  main.querySelectorAll('[data-w]').forEach(el=>{ try { W[el.dataset.w](el); } catch(err) { el.innerHTML = '<p class="err-msg">This lab could not load.</p>'; console.error(err); } });
+  renderQuiz(main, L.id, ()=>L.quiz, `Quiz: ${L.title}`, `${L.quiz.length} questions, only on ideas from the slides`);
+  main.querySelector('.jump').addEventListener('click', e=>{ const a=e.target.closest('[data-step]'); if(!a) return; e.preventDefault(); const t=a.dataset.step==='quiz'?document.getElementById('quiz'):document.getElementById('s-'+a.dataset.step); if(t) t.scrollIntoView({behavior:'smooth'}); });
+  window.scrollTo(0,0);
+}
+function route(){ const h=location.hash.replace('#',''); renderLecture(h || 'vectors'); }
+window.addEventListener('hashchange', route);
+route();
+</script>
+</body>
+</html>

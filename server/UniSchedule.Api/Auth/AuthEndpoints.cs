@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using UniSchedule.Api.Data;
+using UniSchedule.Api.Teachers;
 
 namespace UniSchedule.Api.Auth;
 
@@ -11,9 +12,14 @@ public static class AuthEndpoints
 {
     public const string RequestCodeLimit = "auth-request-code";
     public const string VerifyLimit = "auth-verify";
+    /// <summary>Per IP, lower than the student cap: each request sends mail to a guessable staff mailbox.</summary>
+    public const string TeacherRequestCodeLimit = "auth-teacher-request-code";
 
     public record RequestCodeBody(string? UniversityId);
-    public record VerifyBody(string? UniversityId, string? Code);
+    /// <param name="Endpoint">This device's notification endpoint, if it has one: it belongs to whoever just signed in.</param>
+    public record VerifyBody(string? UniversityId, string? Code, string? Endpoint = null);
+    public record TeacherRequestCodeBody(string? Email);
+    public record TeacherVerifyBody(string? Email, string? Code, string? Endpoint = null);
     public record AdminLoginBody(string? Username, string? Password);
     public record ChangePasswordBody(string? CurrentPassword, string? NewPassword);
     public record LogoutBody(string? Endpoint);
@@ -61,21 +67,6 @@ public static class AuthEndpoints
     /// <summary>How a dashboard account is listed in the trusted-browser cookie (usernames have no colons, IDs neither).</summary>
     static string AdminDeviceKey(string username) => "admin:" + username;
 
-    /// <summary>Hours until enough of the oldest of these (oldest first, each weighing <c>weight</c>) are a day old to
-    /// bring the total under <c>limit</c>.</summary>
-    static int HoursUntilUnder<T>(List<T> rows, Func<T, DateTimeOffset> createdAt, Func<T, int> weight, int limit, DateTimeOffset now)
-    {
-        var over = rows.Sum(weight) - limit + 1;
-        foreach (var r in rows)
-        {
-            over -= weight(r);
-            if (over <= 0) return Math.Max(1, (int)Math.Ceiling((createdAt(r) + LoginCodes.Day - now).TotalHours));
-        }
-        return 24;
-    }
-
-    static string Hours(int n) => n == 1 ? "1 hour" : $"{n} hours";
-
     /// <summary>Owner IDs listed in config (Owners:Ids, comma-separated) are always owners.</summary>
     public static bool IsConfiguredOwner(IConfiguration config, string universityId) =>
         (config["Owners:Ids"] ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -102,64 +93,29 @@ public static class AuthEndpoints
             var id = StudentIds.Normalize(body.UniversityId);
             if (id is null) return Errors.BadRequest("Enter your university ID like 24-0161.");
 
-            var now = clock.GetUtcNow();
-            var client = SignInCookies.LoginClient(http);
-            // Codes older than every limit are no use to anyone.
-            var dayAgo = now - LoginCodes.Day;
-            await db.LoginCodes.Where(c => c.UniversityId == id && c.CreatedAt <= dayAgo).ExecuteDeleteAsync(ct);
-
-            // The resend wait and the 15-minute cap are per browser, so someone else asking for codes can't use them up.
-            var recent = await db.LoginCodes.Where(c => c.UniversityId == id && c.ClientHash == client && c.CreatedAt > now - LoginCodes.Window)
-                .OrderByDescending(c => c.CreatedAt).Select(c => c.CreatedAt).ToListAsync(ct);
-            if (recent.Count > 0 && now - recent[0] < LoginCodes.ResendAfter)
-            {
-                var wait = (int)Math.Ceiling((LoginCodes.ResendAfter - (now - recent[0])).TotalSeconds);
-                return Errors.TooMany($"Wait {wait} seconds before asking for a new code.");
-            }
-            if (recent.Count >= LoginCodes.MaxPerWindow)
-                return Errors.TooMany("Too many codes for this ID. Wait 15 minutes and try again.");
-
-            if (!SignInCookies.IsTrustedDevice(http, id))
-            {
-                var day = await db.LoginCodes.Where(c => c.UniversityId == id).OrderBy(c => c.CreatedAt)
-                    .Select(c => new { c.CreatedAt, Wrong = c.UsedAt == null ? c.Attempts : c.Attempts - 1 }).ToListAsync(ct);
-                if (day.Count >= LoginCodes.MaxPerDay)
-                    return Errors.TooMany($"This ID has had too many sign-in codes today. Try again in {Hours(HoursUntilUnder(day, d => d.CreatedAt, _ => 1, LoginCodes.MaxPerDay, now))}, or sign in on a device you've used before.");
-                if (day.Sum(d => d.Wrong) >= LoginCodes.MaxWrongPerDay)
-                    return Errors.TooMany($"Too many wrong codes for this ID today. Try again in {Hours(HoursUntilUnder(day, d => d.CreatedAt, d => d.Wrong, LoginCodes.MaxWrongPerDay, now))}, or sign in on a device you've used before.");
-            }
-
-            var code = LoginCodes.Generate();
-            var login = new LoginCode
-            {
-                UniversityId = id,
-                CodeHash = LoginCodes.Hash(id, code),
-                ClientHash = client,
-                CreatedAt = now,
-                ExpiresAt = now + LoginCodes.Lifetime,
-            };
-            db.LoginCodes.Add(login);
-            await db.SaveChangesAsync(ct);
+            var (login, code, error) = await CodeSignIn.RequestAsync(db, http, clock, id, "ID", SignInCookies.IsTrustedDevice(http, id), ct);
+            if (error is not null) return error;
             var address = StudentIds.EmailFor(id);
             try
             {
-                await email.SendSignInCodeAsync(address, code, ct);
+                await email.SendSignInCodeAsync(address, code!, ct);
             }
             catch (Exception e) when (e is EmailNotSentException or HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
             {
-                db.LoginCodes.Remove(login);
+                db.LoginCodes.Remove(login!);
                 await db.SaveChangesAsync(CancellationToken.None);
                 return Errors.Unavailable("We couldn't send the email just now. Try again in a minute.");
             }
             // The new code replaces this browser's earlier ones (they still count towards the limits).
-            await db.LoginCodes.Where(c => c.UniversityId == id && c.ClientHash == client && c.Id != login.Id && c.UsedAt == null && c.ExpiresAt > now)
-                .ExecuteUpdateAsync(u => u.SetProperty(c => c.ExpiresAt, now), CancellationToken.None);
+            await CodeSignIn.RetireOthersAsync(db, login!, id, login!.CreatedAt);
 
             // Test mode (Auth:TestMode) shows the code in the app while real email isn't set up.
-            // Never for owners (their accounts can see every student) or batch reps (they publish onto other students' timetables).
+            // Never for owners (their accounts can see every student), batch reps (they publish onto other students'
+            // timetables) or students with teaching rights (they can change classes).
             var isOwner = IsConfiguredOwner(config, id) || await db.Students.AnyAsync(s => s.UniversityId == id && s.IsOwner, ct);
             var isRep = await db.BatchRepAssignments.AnyAsync(r => db.Students.Any(s => s.Id == r.StudentId && s.UniversityId == id), ct);
-            var showCode = config.GetValue<bool>("Auth:TestMode") && !isOwner && !isRep;
+            var teaches = await db.Teachers.AnyAsync(t => db.Students.Any(s => s.Id == t.StudentId && s.UniversityId == id), ct);
+            var showCode = config.GetValue<bool>("Auth:TestMode") && !isOwner && !isRep && !teaches;
             return Results.Ok(new { email = address, resendAfterSeconds = (int)LoginCodes.ResendAfter.TotalSeconds, testCode = showCode ? code : null });
         }).RequireRateLimiting(RequestCodeLimit);
 
@@ -173,49 +129,11 @@ public static class AuthEndpoints
             if (!trusted && wrongCodes.IsBlocked(http))
                 return Errors.TooMany("Too many wrong codes from this network. Try again in an hour, or sign in on a device you've used before.");
 
+            var (error, wrongCode) = await CodeSignIn.VerifyAsync(db, http, clock, id, code, "ID", LoginCodes.MaxAttempts, trusted, ct);
+            if (wrongCode && !trusted) wrongCodes.Record(http);
+            if (error is not null) return error;
+
             var now = clock.GetUtcNow();
-            // A code only works in the browser that asked for it, and only this browser's newest code counts:
-            // asking for a new one retires the old.
-            var client = SignInCookies.ExistingLoginClient(http);
-            if (client is null) return Errors.BadRequest("That code has expired. Send a new one.");
-            var login = await db.LoginCodes
-                .Where(c => c.UniversityId == id && c.ClientHash == client && c.UsedAt == null)
-                .OrderByDescending(c => c.CreatedAt)
-                .FirstOrDefaultAsync(ct);
-            if (login is null || login.ExpiresAt <= now)
-                return Errors.BadRequest("That code has expired. Send a new one.");
-            if (login.Attempts >= LoginCodes.MaxAttempts)
-                return Errors.BadRequest("Too many wrong tries. Send a new code.");
-
-            // Each try is claimed in the database before the code is checked, so guesses sent in parallel can't share a
-            // try: once the five are used, every other request finds none left. Away from a browser this ID has signed
-            // in on before, the claim also needs the ID to have had fewer than 30 wrong codes in the last day.
-            var dayAgo = now - LoginCodes.Day;
-            var claimed = await db.LoginCodes
-                .Where(c => c.Id == login.Id && c.UsedAt == null && c.Attempts < LoginCodes.MaxAttempts)
-                .Where(c => trusted || db.LoginCodes.Where(o => o.UniversityId == id && o.CreatedAt > dayAgo)
-                    .Sum(o => o.UsedAt == null ? o.Attempts : o.Attempts - 1) < LoginCodes.MaxWrongPerDay)
-                .ExecuteUpdateAsync(u => u.SetProperty(c => c.Attempts, c => c.Attempts + 1), ct);
-            if (claimed == 0)
-            {
-                var wrongToday = await db.LoginCodes.Where(o => o.UniversityId == id && o.CreatedAt > dayAgo)
-                    .SumAsync(o => o.UsedAt == null ? o.Attempts : o.Attempts - 1, ct);
-                return !trusted && wrongToday >= LoginCodes.MaxWrongPerDay
-                    ? Errors.TooMany("Too many wrong codes for this ID today. Try again later, or sign in on a device you've used before.")
-                    : Errors.BadRequest("Too many wrong tries. Send a new code.");
-            }
-            if (!LoginCodes.Verify(login.CodeHash, id, code!))
-            {
-                if (!trusted) wrongCodes.Record(http);
-                var tries = await db.LoginCodes.Where(c => c.Id == login.Id).Select(c => c.Attempts).FirstAsync(ct);
-                var left = LoginCodes.MaxAttempts - tries;
-                return Errors.BadRequest(left > 0 ? $"Wrong code. {left} {(left == 1 ? "try" : "tries")} left." : "Wrong code. Send a new one.");
-            }
-
-            // A code signs in once, even if two requests get here together.
-            var won = await db.LoginCodes.Where(c => c.Id == login.Id && c.UsedAt == null)
-                .ExecuteUpdateAsync(u => u.SetProperty(c => c.UsedAt, now), ct);
-            if (won == 0) return Errors.BadRequest("That code has expired. Send a new one.");
             var student = await db.Students.FirstOrDefaultAsync(s => s.UniversityId == id, ct);
             var isNew = student is null;
             if (student is null)
@@ -227,9 +145,120 @@ public static class AuthEndpoints
             student.LastSeenAt = now;
             await db.SaveChangesAsync(ct);
 
-            await Session.SignInStudentAsync(http, student);
+            // The device belongs to whoever just signed in: a teacher who used it before stops getting notifications on it.
+            if (body.Endpoint is { Length: > 0 } endpoint)
+                await db.TeacherPushSubscriptions.Where(x => x.Endpoint == endpoint).ExecuteDeleteAsync(ct);
+
+            await Session.SignInStudentAsync(http, student, now);
             SignInCookies.RememberDevice(http, id);
             return Results.Ok(new { isNew });
+        }).RequireRateLimiting(VerifyLimit);
+
+        // ---- Teachers: a code to a staff address (@gutech.edu.om exactly). The answer never holds the code, in any mode. ----
+        auth.MapPost("/teacher/request-code", async (TeacherRequestCodeBody body, AppDb db, IEmailSender sender, TimeProvider clock, HttpContext http, TeacherCodeLimiter limiter, CancellationToken ct) =>
+        {
+            var email = TeacherEmails.Normalize(body.Email);
+            if (email is null)
+                return Errors.BadRequest(TeacherEmails.IsStudentAddress(body.Email)
+                    ? "That's a student address. Students sign in with their university ID."
+                    : "Enter your GUtech staff email, like firstname.lastname@gutech.edu.om.");
+
+            var trusted = SignInCookies.IsTrustedDevice(http, email) && !limiter.TrustSpent(email);
+            var (login, code, error) = await CodeSignIn.RequestAsync(db, http, clock, email, "email", trusted, ct);
+            if (error is not null) return error;
+            // Known, unknown and blocked addresses get the same answer, so nobody can test which staff addresses were
+            // removed from Classy. A blocked one goes through the same limits, but its stored code matches nothing and
+            // the email says it can't sign in: the blocked person is told, in their own mailbox only.
+            var blocked = await db.BlockedEmails.AnyAsync(b => b.Email == email, ct);
+            if (blocked)
+            {
+                login!.CodeHash = CodeSignIn.UnmatchableHash();
+                await db.SaveChangesAsync(ct);
+            }
+            try
+            {
+                if (blocked) await sender.SendCannotSignInAsync(email, ct);
+                else await sender.SendSignInCodeAsync(email, code!, ct);
+            }
+            catch (Exception e) when (e is EmailNotSentException or HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+            {
+                db.LoginCodes.Remove(login!);
+                await db.SaveChangesAsync(CancellationToken.None);
+                return Errors.Unavailable("We couldn't send the email just now. Try again in a minute.");
+            }
+            await CodeSignIn.RetireOthersAsync(db, login!, email, login!.CreatedAt);
+            return Results.Ok(new { email, resendAfterSeconds = (int)LoginCodes.ResendAfter.TotalSeconds });
+        }).RequireRateLimiting(TeacherRequestCodeLimit);
+
+        auth.MapPost("/teacher/verify", async (TeacherVerifyBody body, AppDb db, TimeProvider clock, HttpContext http, TeacherCodeLimiter limiter, CancellationToken ct) =>
+        {
+            var email = TeacherEmails.Normalize(body.Email);
+            var code = body.Code?.Trim();
+            if (email is null || !LoginCodes.IsWellFormed(code)) return Errors.BadRequest("Enter the 6-digit code from your email.");
+            // A browser this email signed in on isn't held to the per-address cap, until it has had 30 wrong codes in a
+            // day itself: a lecture-room PC that once signed a teacher in can't guess without limit.
+            var trusted = SignInCookies.IsTrustedDevice(http, email) && !limiter.TrustSpent(email);
+            if (!trusted && limiter.IsBlocked(http))
+                return Errors.TooMany("Too many wrong codes from this network. Try again in an hour, or sign in on a device you've used before.");
+            // A made-up address is a new key every time, so wrong codes for addresses with no account are counted
+            // together. Past the limit, first-time sign-ins wait; teachers who already have an account are not affected.
+            var hasAccount = await db.Teachers.AnyAsync(t => t.Email == email, ct);
+            if (!hasAccount && limiter.NewPausedUntil() is not null)
+                return Errors.TooMany("New teacher sign-ins are paused for an hour. Try again later.");
+
+            var (error, wrongCode) = await CodeSignIn.VerifyAsync(db, http, clock, email, code, "email", CodeSignIn.EmailMaxAttempts, trusted, ct);
+            var now = clock.GetUtcNow();
+            if (wrongCode && limiter.Record(http, email, trusted, hasAccount))
+            {
+                // Staff are told once when the pause starts (pushed to owners' devices, and shown on the dashboard).
+                db.TeachNotices.Add(new TeachNotice
+                {
+                    Audience = TeachNotice.Staff, Kind = "sign-in-guessing", CreatedAt = now, ExpiresAt = now.AddHours(1),
+                    Title = "Teacher sign-ins paused",
+                    Body = "Many wrong teacher sign-in codes. New teacher sign-ins are paused for an hour.",
+                    Url = "/admin/teachers", Tag = "sign-in-guessing",
+                });
+                await db.SaveChangesAsync(CancellationToken.None);
+            }
+            if (error is not null) return error;
+            // A code asked for just before the address was blocked signs nobody in.
+            if (await db.BlockedEmails.AnyAsync(b => b.Email == email, ct))
+                return Errors.BadRequest("That code has expired. Send a new one.");
+
+            var teacher = await db.Teachers.FirstOrDefaultAsync(t => t.Email == email && t.StudentId == null, ct);
+            var isNew = teacher is null;
+            if (teacher is null)
+            {
+                teacher = new Teacher { Email = email, CreatedAt = now, LastSeenAt = now };
+                db.Teachers.Add(teacher);
+                try
+                {
+                    await db.SaveChangesAsync(ct);
+                }
+                catch (DbUpdateException)
+                {
+                    // Another browser finished signing this address in for the first time in the same moment.
+                    db.ChangeTracker.Clear();
+                    teacher = await db.Teachers.FirstAsync(t => t.Email == email && t.StudentId == null, ct);
+                    isNew = false;
+                }
+            }
+            teacher.LastSeenAt = now;
+            await db.SaveChangesAsync(ct);
+            // Links the account to its timetable name when the email clearly matches exactly one.
+            await TeacherNames.LinkOnSignInAsync(db, teacher, now, ct);
+
+            // The device belongs to whoever just signed in.
+            if (body.Endpoint is { Length: > 0 } endpoint)
+            {
+                await db.PushSubscriptions.Where(x => x.Endpoint == endpoint).ExecuteDeleteAsync(ct);
+                await db.TeacherPushSubscriptions.Where(x => x.Endpoint == endpoint && x.TeacherId != teacher.Id).ExecuteDeleteAsync(ct);
+            }
+
+            await Session.SignInTeacherAsync(http, teacher, now);
+            SignInCookies.RememberDevice(http, email);
+            var names = await db.TeacherNames.Where(n => n.TeacherId == teacher.Id).ToListAsync(ct);
+            return Results.Ok(new { isNew, status = TeacherNames.Status(teacher, names) });
         }).RequireRateLimiting(VerifyLimit);
 
         auth.MapPost("/admin-login", async (AdminLoginBody body, AppDb db, TimeProvider clock, HttpContext http, AdminLoginTries tries, CancellationToken ct) =>
@@ -313,31 +342,52 @@ public static class AuthEndpoints
 
         // Leaves the trusted-device cookie: signing out doesn't make this a stranger's browser.
         // A student's device can send its notification endpoint, so it stops getting their notifications in the same
-        // step: if the sign-out doesn't get through, the device keeps them along with the sign-in.
+        // step: if the sign-out doesn't get through, the device keeps them along with the sign-in. The same for a
+        // teacher's device (a teaching assistant's devices are their student devices).
         auth.MapPost("/logout", async (HttpContext http, AppDb db, CancellationToken ct) =>
         {
-            if (http.User.IsStudent() && await LogoutEndpoint(http, ct) is { } endpoint)
+            if ((http.User.IsStudent() || http.User.IsTeacher()) && await LogoutEndpoint(http, ct) is { } endpoint)
             {
                 var id = http.User.Id();
-                await db.PushSubscriptions.Where(x => x.StudentId == id && x.Endpoint == endpoint).ExecuteDeleteAsync(ct);
+                if (http.User.IsStudent())
+                    await db.PushSubscriptions.Where(x => x.StudentId == id && x.Endpoint == endpoint).ExecuteDeleteAsync(ct);
+                else
+                    await db.TeacherPushSubscriptions.Where(x => x.TeacherId == id && x.Endpoint == endpoint).ExecuteDeleteAsync(ct);
             }
             await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             return Results.NoContent();
         });
 
-        // Who is signed in: the app uses this to route between student and dashboard screens.
-        auth.MapGet("/session", async (HttpContext http, AppDb db, CancellationToken ct) =>
+        // Who is signed in: the app uses this to route between student, teacher and dashboard screens.
+        // One branch per kind, with no fall-through: a kind this doesn't know is nobody.
+        auth.MapGet("/session", async (HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) =>
         {
             if (http.User.Identity?.IsAuthenticated != true) return Results.Ok(new { kind = (string?)null });
             var id = http.User.Id();
+            var now = clock.GetUtcNow();
             if (http.User.IsStudent())
             {
                 var s = await db.Students.Where(x => x.Id == id).Select(x => new { x.UniversityId }).FirstAsync(ct);
+                // A student with teaching rights: the code that lets them change a class must be newer than the grant.
+                var teachingSince = await db.Teachers.Where(t => t.StudentId == id).Select(t => (DateTimeOffset?)t.CreatedAt).FirstOrDefaultAsync(ct);
                 return Results.Ok(new { kind = "student", name = s.UniversityId, role = http.User.Role(), mustChangePassword = false,
-                    batchRep = await UniSchedule.Api.Planner.PlannerEndpoints.RepInfo(db, id, ct) });
+                    batchRep = await UniSchedule.Api.Planner.PlannerEndpoints.RepInfo(db, id, ct),
+                    teaching = teachingSince is not null, codeFresh = http.User.CodeIsFresh(now, teachingSince) });
             }
-            var a = await db.AdminUsers.Where(x => x.Id == id).Select(x => new { x.Username, x.MustChangePassword }).FirstAsync(ct);
-            return Results.Ok(new { kind = "admin", name = a.Username, role = http.User.Role(), mustChangePassword = a.MustChangePassword });
+            if (http.User.IsTeacher())
+            {
+                var t = await db.Teachers.FirstAsync(x => x.Id == id, ct);
+                var names = await db.TeacherNames.Where(n => n.TeacherId == id).ToListAsync(ct);
+                return Results.Ok(new { kind = "teacher", name = t.Email, role = "teacher", mustChangePassword = false,
+                    teaching = true, codeFresh = http.User.CodeIsFresh(now),
+                    teacher = new { id = t.Id, displayName = await TeacherNames.ShownAsync(db, t, names, ct) } });
+            }
+            if (http.User.IsAdmin())
+            {
+                var a = await db.AdminUsers.Where(x => x.Id == id).Select(x => new { x.Username, x.MustChangePassword }).FirstAsync(ct);
+                return Results.Ok(new { kind = "admin", name = a.Username, role = http.User.Role(), mustChangePassword = a.MustChangePassword });
+            }
+            return Results.Ok(new { kind = (string?)null });
         });
     }
 }

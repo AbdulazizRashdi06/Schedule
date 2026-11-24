@@ -88,7 +88,7 @@ public static class UsageAnalytics
             var duration = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             var now = http.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow();
             var status = failed ? 500 : http.Response.StatusCode;
-            var audience = http.User.Identity?.IsAuthenticated == true ? (http.User.IsStudent() ? "student" : "staff") : "anonymous";
+            var audience = http.User.Identity?.IsAuthenticated == true ? (http.User.IsStudent() ? "student" : http.User.IsTeacher() ? "teacher" : "staff") : "anonymous";
             var method = http.Request.Method is "GET" or "POST" or "PUT" or "DELETE" or "PATCH" ? http.Request.Method : "OTHER";
             http.RequestServices.GetRequiredService<UsageBuffer>()
                 .Add(new(now.ToUnixTimeSeconds() / 3600 * 3600, route, method, audience, status), duration, audience == "student" && status < 400);

@@ -15,6 +15,10 @@ public sealed class EmailOptions
 public interface IEmailSender
 {
     Task SendSignInCodeAsync(string email, string code, CancellationToken ct);
+
+    /// <summary>Tells a staff address that was removed from Classy, in its own mailbox, that it can't sign in.
+    /// Does nothing unless a sender implements it.</summary>
+    Task SendCannotSignInAsync(string email, CancellationToken ct) => Task.CompletedTask;
 }
 
 /// <summary>No email provider configured: codes go to the server log (docker compose logs api).</summary>
@@ -23,6 +27,12 @@ public sealed class LogEmailSender(ILogger<LogEmailSender> log) : IEmailSender
     public Task SendSignInCodeAsync(string email, string code, CancellationToken ct)
     {
         log.LogWarning("Sign-in code for {Email}: {Code}", email, code);
+        return Task.CompletedTask;
+    }
+
+    public Task SendCannotSignInAsync(string email, CancellationToken ct)
+    {
+        log.LogWarning("Told {Email} it can't sign in (the address is blocked)", email);
         return Task.CompletedTask;
     }
 }
@@ -40,9 +50,27 @@ public sealed class ResendEmailSender(HttpClient http, IOptions<EmailOptions> op
               <p style="font-size:13px;color:#777">It expires in 10 minutes. If you didn't ask for it, ignore this email.</p>
             </div>
             """;
+        await SendAsync(email, $"{code} is your Classy code", html, text, ct);
+    }
+
+    public Task SendCannotSignInAsync(string email, CancellationToken ct)
+    {
+        const string line = "This email can't sign in to Classy. Ask the Classy team.";
+        const string why = "Someone asked for a Classy sign-in code for this address. If it wasn't you, ignore this email.";
+        var html = $"""
+            <div style="font-family:system-ui,sans-serif;max-width:420px;margin:auto;padding:24px">
+              <p style="font-size:15px;color:#333">{line}</p>
+              <p style="font-size:13px;color:#777">{why}</p>
+            </div>
+            """;
+        return SendAsync(email, "Classy sign-in", html, $"{line}\n\n{why}", ct);
+    }
+
+    async Task SendAsync(string email, string subject, string html, string text, CancellationToken ct)
+    {
         using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.resend.com/emails")
         {
-            Content = JsonContent.Create(new { from = options.Value.From, to = new[] { email }, subject = $"{code} is your Classy code", html, text }),
+            Content = JsonContent.Create(new { from = options.Value.From, to = new[] { email }, subject, html, text }),
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.Value.ResendApiKey);
         using var response = await http.SendAsync(request, ct);

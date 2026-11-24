@@ -13,6 +13,7 @@ using UniSchedule.Api.Students;
 using UniSchedule.Api.Analytics;
 using System.Diagnostics;
 using UniSchedule.Api.Planner;
+using UniSchedule.Api.Teachers;
 
 var builder = WebApplication.CreateBuilder(args.FirstOrDefault() == Cli.CreateAdmin ? [] : args);
 var config = builder.Configuration;
@@ -71,6 +72,7 @@ builder.Services.AddAuthorizationBuilder()
     .AddPolicy(Session.OwnerPolicy, p => p.RequireClaim(Session.RoleClaim, "owner").RequireAssertion(c => !c.User.HasClaim(x => x.Type == Session.MustChangeClaim)));
 
 builder.Services.AddSingleton<WrongCodeLimiter>();
+builder.Services.AddSingleton<TeacherCodeLimiter>();
 builder.Services.AddSingleton<AuthEndpoints.AdminLoginTries>();
 builder.Services.AddRateLimiter(o =>
 {
@@ -88,6 +90,8 @@ builder.Services.AddRateLimiter(o =>
         });
     o.AddPolicy(AuthEndpoints.RequestCodeLimit, http => PerIp(http, "RequestCode", 1000));
     o.AddPolicy(AuthEndpoints.VerifyLimit, http => PerIp(http, "Verify", 2000));
+    // Lower than the student cap: each request sends mail to a guessable staff mailbox. RateLimits:TeacherRequestCode overrides it.
+    o.AddPolicy(AuthEndpoints.TeacherRequestCodeLimit, http => PerIp(http, "TeacherRequestCode", 60));
     o.AddPolicy(PublicTimetableEndpoints.Limit, http => PerIp(http, "PublicTimetable", 600));
 });
 
@@ -171,6 +175,7 @@ api.MapDaysOff();
 api.MapAbsences();
 api.MapNotifications();
 api.MapPlanner();
+api.MapTeach();
 api.Map("/{**rest}", () => Errors.NotFound());
 
 // Client-side routes (/, /setup, /admin/...) all load the app.
