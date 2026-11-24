@@ -19,7 +19,10 @@ public static partial class FreeRooms
 
     /// <summary>Placeholder locations, online classes and activities without a campus room.</summary>
     [GeneratedRegex(@"^(?:tba|tbd|n/?a|-+|online|coursera|field[\s-]*trips?|excursions?|internships?|thesis|theses)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
-    private static partial Regex NotARoom();
+    private static partial Regex NotARoomPattern();
+
+    /// <summary>Whether a class's location is no campus room: blank, a placeholder, online, or an activity elsewhere.</summary>
+    internal static bool NotARoom(string? room) => room?.Trim() is not { Length: > 0 } r || NotARoomPattern().IsMatch(r);
 
     [GeneratedRegex(@"^[A-Za-z]+")]
     private static partial Regex Letters();
@@ -50,7 +53,7 @@ public static partial class FreeRooms
                 .SelectMany(s => s.Meetings).Select(m => new { m.Room, m.Day, m.Date, m.Start, m.End }).ToListAsync(ct);
 
             // Every room the timetable uses, under its first spelling.
-            var rooms = meetings.Select(m => m.Room.Trim()).Where(r => r.Length > 0 && !NotARoom().IsMatch(r))
+            var rooms = meetings.Select(m => m.Room.Trim()).Where(r => !NotARoom(r))
                 .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
             // On a day off weekly classes don't meet; a class set for that date still does.
             var dayOff = semester is null ? null : await db.DaysOff.Where(d => d.SemesterId == semester.Id && d.Date == day).Select(d => d.Name).FirstOrDefaultAsync(ct);

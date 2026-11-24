@@ -16,17 +16,26 @@ public static class PersonalEndpoints
     public record SlotBody(string? Title, int? Day, string? Start, string? End, string? Date, string? Place, string? Note);
     public record NoteBody(int? CourseId, string? Date, string? Text, bool? IsPublic);
 
-    public static object Of(CustomSlot s) => new
+    /// <summary>The seven things a slot is made of, whoever it belongs to (a student's own slot, or a teacher's).</summary>
+    internal readonly record struct SlotFields(string Title, int Day, TimeOnly Start, TimeOnly End, DateOnly? Date, string Place, string? Note);
+
+    public static object Of(CustomSlot s) => Of(s.Id, new(s.Title, s.Day, s.Start, s.End, s.Date, s.Place, s.Note));
+
+    /// <summary>A slot as the app reads it.</summary>
+    internal static object Of(int id, SlotFields s) => new
     {
-        s.Id, s.Title, s.Day, start = Timeslots.Format(s.Start), end = Timeslots.Format(s.End),
+        id, s.Title, s.Day, start = Timeslots.Format(s.Start), end = Timeslots.Format(s.End),
         date = s.Date?.ToString("yyyy-MM-dd"), s.Place, s.Note,
     };
 
     static bool TryTime(string? s, out TimeOnly t) =>
         TimeOnly.TryParseExact(s?.Trim(), ["HH:mm", "H:mm"], CultureInfo.InvariantCulture, DateTimeStyles.None, out t);
 
-    /// <summary>Checks a slot from the app; copies it onto <paramref name="slot"/> when it's fine.</summary>
-    static string? Fill(CustomSlot slot, SlotBody b)
+    static string? Fill(CustomSlot slot, SlotBody b) => Fill(slot, b, (s, f) =>
+        (s.Title, s.Day, s.Start, s.End, s.Date, s.Place, s.Note) = (f.Title, f.Day, f.Start, f.End, f.Date, f.Place, f.Note));
+
+    /// <summary>Checks a slot from the app; copies it onto <paramref name="slot"/> (through <paramref name="set"/>) when it's fine.</summary>
+    internal static string? Fill<T>(T slot, SlotBody b, Action<T, SlotFields> set)
     {
         var title = b.Title?.Trim() ?? "";
         if (title.Length is 0 or > 60) return "Give the slot a name (up to 60 characters).";
@@ -44,7 +53,7 @@ public static class PersonalEndpoints
         if (place.Length > 60) return "The place is too long.";
         var note = string.IsNullOrWhiteSpace(b.Note) ? null : b.Note.Trim();
         if (note?.Length > MaxNoteLength) return $"Keep the note under {MaxNoteLength} characters.";
-        (slot.Title, slot.Day, slot.Start, slot.End, slot.Date, slot.Place, slot.Note) = (title, day, start, end, date, place, note);
+        set(slot, new(title, day, start, end, date, place, note));
         return null;
     }
 

@@ -1,9 +1,18 @@
+using System.Text.Json.Serialization;
 using UniSchedule.Api.Data;
 
 namespace UniSchedule.Api.Schedule;
 
-/// <summary><paramref name="Date"/>: "2026-09-21" for a class on that date only; null = every week.</summary>
-public record MeetingDto(int Day, string Start, string End, string Room, string? Date, List<string>? ExcludedDates = null);
+/// <summary>
+/// <paramref name="Date"/>: "2026-09-21" for a class on that date only; null = every week.
+/// The last three are left out of the JSON when null, so every older reader gets exactly what it always got:
+/// <paramref name="ChangeId"/> and <paramref name="Type"/> mark a session a teacher's change put on, and
+/// <paramref name="Merge"/> is the teacher timetable's key for one real class listed under several course codes.
+/// </summary>
+public record MeetingDto(int Day, string Start, string End, string Room, string? Date, List<string>? ExcludedDates = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? ChangeId = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Type = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Merge = null);
 public record SectionDto(int Id, string Number, string Instructor, List<MeetingDto> Meetings, string? ChangedAt, string? ChangeSummary);
 public record CourseDto(int Id, string Code, string Name, string Type, int? Year, int? Credits, List<string> Majors, List<SectionDto> Sections);
 

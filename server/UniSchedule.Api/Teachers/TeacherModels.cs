@@ -66,6 +66,8 @@ public class TeacherName
 /// <summary>A section a teacher added, or hid. One semester only.</summary>
 public class TeacherSection
 {
+    public const string AddedMode = "added", HiddenMode = "hidden";
+
     public int Id { get; set; }
     public int TeacherId { get; set; }
     public int SemesterId { get; set; }

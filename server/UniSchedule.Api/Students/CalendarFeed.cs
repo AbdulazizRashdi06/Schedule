@@ -24,13 +24,8 @@ public static partial class CalendarFeed
     /// <summary>The feed link, and the same link as plain text for AI assistants such as ChatGPT.</summary>
     static object Links(HttpRequest req, string token) => new { url = Link(req, token), textUrl = Link(req, token, "txt") };
 
-    [GeneratedRegex(@"\blab", RegexOptions.IgnoreCase)]
-    private static partial Regex LabRoom();
-    [GeneratedRegex(@"\btut", RegexOptions.IgnoreCase)]
-    private static partial Regex TutorialRoom();
-
     /// <summary>The class type, read from the room the way the app does: "Lab L2" is a lab, "Tut 3" a tutorial.</summary>
-    static string Kind(string room) => LabRoom().IsMatch(room) ? "Lab" : TutorialRoom().IsMatch(room) ? "Tutorial" : "Lecture";
+    static string Kind(string room) => SessionKinds.Label(SessionKinds.Of(room));
 
     public static void MapCalendar(this RouteGroupBuilder api)
     {

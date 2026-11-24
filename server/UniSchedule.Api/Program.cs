@@ -176,6 +176,7 @@ api.MapAbsences();
 api.MapNotifications();
 api.MapPlanner();
 api.MapTeach();
+api.MapTeacherPages();
 api.Map("/{**rest}", () => Errors.NotFound());
 
 // Client-side routes (/, /setup, /admin/...) all load the app.

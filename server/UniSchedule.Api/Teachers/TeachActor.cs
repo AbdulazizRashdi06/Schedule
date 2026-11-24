@@ -26,6 +26,9 @@ public sealed record TeachActor(
     public const string ViewAsHeader = "X-Teach-As";
     public const string StaffName = "Classy staff";
     public const string NotInViewAs = "Not available while viewing as a teacher.";
+    public const string NoAccount = "This name has no Classy account yet.";
+    /// <summary>What a frozen account is told wherever it could put something in front of students.</summary>
+    public const string Frozen = "Your class changes are paused. Ask the Classy team.";
     const string ItemKey = "teach-actor";
 
     public bool ViewAs => OnBehalfOf is not null;
