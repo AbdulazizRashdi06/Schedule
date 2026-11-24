@@ -13,7 +13,7 @@ async function render() {
   $('classy-dot').className = 'dot' + (token ? ' on' : '')
   $('classy').innerHTML = token
     ? 'Connected to Classy.'
-    : 'Not connected. Sign in to the <a href="https://schedule.tryzarqa.com/admin" target="_blank">Classy dashboard</a> as an owner, then press Connect.'
+    : 'Not connected. Sign in to the <a href="https://classy.om/admin" target="_blank">Classy dashboard</a> as an owner, then press Connect.'
   $('connect').hidden = !!token
 
   $('eduwave-dot').className = 'dot' + (form ? ' on' : '')
@@ -33,7 +33,7 @@ async function render() {
     const r = last.result
     $('run').innerHTML =
       `Last sync ${ago(last.at)}: ${r.courses} courses, ${r.classes.toLocaleString()} classes. ` +
-      (r.added + r.updated + r.removed === 0 ? 'Nothing changed.' : `${r.added} added, ${r.updated} changed, ${r.removed} removed. <a href="https://schedule.tryzarqa.com/admin/upload" target="_blank">Check and apply in Classy</a>.`) +
+      (r.added + r.updated + r.removed === 0 ? 'Nothing changed.' : `${r.added} added, ${r.updated} changed, ${r.removed} removed. <a href="https://classy.om/admin/upload" target="_blank">Check and apply in Classy</a>.`) +
       (last.failed ? ` <span class="muted">${last.failed} courses didn’t answer and were kept as they were.</span>` : '')
   } else if (last) {
     $('run').innerHTML = `<span class="bad-text">Last sync ${ago(last.at)} failed: ${esc(last.error)}</span>`

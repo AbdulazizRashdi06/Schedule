@@ -10,7 +10,7 @@ A browser extension that fetches the GUtech timetable from EduWave in your signe
 After updating the extension's files, press the reload button on its card in `chrome://extensions` once, so the browser picks up the new version (for example, carrying on a sync after the browser restarts).
 
 ## Connect once
-1. Sign in to the Classy dashboard (https://schedule.tryzarqa.com/admin) as an owner in the same browser.
+1. Sign in to the Classy dashboard (https://classy.om/admin) as an owner in the same browser.
 2. Open the Classy Sync popup and press **Connect to Classy**. That makes a sync token, which can do nothing but send timetables. It's listed under **Accounts → Classy Sync**, where you can disconnect it.
 3. Sign in to EduWave and open **Advisor Plan** through its menu. The extension reads the page's form from there.
 

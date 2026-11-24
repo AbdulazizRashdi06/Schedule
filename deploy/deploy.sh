@@ -126,4 +126,4 @@ fi
 exit 1
 REMOTE
 
-echo "==> Deployed $REV. https://schedule.tryzarqa.com"
+echo "==> Deployed $REV. https://classy.om"

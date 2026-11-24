@@ -43,7 +43,7 @@ Run everything below **from the laptop**: the SSH key (`~/.ssh/zarqa_vps`) is on
    ```bash
    ssh -i ~/.ssh/zarqa_vps deploy@173.249.40.122 "cd /opt/<zarqa> && docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile"
    ```
-5. Open <https://schedule.173-249-40-122.sslip.io>.
+5. Open <https://classy.om>.
 
 Owners sign in with their student ID (owners' codes are never shown in test mode, so with `EMAIL_PROVIDER=log` read the code from the logs, see below).
 

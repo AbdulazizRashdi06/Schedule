@@ -1,7 +1,7 @@
 // Classy Sync: fetches every course's sections from EduWave (one a second) and sends them to Classy,
 // where staff check and apply them from Upload. Progress is saved after each course, so a sync picks up
 // where it stopped after a sign-out or a browser restart.
-const CLASSY = 'https://schedule.tryzarqa.com'
+const CLASSY = 'https://classy.om'
 const PLAN_TABS = 'https://eduwave.gutech.edu.om/*AdvisorStudentPlan.aspx*'
 const GAP_MS = 1000
 const MAX_RUN_MS = 12 * 60 * 60 * 1000 // an unfinished sync older than this starts again, so old rows aren't sent as new

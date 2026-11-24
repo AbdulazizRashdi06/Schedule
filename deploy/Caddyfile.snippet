@@ -1,5 +1,11 @@
 # Add to Zarqa's Caddyfile (C:\Projects\LostraAi\deploy\Caddyfile), then reload Caddy.
-schedule.tryzarqa.com, schedule.173-249-40-122.sslip.io {
+# The file is a single-file bind mount into zarqa-caddy-1: edit it in place (not sed -i), or restart Caddy after.
+classy.om {
 	encode gzip
 	reverse_proxy uni-schedule:8080
+}
+
+# One address for Classy: sign-in cookies belong to a single host, so every other name redirects here.
+www.classy.om, schedule.tryzarqa.com, schedule.173-249-40-122.sslip.io {
+	redir https://classy.om{uri} permanent
 }
