@@ -54,6 +54,32 @@ public class UsageAnalyticsTests
     }
 
     [Fact]
+    public async Task Teachers_are_counted_as_their_own_audience_and_never_as_students()
+    {
+        using var factory = new ApiFactory();
+        await Student(factory, "25-9711");
+        await Student(factory, "25-9712");
+        var teacher = await TeacherTestKit.SignInTeacher(factory, "usage.teacher@gutech.edu.om");
+        for (var i = 0; i < 3; i++) await Json(await teacher.GetAsync("/api/teach/me"));
+        Assert.Equal(HttpStatusCode.Forbidden, (await teacher.GetAsync("/api/me")).StatusCode);
+        await factory.AddAdmin("analytics-owner-2", "owner-password-1", AdminRole.Owner, false);
+        var owner = factory.Client();
+        await Json(await owner.PostAsJsonAsync("/api/auth/admin-login", new { username = "analytics-owner-2", password = "owner-password-1" }));
+        var report = await Json(await owner.GetAsync("/api/admin/analytics?days=1"));
+        // The student numbers are what they would be without the teacher.
+        Assert.Equal(2, report.GetProperty("peak").GetProperty("peakUsers").GetInt32());
+        Assert.Equal(2, report.GetProperty("busiestDay").GetProperty("activeUsers").GetInt32());
+        Assert.DoesNotContain("usage.teacher", report.ToString());
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+        var hours = await db.UsageHours.ToListAsync();
+        Assert.Contains(hours, x => x.Route == "/api/teach/me" && x.Audience == "teacher" && x.Status == 200 && x.Requests == 3);
+        Assert.Contains(hours, x => x.Route == "/api/me" && x.Audience == "teacher" && x.Status == 403 && x.Requests == 1);
+        Assert.Contains(hours, x => x.Route == "/api/me" && x.Audience == "student" && x.Requests == 2);
+        Assert.DoesNotContain(hours, x => x.Route.StartsWith("/api/teach") && x.Audience != "teacher");
+    }
+
+    [Fact]
     public async Task Optional_tracking_endpoints_and_account_linked_tables_are_removed()
     {
         using var factory = new ApiFactory();

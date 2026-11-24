@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using UniSchedule.Api.Auth;
 using UniSchedule.Api.Data;
@@ -14,6 +15,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 {
     readonly string dir = Path.Combine(Path.GetTempPath(), "unischedule-tests-" + Guid.NewGuid().ToString("N"));
     public const string OwnerId = "22-0001";
+    /// <summary>Every sign-in email the app sent. Teacher codes are only ever here, never in a response.</summary>
+    public CapturingEmailSender Emails { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -23,7 +26,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Owners:Ids", OwnerId);
         builder.UseSetting("RateLimits:RequestCode", "1000");
         builder.UseSetting("RateLimits:Verify", "1000");
+        builder.UseSetting("RateLimits:TeacherRequestCode", "1000");
         builder.UseSetting("Sync:ExtraCodes", "");
+        builder.ConfigureTestServices(s => s.AddSingleton<IEmailSender>(Emails));
     }
 
     public HttpClient Client() => CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true });
