@@ -101,6 +101,11 @@ Flow: **Register → Major → Year → Core (auto) → Edit core? → Life Skil
 | Manage majors and allowed electives | ✅ | ✅ secondary |
 | Course stats (e.g. "42 students in CS201-1") | ✅ | ✅ counts only |
 | Student list, student picks, reset or remove a student | ✅ | ❌ no student access |
+| Teachers: approve and attach timetable names, freeze, sign out, remove and unblock | ✅ | ✅ sees teacher names, staff emails and counts; nothing about students |
+| Log of teacher class changes, with undo | ✅ | ✅ a teaching assistant shows as "a teaching assistant", never a student ID |
+| Switch all teacher class changes off or on | ✅ | ❌ sees the state only |
+| "View as" a teacher or a timetable name | ✅ | ❌ |
+| Give a student account teaching rights (teaching assistant) | ✅ | ❌ no student access |
 | Add or remove admins | ✅ owners and RSA | ✅ RSA accounts only |
 
 - **RSA dashboard:** the home screen is built around courses: Semester · Upload schedule · Courses & sections · Majors.

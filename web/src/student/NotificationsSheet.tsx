@@ -60,6 +60,8 @@ export default function NotificationsSheet({ open, onClose }: { open: boolean; o
       setStatus('On. You’ll get a reminder before each class.')
     })
 
+  const changesLabel = teacher ? 'When the university timetable changes one of my classes' : 'When one of my classes changes'
+
   return (
     <Sheet open={open} onClose={onClose} label="Notifications">
       <h2 className="text-[30px] leading-none font-extrabold tracking-[-0.03em]">Notifications</h2>
@@ -109,11 +111,11 @@ export default function NotificationsSheet({ open, onClose }: { open: boolean; o
               })}
             </div>
           </div>
-          <Checkbox
-            checked={settings.changes}
-            onChange={(v) => void run(() => save({ remindMinutes: settings.remindMinutes, changes: v }))}
-            label={teacher ? 'When the university timetable changes one of my classes' : 'When one of my classes changes'}
-          />
+          {/* The words are on screen too: a bare tick box says nothing about what it switches. */}
+          <label className="flex cursor-pointer items-center gap-3 text-[16px] leading-snug font-bold">
+            <Checkbox checked={settings.changes} onChange={(v) => void run(() => save({ remindMinutes: settings.remindMinutes, changes: v }))} label={changesLabel} />
+            <span aria-hidden="true">{changesLabel}</span>
+          </label>
           {/* A teacher's switch covers the university's changes only. */}
           {teacher && <p className="-mt-2 text-[13px] font-semibold text-muted">You are always told when someone else changes your class.</p>}
           {settings.devices > 1 && <p className="text-[13px] font-semibold text-muted">On for {settings.devices} devices. These choices apply to all of them.</p>}

@@ -70,7 +70,7 @@ export default function CourseDetail() {
           {d.noSection} {d.noSection === 1 ? 'student takes' : 'students take'} this course without a section, for example because theirs was removed.
         </Notice>
       )}
-      <div className="overflow-x-auto">
+      <div className="relative overflow-x-auto">
         <table className="w-full min-w-[720px] border-collapse text-[15px]">
           <thead>
             <tr className="border-b-[2.5px] border-navy">

@@ -370,7 +370,8 @@ export default function Teachers() {
         {data.names.length === 0 ? (
           <p className="border-y-[1.5px] border-navy/[0.12] px-2 py-3.5 text-[15px] font-semibold text-muted">No semester is published, so there are no names yet.</p>
         ) : (
-          <div className="overflow-x-auto">
+          // Positioned, so the hidden "Actions" heading scrolls with the table instead of widening the page.
+          <div className="relative overflow-x-auto">
             <table className="w-full min-w-[560px] border-collapse text-[15px]">
               <thead>
                 <tr className="border-b-[2.5px] border-navy">

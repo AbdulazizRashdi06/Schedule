@@ -33,6 +33,8 @@ Run everything below **from the laptop**: the SSH key (`~/.ssh/zarqa_vps`) is on
    |---|---|---|
    | `RateLimits__RequestCode`, `RateLimits__Verify`, `RateLimits__PublicTimetable` | 1000, 2000, 600 | Per IP per 5 minutes: sign-in code requests, code checks, public timetable reads |
    | `RateLimits__WrongCodesPerHour` | 300 | Wrong sign-in codes per IP per rolling hour, across all IDs |
+   | `RateLimits__TeacherRequestCode` | 60 | Teacher sign-in code requests per IP per 5 minutes |
+   | `RateLimits__TeacherWrongCodesPerHour`, `RateLimits__TeacherWrongCodesNewPerHour` | 30, 40 | Wrong teacher codes per rolling hour: per IP, and site-wide for addresses with no account yet (reaching the second pauses first-time teacher sign-ins) |
    | `Sync__ExtraCodes` | `CS1102-L` | Extra EduWave course codes for Classy Sync, comma-separated; empty for none |
    | `Planner__Enabled`, `Planner__AiUrl`, `Planner__AiModel` | `false`, `http://codex:8090/v1/chat/completions`, `gpt-6-luna` | Semester planner; the owners' dashboard setting wins over `Planner__Enabled` |
    | `Analytics__Enabled` | `true` | Usage analytics |
@@ -75,6 +77,20 @@ Use `owner` instead of `rsa` for an owner account. Running it again for an exist
 - The `S1AuthBinding` migration ties sign-in codes to the browser that asked, so codes sent before the deploy stop working; students just ask for a new one. Students already signed in stay signed in.
 - Owners reload the unpacked Classy Sync extension once (`chrome://extensions` → Reload) to get its fixes.
 - Server `.env` files need no change. Optional settings such as `RateLimits__WrongCodesPerHour=300` can now be added to it (see step 3 above).
+
+## First deploy with teachers
+
+Teachers sign in with their `@gutech.edu.om` address and an emailed code, so this deploy needs `EMAIL_PROVIDER=resend` working; with `log`, a teacher's code is only in the logs (it is never shown in the app, even with `AUTH_TEST_MODE=true`). Server `.env` files need no change. How the feature works is in [docs/teachers.md](../docs/teachers.md).
+
+1. **Check the migration created tables only.** The deploy backs up the database first, then the `Teachers` migration runs at startup. It creates ten tables (`Teachers`, `TeacherNames`, `TeacherSections`, `TeacherSeens`, `TeacherSlots`, `TeacherPushSubscriptions`, `OfficeHours`, `ClassChanges`, `TeachNotices`, `BlockedEmails`) and touches no existing one. To see it, list the tables (the site stays up; the volume is read only):
+   `ssh -i ~/.ssh/zarqa_vps deploy@173.249.40.122 "docker run --rm -v uni-schedule_data:/d:ro alpine sh -c 'apk add -q sqlite && sqlite3 /d/schedule.db .tables'"`
+   The ten names are there beside the old ones, and the dashboard home shows the same student and course numbers as before the deploy.
+2. **Sign in with "view as" from the dashboard.** As an owner: Teachers → Timetable names → **View as** on any name. The teacher side opens with "Viewing as …" at the top. No email is needed for this, so it also works if staff mailboxes filter the code.
+3. **Make and undo one change on a test section.** In that view open a class nobody takes (or one of your own), cancel it, check it under **Teacher changes** in the dashboard (logged under you, "Made by staff"), then undo it there. Students of that section with notifications on are told both times, so pick the section with care.
+4. **Confirm the switch works.** Teachers → **Teacher class changes: On** → Switch off. A signed-in teacher sees "Class changes are switched off for everyone at the moment" and every change button is disabled; owners in "view as" still pass. Switch it back on.
+5. Ask one teacher to sign in at <https://classy.om/teach> and confirm the code arrives. If it doesn't, check the Resend log and GUtech's mail filter; nothing else depends on it.
+
+After the deploy, the dashboard home shows teachers waiting for a name, anyone past 5 class changes in a day, and a pause on first-time teacher sign-ins. The Teachers link in the sidebar carries the count.
 
 ## Deploying from GitHub
 

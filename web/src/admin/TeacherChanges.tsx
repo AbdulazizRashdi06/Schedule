@@ -180,13 +180,14 @@ export default function TeacherChanges() {
                       {c.codes.join(' · ')} <span className="font-semibold">section {c.section}</span>
                     </span>
                     <Tag tone={c.kind === 'cancel' ? 'navy' : 'ice'}>{KIND[c.kind]}</Tag>
-                    {c.flagged && <Tag tone="alert">Not the named teacher</Tag>}
+                    {/* An owner in "view as" is never the named teacher: say what it was instead. */}
+                    {c.flagged && <Tag tone="alert">{c.onBehalfOf ? 'Made by staff' : 'Not the named teacher'}</Tag>}
                   </span>
                   <span className="font-mono text-[13px] font-bold uppercase">{describe(c)}</span>
                   {c.note && <span className="text-[15px] font-semibold [overflow-wrap:anywhere]">“{c.note}”</span>}
                   <span className="text-[14px] font-semibold text-muted [overflow-wrap:anywhere]">
                     {when(c.at)} · by {maker(c)}
-                    {c.flagged && c.namedTeacher && ` · listed under ${c.namedTeacher}`} · {c.students} Classy {c.students === 1 ? 'user' : 'users'}
+                    {c.flagged && c.namedTeacher && c.namedTeacher !== c.onBehalfOf && ` · listed under ${c.namedTeacher}`} · {c.students} Classy {c.students === 1 ? 'user' : 'users'}
                     {c.teacherId !== null && c.teacherId !== teacher && !c.onBehalfOf && (
                       <>
                         {' · '}

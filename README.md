@@ -1,6 +1,6 @@
 # Uni Schedule
 
-A phone-first class timetable for GUtech students, with a dashboard for the RSA office and owners. The product plan is in [docs/plan.md](docs/plan.md).
+A phone-first class timetable for GUtech students and teachers, with a dashboard for the RSA office and owners. The product plan is in [docs/plan.md](docs/plan.md); how the teacher side works is in [docs/teachers.md](docs/teachers.md).
 
 - `server/` — ASP.NET Core (.NET 10) API, EF Core + SQLite. Also serves the built frontend.
 - `web/` — React + TypeScript + Vite + Tailwind.
@@ -21,6 +21,7 @@ npm run dev
 ```
 
 - Students: sign in with any ID like `24-0161`; in Development the code is shown on screen.
+- Teachers: `/teach`, with any address like `firstname.lastname@gutech.edu.om`. A teacher's code is never shown on screen, in any mode: read it from the API's log (`Sign-in code for …`).
 - Dashboard: `/admin/login` with `dev-owner` / `dev-password` (Development only).
 - To make an ID an owner locally, set `Owners__Ids=24-0161` before `dotnet run`.
 - Delete `server/UniSchedule.Api/app-data/` to start over.
@@ -57,6 +58,9 @@ One row per section meeting time; the header row names the columns (any order, c
 - A sign-in code only works in the browser that asked for it (HttpOnly `unischedule-login` cookie, 24 hours). Asking again in that browser cancels the old code.
 - Per ID and browser: one code a minute, 4 per 15 minutes. Per ID across all browsers: 20 codes and 30 wrong codes per rolling 24 hours. A browser that has signed in as that ID before (`unischedule-device` cookie, 1 year, kept on sign-out) skips the daily caps and the per-IP wrong-code cap (`RateLimits__WrongCodesPerHour`).
 - Dashboard: 5 wrong passwords from one IP (an IPv6 /64 counts as one) lock that username on that IP for 15 minutes. 20 wrong in 15 minutes from anywhere lock the account for 15 minutes, even against the right password. A browser that has signed in to that account before is exempt from both: it has its own 5-try lock, and during an account lock the right password still signs in there.
+- Teachers sign in at `/teach` with a `@gutech.edu.om` staff address and an emailed code (the "Staff? Sign in here" link on the student screen). The code is never shown in the app, test mode or not. A teacher code allows 3 tries instead of 5. Wrong teacher codes are also counted per IP from browsers that address hasn't signed in on (`RateLimits__TeacherWrongCodesPerHour`), and site-wide for addresses that have no account yet (`RateLimits__TeacherWrongCodesNewPerHour`): past that, first-time teacher sign-ins pause until the count falls, and the dashboard home says until when. Teachers who already have an account aren't affected by that pause.
+- A removed teacher's address is blocked until an owner or RSA unblocks it on the dashboard's Teachers page. The sign-in screen answers as for any address; the mailbox gets "This email can't sign in to Classy" instead of a code.
+- Changing a class needs a code entered in that browser in the last 7 days (teachers, teaching assistants, and student owners using "view as"); dashboard password accounts are exempt.
 - Sign-in request bodies over 4 KB are refused (413).
 - POST/PUT/DELETE requests to `/api` that carry cookies are refused when they come from another origin (Classy Sync's extension origin and its Bearer token are allowed). Serve the web app from the API's own origin; the Vite dev proxy does.
 
@@ -71,6 +75,9 @@ One row per section meeting time; the header row names the columns (any order, c
 | `Email__ResendApiKey`, `Email__From` | | for Resend |
 | `RateLimits__RequestCode`, `RateLimits__Verify`, `RateLimits__PublicTimetable` | 1000, 2000, 600 | per IP per 5 minutes: a flood guard, since campus Wi-Fi shares one IP (each ID has its own tighter limits) |
 | `RateLimits__WrongCodesPerHour` | 300 | wrong sign-in codes per IP per rolling hour, across all IDs |
+| `RateLimits__TeacherRequestCode` | 60 | teacher sign-in code requests per IP per 5 minutes (each one sends mail to a staff mailbox) |
+| `RateLimits__TeacherWrongCodesPerHour` | 30 | wrong teacher codes per IP per rolling hour, from browsers that address hasn't signed in on |
+| `RateLimits__TeacherWrongCodesNewPerHour` | 40 | wrong teacher codes per rolling hour, site-wide, for addresses with no account yet; reaching it pauses first-time teacher sign-ins |
 | `Sync__ExtraCodes` | `CS1102-L` | extra EduWave course codes for Classy Sync, comma-separated |
 | `Planner__Enabled`, `Planner__AiUrl`, `Planner__AiModel` | `false`, `http://codex:8090/v1/chat/completions`, `gpt-6-luna` | semester planner; the owners' dashboard setting wins over `Planner__Enabled` |
 | `Analytics__Enabled` | `true` | usage analytics |
