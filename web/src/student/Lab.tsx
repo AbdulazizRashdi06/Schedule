@@ -996,7 +996,7 @@ function WeekPage({
                           {codes.length > 3 && <span>+{codes.length - 2}</span>}
                         </span>
                       ) : (
-                        <span className={cx('display leading-none tracking-[-0.03em]', cell.length > 1 ? 'text-[12px] break-all' : s.office ? 'text-[13px]' : 'truncate text-[16px]')}>{s.office ? 'Office hours' : s.cls.code}</span>
+                        <span className={cx('display leading-none tracking-[-0.03em]', s.office ? 'text-[13px]' : cell.length > 1 ? 'text-[12px] break-all' : 'truncate text-[16px]', s.office && cell.length > 1 && 'text-[11px] break-all')}>{s.office ? (cell.length > 1 ? 'Office' : 'Office hours') : s.cls.code}</span>
                       )}
                       <span className="label mt-1 text-[9px] tracking-[0.04em]">
                         {s.meeting.start}

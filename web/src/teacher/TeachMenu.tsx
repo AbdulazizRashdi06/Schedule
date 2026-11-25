@@ -46,9 +46,6 @@ export default function TeachMenu({ open, onClose, teach }: { open: boolean; onC
           <Link to="/teach/office" onClick={onClose} className={item}>
             Office hours &amp; details{arrow}
           </Link>
-          <Link to="/teach/changes" onClick={onClose} className={item}>
-            My changes{arrow}
-          </Link>
           {personal && (
             <>
               <button type="button" onClick={sheet(setCalendar)} className={cx(item, 'text-left')}>
