@@ -3,6 +3,7 @@ import { api, errorText } from '../lib/api'
 import type { CustomSlot } from '../lib/types'
 import { DAY_LONG } from '../lib/time'
 import { SLOTS } from '../lib/slots'
+import { useViewer } from '../lib/viewer'
 import { Button, ErrorText, Icon, Select, Sheet, TextField, cx } from '../components/ui'
 
 /** What a new slot starts with: the day (and date) and times the student tapped. */
@@ -42,6 +43,8 @@ function SlotForm({ slot, preset, onClose, onSaved }: { slot: CustomSlot | null;
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [clock, setClock] = useState<'start' | 'end' | null>(null)
+  // A student's own slots, or on the teacher side a teacher's.
+  const slots = `${useViewer().base}/slots`
 
   /** Moving the start keeps the slot's length, or a class's length if the end would fall before it. */
   const changeStart = (v: string) => {
@@ -73,7 +76,7 @@ function SlotForm({ slot, preset, onClose, onSaved }: { slot: CustomSlot | null;
         if (end <= start) return setError('The slot ends before it starts.')
         if (dated && !date) return setError('Pick a date.')
         const body = { title, day, date: dated ? date : null, start, end, place, note }
-        void run(() => (slot ? api.put(`/me/slots/${slot.id}`, body) : api.post('/me/slots', body)))
+        void run(() => (slot ? api.put(`${slots}/${slot.id}`, body) : api.post(slots, body)))
       }}
     >
       <h2 className="text-[30px] leading-none font-extrabold tracking-[-0.03em]">{slot ? 'Your slot' : 'Add a slot'}</h2>
@@ -140,7 +143,7 @@ function SlotForm({ slot, preset, onClose, onSaved }: { slot: CustomSlot | null;
       <ErrorText>{error}</ErrorText>
       <div className="flex gap-2.5 pt-1" onClick={() => setClock(null)}>
         {slot && (
-          <Button type="button" variant="danger" className="h-[52px] px-5" disabled={busy} onClick={() => run(() => api.del(`/me/slots/${slot.id}`))}>
+          <Button type="button" variant="danger" className="h-[52px] px-5" disabled={busy} onClick={() => run(() => api.del(`${slots}/${slot.id}`))}>
             Delete
           </Button>
         )}
@@ -153,7 +156,7 @@ function SlotForm({ slot, preset, onClose, onSaved }: { slot: CustomSlot | null;
 }
 
 /** A time field that opens the clock instead of a keyboard: the field's look, the time in mono, a clock icon. */
-function TimeButton({ label, value, open, invalid, onOpen }: { label: string; value: string; open: boolean; invalid?: boolean; onOpen: () => void }) {
+export function TimeButton({ label, value, open, invalid, onOpen }: { label: string; value: string; open: boolean; invalid?: boolean; onOpen: () => void }) {
   return (
     <div className="flex flex-col gap-1.5">
       <span className="label text-[11px] tracking-[0.12em]">{label}</span>
@@ -188,7 +191,7 @@ const spot = (k: number, r: number) => ({ left: MID + r * Math.sin((k * Math.PI)
  * it moves on to the minutes, in fives. The hour and minute in the readout switch between the two, and take the arrow
  * keys. Chips under the face set a class slot's time in one tap.
  */
-function Clock({ label, value, onChange, chips, onDone }: { label: string; value: string; onChange: (v: string) => void; chips: readonly string[]; onDone: () => void }) {
+export function Clock({ label, value, onChange, chips, onDone }: { label: string; value: string; onChange: (v: string) => void; chips: readonly string[]; onDone: () => void }) {
   const [part, setPart] = useState<'h' | 'm'>('h')
   const face = useRef<HTMLDivElement>(null)
   const dragging = useRef(false)

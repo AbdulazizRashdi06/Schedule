@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, errorText } from '../lib/api'
 import { ENABLE_MESSAGE, deviceSubscribed, disableDevice, enableDevice, useNotifySettings } from '../lib/push'
+import { useViewer } from '../lib/viewer'
 import { Button, Checkbox, ErrorText, Sheet, cx } from '../components/ui'
 
 const CHOICES = [null, 5, 10, 15, 30, 60] as const
@@ -10,7 +11,11 @@ const CHOICES = [null, 5, 10, 15, 30, 60] as const
  * when a class changes. The two choices apply to every device the student turned on.
  */
 export default function NotificationsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { settings, save, reload } = useNotifySettings()
+  // A student's devices and choices, or on the teacher side a teacher's.
+  const viewer = useViewer()
+  const base = viewer.base
+  const teacher = viewer.mode === 'teacher'
+  const { settings, save, reload } = useNotifySettings(base)
   const [device, setDevice] = useState<boolean | null>(null)
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
@@ -21,7 +26,7 @@ export default function NotificationsSheet({ open, onClose }: { open: boolean; o
     setStatus('')
     setError('')
     void reload()
-    deviceSubscribed().then(
+    deviceSubscribed(base).then(
       (on) => {
         setDevice(on)
         // The check sends this device to the server again, which can change the device count.
@@ -29,7 +34,7 @@ export default function NotificationsSheet({ open, onClose }: { open: boolean; o
       },
       () => setDevice(false),
     )
-  }, [open, reload])
+  }, [open, reload, base])
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true)
@@ -46,7 +51,7 @@ export default function NotificationsSheet({ open, onClose }: { open: boolean; o
 
   const turnOn = () =>
     run(async () => {
-      const r = await enableDevice()
+      const r = await enableDevice(base)
       if (r !== 'on') return setError(ENABLE_MESSAGE[r])
       setDevice(true)
       // Turning notifications on is asking for reminders: start at 15 minutes unless already chosen.
@@ -64,10 +69,10 @@ export default function NotificationsSheet({ open, onClose }: { open: boolean; o
         {device ? (
           <>
             <span className="mr-auto text-[17px] font-extrabold">On for this device</span>
-            <Button variant="secondary" size="sm" busy={busy} onClick={() => run(async () => (await api.post('/me/push/test'), setStatus('Sent. It should arrive in a few seconds.')))}>
+            <Button variant="secondary" size="sm" busy={busy} onClick={() => run(async () => (await api.post(`${base}/push/test`), setStatus('Sent. It should arrive in a few seconds.')))}>
               Send a test
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => run(async () => (await disableDevice(), setDevice(false), await reload()))}>
+            <Button variant="ghost" size="sm" onClick={() => run(async () => (await disableDevice(base), setDevice(false), await reload()))}>
               Turn off
             </Button>
           </>
@@ -104,7 +109,13 @@ export default function NotificationsSheet({ open, onClose }: { open: boolean; o
               })}
             </div>
           </div>
-          <Checkbox checked={settings.changes} onChange={(v) => void run(() => save({ remindMinutes: settings.remindMinutes, changes: v }))} label="When one of my classes changes" />
+          <Checkbox
+            checked={settings.changes}
+            onChange={(v) => void run(() => save({ remindMinutes: settings.remindMinutes, changes: v }))}
+            label={teacher ? 'When the university timetable changes one of my classes' : 'When one of my classes changes'}
+          />
+          {/* A teacher's switch covers the university's changes only. */}
+          {teacher && <p className="-mt-2 text-[13px] font-semibold text-muted">You are always told when someone else changes your class.</p>}
           {settings.devices > 1 && <p className="text-[13px] font-semibold text-muted">On for {settings.devices} devices. These choices apply to all of them.</p>}
         </div>
       )}

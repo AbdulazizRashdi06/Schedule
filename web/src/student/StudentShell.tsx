@@ -43,6 +43,14 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
             <span aria-hidden="true" className="text-[18px]">→</span>
           </Link>
         )}
+        {session?.teaching && (
+          <Link to="/teach" onClick={onClose} className={item}>
+            <span className="flex items-center gap-2.5">
+              Teaching <Tag>Teacher</Tag>
+            </span>
+            <span aria-hidden="true" className="text-[18px]">→</span>
+          </Link>
+        )}
         <Link to="/rooms" onClick={onClose} className={item}>
           Free rooms<span aria-hidden="true" className="text-[18px]">→</span>
         </Link>

@@ -2,11 +2,12 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { ApiError, api, errorText } from '../lib/api'
 import { useSession } from '../lib/session'
-import { Icon, Spinner, cx, useShake, useToast } from '../components/ui'
+import { deviceSubscription } from '../lib/push'
+import { Icon, Sheet, Spinner, cx, useShake, useToast } from '../components/ui'
 import { BackButton } from './timetable'
 import { afterSignIn } from '../lib/groups'
 
-interface CodeSent {
+export interface CodeSent {
   email: string
   resendAfterSeconds: number
   testCode: string | null
@@ -23,8 +24,14 @@ const formatId = (raw: string, prev: string) => {
 }
 const validId = (id: string) => /^\d{2}-\d{4}$/.test(id)
 
+/**
+ * This browser's notification address, sent with a sign-in: the device belongs to whoever just signed in, so the
+ * server takes it off the last person who used it here.
+ */
+export const deviceEndpoint = async () => (await deviceSubscription().catch(() => null))?.endpoint
+
 /** "Wait 34 seconds…" from the server → 34. Longer waits ("Try again in 5 hours…") give 0, so the message is shown. */
-const waitSeconds = (e: unknown) => {
+export const waitSeconds = (e: unknown) => {
   if (!(e instanceof ApiError) || e.status !== 429) return 0
   const m = /(\d+|a)\s*(second|minute)/.exec(e.message)
   return m ? (m[1] === 'a' ? 1 : Number(m[1])) * (m[2] === 'minute' ? 60 : 1) : 0
@@ -40,6 +47,7 @@ export default function Login() {
 
   if (!entering && session?.kind === 'student') return <Navigate to="/" replace />
   if (session?.kind === 'admin') return <Navigate to="/admin" replace />
+  if (session?.kind === 'teacher') return <Navigate to="/teach" replace />
 
   return sent ? (
     <CodeStep
@@ -64,7 +72,7 @@ export default function Login() {
   )
 }
 
-function Screen({ children }: { children: React.ReactNode }) {
+export function Screen({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-dvh overflow-x-hidden bg-cream text-navy">
       <div className="mx-auto flex min-h-dvh max-w-[480px] flex-col pt-[env(safe-area-inset-top)] pb-[max(1.75rem,env(safe-area-inset-bottom))]">{children}</div>
@@ -92,7 +100,7 @@ function Blocks({ cols, className }: { cols: Col[]; className: string }) {
 }
 
 /** The blocks above the logo, and the logo with the last few blocks landing beside it. */
-function Decor() {
+export function Decor() {
   return (
     <>
       <Blocks
@@ -134,6 +142,7 @@ function IdStep({ id, setId, onSent }: { id: string; setId: (v: string) => void;
   const [busy, setBusy] = useState(false)
   const [wait, setWait] = useState(0)
   const [waitFrom, setWaitFrom] = useState(0)
+  const [staff, setStaff] = useState(false)
   const { shakeClass, shake } = useShake()
   const valid = validId(id)
 
@@ -242,32 +251,66 @@ function IdStep({ id, setId, onSent }: { id: string; setId: (v: string) => void;
           </button>
           <p className="label text-center text-[11px] text-muted">
             Staff?{' '}
-            <Link to="/admin/login" className="text-navy underline underline-offset-2">
+            <button type="button" onClick={() => setStaff(true)} className="label text-[11px] text-navy underline underline-offset-2">
               Sign in here
-            </Link>
+            </button>
           </p>
         </div>
       </form>
+      {/* The only place the student screen mentions teachers. */}
+      <Sheet open={staff} onClose={() => setStaff(false)} label="Staff sign-in">
+        <h2 className="pt-1 text-[30px] leading-none font-extrabold tracking-[-0.03em]">Staff sign-in</h2>
+        <nav aria-label="Staff sign-in" className="flex flex-col">
+          {[
+            { to: '/teach', name: 'Teacher', hint: 'Your classes, with your GUtech staff email' },
+            { to: '/admin/login', name: 'Dashboard', hint: 'Classy staff, with a username and password' },
+          ].map((o) => (
+            <Link key={o.to} to={o.to} className="tint flex min-h-[68px] items-center justify-between gap-3 rounded-[12px]">
+              <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="text-[22px] leading-tight font-extrabold">{o.name}</span>
+                <span className="text-[14px] font-semibold text-muted">{o.hint}</span>
+              </span>
+              <span aria-hidden="true" className="text-[18px]">→</span>
+            </Link>
+          ))}
+        </nav>
+      </Sheet>
     </Screen>
   )
 }
 
 type Phase = 'entry' | 'checking' | 'wrong' | 'expired' | 'ok' | 'done'
 
-function CodeStep({
+/**
+ * Step 2 of signing in: the 6-digit code. Students use it as it is; the teacher sign-in passes its own `verify` and
+ * `resend` (and no welcome screen).
+ */
+export function CodeStep({
   id,
   sent,
   onBack,
   onResent,
   onSignedIn,
   onContinue,
+  verify: verifyWith,
+  resend: resendWith,
+  backLabel = 'Back to university ID',
+  welcome = true,
 }: {
-  id: string
+  /** The university ID, for the default (student) calls. */
+  id?: string
   sent: CodeSent
   onBack: () => void
   onResent: (s: CodeSent) => void
   onSignedIn: (isNew: boolean) => void
-  onContinue: () => void
+  onContinue?: () => void
+  /** Checks a code. Default: the student sign-in. */
+  verify?: (code: string) => Promise<{ isNew: boolean }>
+  /** Asks for a new code. Default: the student sign-in. */
+  resend?: () => Promise<CodeSent>
+  backLabel?: string
+  /** Whether a first sign-in gets the "You're in. Let's set you up" screen. */
+  welcome?: boolean
 }) {
   const [code, setCode] = useState('')
   const [phase, setPhase] = useState<Phase>('entry')
@@ -290,12 +333,13 @@ function CodeStep({
   async function verify(value: string) {
     setPhase('checking')
     try {
-      const r = await api.post<{ isNew: boolean }>('/auth/verify', { universityId: id, code: value })
+      const r = await (verifyWith ? verifyWith(value) : api.post<{ isNew: boolean }>('/auth/verify', { universityId: id, code: value, endpoint: await deviceEndpoint() }))
+      const isNew = r.isNew && welcome
       setPhase('ok')
       timers.current.push(
         setTimeout(() => {
-          if (r.isNew) setPhase('done')
-          onSignedIn(r.isNew)
+          if (isNew) setPhase('done')
+          onSignedIn(isNew)
         }, 750),
       )
     } catch (e) {
@@ -332,7 +376,7 @@ function CodeStep({
     if (resendIn > 0 && phase !== 'expired') return
     setResendError('')
     try {
-      const r = await api.post<CodeSent>('/auth/request-code', { universityId: id })
+      const r = await (resendWith ? resendWith() : api.post<CodeSent>('/auth/request-code', { universityId: id }))
       onResent(r)
       setResendIn(r.resendAfterSeconds)
       setCode('')
@@ -371,7 +415,7 @@ function CodeStep({
             onClick={() => {
               if (continuing) return
               setContinuing(true)
-              onContinue()
+              onContinue?.()
             }}
             className="press flex h-[60px] w-full items-center justify-center gap-2.5 rounded-full bg-navy text-[18px] font-extrabold text-cream"
           >
@@ -386,7 +430,7 @@ function CodeStep({
   return (
     <Screen>
       <header className="flex items-center justify-between px-6 pt-7">
-        <BackButton label="Back to university ID" onClick={onBack} />
+        <BackButton label={backLabel} onClick={onBack} />
         <span className="label text-[12px] tracking-[0.14em] text-muted">Step 2 of 2</span>
       </header>
       <div className="flex flex-col gap-3.5 px-6 pt-10">

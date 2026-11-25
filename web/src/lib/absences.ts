@@ -92,8 +92,8 @@ export function useAbsences() {
   return { limit: reply?.limit ?? null, absences: reply?.absences ?? [], ready: reply !== null, mark }
 }
 
-/** Whether a class's sessions count towards attendance: the student's own slots and exams don't. */
-export const counts = (s: Session) => !s.mine && s.type !== 'exam'
+/** Whether a class's sessions count towards attendance: the student's own slots, exams and a teacher's office hours don't. */
+export const counts = (s: Session) => !s.mine && !s.office && s.type !== 'exam'
 
 /**
  * How many sessions of a course have been held so far this semester, from week 1: those that have started, as a class

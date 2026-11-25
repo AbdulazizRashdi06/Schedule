@@ -10,6 +10,7 @@ import FreeRooms from './student/FreeRooms'
 import Group from './student/Group'
 import Join from './student/Join'
 import { SessionProvider, useSession } from './lib/session'
+import { TeacherScope } from './lib/viewer'
 import Login from './student/Login'
 import { TodaySkeleton } from './student/Today'
 import Lab from './student/Lab'
@@ -35,11 +36,20 @@ import Feedback from './admin/Feedback'
 import Notes from './admin/Notes'
 import Connections from './admin/Connections'
 import Planner from './planner/Planner'
+import TeachGate from './teacher/TeachGate'
+import PickName from './teacher/PickName'
+import EditClasses from './teacher/EditClasses'
+
+/** A teacher who lands on a student page goes to the teacher's version of it; anything without one, to their home. */
+const TEACHER_PAGE: Record<string, string> = { '/': '/teach', '/rooms': '/teach/rooms', '/colours': '/teach/colours' }
 
 function StudentOnly({ children }: { children: ReactNode }) {
   const { session } = useSession()
+  const location = useLocation()
   if (!session) return <TodaySkeleton />
   if (session.kind === 'admin') return <Navigate to="/admin" replace />
+  // The installed app starts at "/" (and its shortcuts at "/?show=week" and "/rooms"): the query string goes along.
+  if (session.kind === 'teacher') return <Navigate to={{ pathname: TEACHER_PAGE[location.pathname] ?? '/teach', search: location.pathname === '/' ? location.search : '' }} replace />
   if (session.kind !== 'student') return <Navigate to="/login" replace />
   return children
 }
@@ -49,6 +59,7 @@ function StaffOnly({ children, ownerOnly }: { children: ReactNode; ownerOnly?: b
   const location = useLocation()
   if (!session) return <div className="min-h-dvh bg-cream" aria-busy="true" />
   if (session.kind === 'admin' && session.mustChangePassword) return <Navigate to="/admin/password" replace />
+  if (session.kind === 'teacher') return <Navigate to="/teach" replace />
   const staff = session.kind === 'admin' || session.role === 'owner'
   if (!staff) return <Navigate to={session.kind === 'student' ? '/' : '/admin/login'} replace state={{ from: location.pathname }} />
   if (ownerOnly && session.role !== 'owner') return <Navigate to="/admin" replace />
@@ -85,6 +96,12 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/rooms" element={<StudentOnly><FreeRooms /></StudentOnly>} />
           <Route path="/groups/:id" element={<StudentOnly><Group /></StudentOnly>} />
           <Route path="/join/:code" element={<Join />} />
+          {/* The teacher side: the same home, showing the classes a teacher teaches. */}
+          <Route path="/teach" element={<TeachGate />} />
+          <Route path="/teach/name" element={<TeacherScope><PickName /></TeacherScope>} />
+          <Route path="/teach/classes" element={<TeacherScope><EditClasses /></TeacherScope>} />
+          <Route path="/teach/rooms" element={<TeacherScope><FreeRooms /></TeacherScope>} />
+          <Route path="/teach/colours" element={<TeacherScope><Colours /></TeacherScope>} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/password" element={<ChangePassword />} />
           <Route path="/admin" element={<StaffOnly><AdminLayout /></StaffOnly>}>

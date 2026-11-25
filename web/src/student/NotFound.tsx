@@ -1,15 +1,18 @@
 import { Link, useNavigate } from 'react-router-dom'
+import { useSession } from '../lib/session'
 import { Tag } from '../components/ui'
 import { BackButton } from './timetable'
 
 /** Not found: a course link that isn't in the timetable, or a page that doesn't exist. */
 export default function NotFound({ tag, course }: { tag?: string; course?: boolean }) {
   const navigate = useNavigate()
+  // A teacher's "today" is the teacher home.
+  const home = useSession().session?.kind === 'teacher' ? '/teach' : '/'
   return (
     <div className="min-h-dvh bg-cream text-navy">
       <div className="mx-auto flex min-h-dvh max-w-[480px] flex-col px-6 pt-[max(1.75rem,env(safe-area-inset-top))] pb-[max(1.75rem,env(safe-area-inset-bottom))]">
         <header>
-          <BackButton label="Back to today" onClick={() => navigate('/')} />
+          <BackButton label="Back to today" onClick={() => navigate(home)} />
         </header>
         <div className="flex flex-col gap-3.5 pt-14">
           {tag && <Tag className="self-start px-2.5 py-1.5 text-[13px] tracking-[0.12em]">{tag}</Tag>}
@@ -19,7 +22,7 @@ export default function NotFound({ tag, course }: { tag?: string; course?: boole
           </p>
         </div>
         <div className="mt-auto flex flex-col gap-2.5 pt-10">
-          <Link to="/" className="press flex h-[60px] items-center justify-center rounded-full bg-navy text-[18px] font-extrabold text-cream">
+          <Link to={home} className="press flex h-[60px] items-center justify-center rounded-full bg-navy text-[18px] font-extrabold text-cream">
             Back to today
           </Link>
           {course && (

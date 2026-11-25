@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { BACKGROUNDS, CREAM, PRESETS, applyAccent, applyBackground, contrast, loadAccent, loadBackground, mainOf, type Accent } from '../lib/theme'
 import { cx } from '../components/ui'
 import { Icon, RoundButton, useBack } from './timetable'
+import { useViewer } from '../lib/viewer'
 
 /** Pick the app's colours: a designed preset, or your own main and accent colours. Saved on this device. */
 export default function Colours() {
-  const back = useBack('/')
+  const back = useBack(useViewer().home)
   const [accent, setAccent] = useState<Accent>(loadAccent)
   const custom = 'main' in accent ? accent : null
   const [main, setMain] = useState(custom?.main ?? '#0b1957')

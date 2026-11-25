@@ -37,6 +37,20 @@ export default function Join() {
 
   if (!session) return <div className="min-h-dvh bg-cream" aria-busy="true" />
   if (session.kind === 'admin') return <Navigate to="/admin" replace />
+  // The invite isn't kept for later: a teacher has no groups to join.
+  if (session.kind === 'teacher')
+    return (
+      <div className="min-h-dvh bg-cream text-navy">
+        <div className="mx-auto flex max-w-[480px] flex-col gap-5 px-6 pt-[max(2.5rem,env(safe-area-inset-top))] pb-10">
+          <span className="label text-[12px] tracking-[0.14em]">Classy · Invite</span>
+          <h1 className="display text-[52px] leading-[0.86] tracking-[-0.05em]">Groups are for students.</h1>
+          <p className="text-[16px] font-semibold text-muted">This is an invite to a student group. You’re signed in as a teacher.</p>
+          <Link to="/teach" className="label self-start text-[12px] link-hover">
+            Go to my classes
+          </Link>
+        </div>
+      </div>
+    )
   if (!student) {
     rememberInvite(code)
     return <Navigate to="/login" replace />

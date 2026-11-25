@@ -3,7 +3,9 @@ import { ApiError, api, store } from './api'
 import { resetAbsences } from './absences'
 import { deviceSubscription, resetNotifySettings } from './push'
 import type { SessionInfo } from './types'
+import { viewAs } from './viewAs'
 import { resetTimetable } from '../student/timetable'
+import { resetTeach } from '../teacher/teachData'
 
 interface SessionCtx {
   session: SessionInfo | null
@@ -15,12 +17,37 @@ const Ctx = createContext<SessionCtx>(null!)
 
 /** Kept so a student who opens the app offline still gets their saved timetable instead of the sign-in screen. */
 const SAVED = 'session'
+/**
+ * Whose things are kept on this device: the kind and name of the last session the server answered with
+ * ("student:24-0161", "teacher:raed.bolbol@gutech.edu.om"). The saved timetables carry the same stamp.
+ */
+const WHO = 'who'
+const whoIs = (s: SessionInfo) => (s.kind ? `${s.kind}:${s.name ?? ''}` : null)
+
+/** Everything one person left in this browser: their saved timetables and whatever of theirs is in memory. */
+function forgetPerson() {
+  store.remove('timetable')
+  store.remove('timetable:teach')
+  resetTimetable()
+  resetTeach()
+  resetAbsences()
+  resetNotifySettings()
+  viewAs.clear()
+}
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<SessionInfo | null>(null)
   const refresh = useCallback(async () => {
     try {
       const s = await api.get<SessionInfo>('/auth/session')
+      // One device, two people: when the server says somebody else is signed in than last time (or nobody), nothing
+      // of the last person's stays. A browser with no stamp yet was last used by a student on the build before
+      // teachers: their saved timetable is kept for them, and dropped for anyone else.
+      const who = whoIs(s)
+      const last = store.get(WHO)
+      if (last ? last !== who : s.kind !== 'student') forgetPerson()
+      if (who) store.set(WHO, who)
+      else store.remove(WHO)
       store.set(SAVED, JSON.stringify(s))
       setSession(s)
       return s
@@ -44,10 +71,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     await api.post('/auth/logout', sub ? { endpoint: sub.endpoint } : {})
     await sub?.unsubscribe().catch(() => {})
     store.remove(SAVED)
-    store.remove('timetable')
-    resetAbsences()
-    resetNotifySettings()
-    resetTimetable()
+    store.remove(WHO)
+    forgetPerson()
     setSession({ kind: null })
   }, [])
   useEffect(() => {

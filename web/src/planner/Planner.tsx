@@ -15,6 +15,7 @@ type Editing = { spec: Spec; proposal?: Proposal; eventId?: number; baseEventVer
 export default function Planner() {
   const { session } = useSession()
   if (!session) return <div className="min-h-dvh bg-cream p-6" aria-busy="true"><Sk className="h-16 rounded-[18px]" /></div>
+  if (session.kind === 'teacher') return <Navigate to="/teach" replace />
   if (session && session.role !== 'owner' && session.role !== 'batch-rep') return <Navigate to="/" replace />
   return <PlannerWorkspace />
 }

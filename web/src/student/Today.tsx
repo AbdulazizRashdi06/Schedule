@@ -1,10 +1,12 @@
 import { useContext, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { DAY_LONG, DAY_SHORT } from '../lib/time'
-import { TYPE_NAME, addDays, clashOn, clock, fmtDate, fmtDuration, isoDate, nowMinutes, onDate, sessionHref, type Session } from '../lib/slots'
+import { TYPE_NAME, addDays, clashOn, clock, fmtDate, fmtDuration, isoDate, nowMinutes, onDate, sessionCode, sessionHref, type Session } from '../lib/slots'
 import { Button, ErrorText, Sk, cx } from '../components/ui'
+import { useHome, useViewer } from '../lib/viewer'
+import TeachBanner from '../teacher/TeachBanner'
 import { MenuSheet } from './StudentShell'
-import { Icon, NeedsSection, useNow, useTimetable } from './timetable'
+import { Icon, NeedsSection, useNow } from './timetable'
 import { LabNav } from './labNav'
 import RatePrompt from './RatePrompt'
 
@@ -16,6 +18,8 @@ function useClassLink() {
   const lab = useContext(LabNav)
   return (s: Session, date?: Date): { to: string; onClick?: (e: MouseEvent) => void } => {
     if (!lab) return { to: sessionHref(s) }
+    // A teacher's office hours have no session page: they open where they are edited.
+    if (s.office) return { to: '/teach/office' }
     const mine = s.mine
     if (!mine) return { to: lab.session(s, date) }
     return {
@@ -31,9 +35,13 @@ function useClassLink() {
 /** The same day actions remain available with upcoming classes, after classes, and on free days. */
 function DayActions({ date }: { date: Date }) {
   const lab = useContext(LabNav)
+  const viewer = useViewer()
+  const { teach } = useHome()
+  // Own slots belong to the person: an owner viewing as a teacher has none to add.
+  const canAdd = viewer.mode === 'student' || !!teach?.personal
   return (
     <div className="flex items-center justify-between gap-4 px-6 pt-4">
-      {lab && (
+      {lab && canAdd && (
         <button type="button" onClick={() => lab.add(date)} className="label flex min-h-11 items-center text-[12px] link-hover">
           + Add a slot
         </button>
@@ -44,13 +52,18 @@ function DayActions({ date }: { date: Date }) {
 }
 
 export default function Today() {
-  const { me, tt, sessions, error, offline, retry } = useTimetable()
+  const viewer = useViewer()
+  const student = viewer.mode === 'student'
+  const { me, teach, tt, sessions, error, offline, retry } = useHome()
   const now = useNow()
   const [menu, setMenu] = useState(false)
   const lab = useContext(LabNav)
 
-  if (me && !me.setupDone) return <Navigate to="/setup" replace />
-  if (!error && (!me || !tt)) return <TodaySkeleton />
+  if (student && me && !me.setupDone) return <Navigate to="/setup" replace />
+  // A teacher whose email matched no name picks theirs first. Never a teaching assistant or an owner looking in:
+  // the name step isn't theirs, and would send them straight back.
+  if (!student && teach?.kind === 'staff' && teach.status === 'pick-name') return <Navigate to="/teach/name" replace />
+  if (!error && (!(student ? me : teach) || !tt)) return <TodaySkeleton />
 
   const nowMin = nowMinutes(now)
   const today = sessions.filter((s) => onDate(s, now))
@@ -70,7 +83,7 @@ export default function Today() {
     <div className="min-h-[calc(100dvh-var(--week-cue,0px))] bg-cream text-navy">
       <div className="mx-auto flex min-h-[calc(100dvh-var(--week-cue,0px))] max-w-[480px] flex-col pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1.75rem,env(safe-area-inset-bottom))]">
         {offline && <OfflineBanner savedAt={offline} retry={retry} />}
-        {!offline && me && <RatePrompt />}
+        {student && !offline && me && <RatePrompt />}
         <header className="flex items-start justify-between gap-4 px-6 pt-2">
           <div className="flex min-w-0 flex-col gap-0.5">
             <p className="label text-[12px] tracking-[0.14em]">
@@ -96,11 +109,9 @@ export default function Today() {
         ) : (
           tt && (
             <>
-              <div className="px-3 pt-[22px]">
-                <NeedsSection tt={tt} />
-              </div>
+              <div className="px-3 pt-[22px]">{student ? <NeedsSection tt={tt} /> : <TeachBanner />}</div>
               {sessions.length === 0 ? (
-                <NoClasses semester={tt.semester?.name} />
+                <NoClasses semester={tt.semester?.name} teacher={!student} />
               ) : live ? (
                 <>
                   <LiveCard s={live} nowMin={nowMin} date={now} />
@@ -137,7 +148,7 @@ export default function Today() {
         )}
         {tt && <DayActions date={now} />}
       </div>
-      {!lab && <MenuSheet open={menu} onClose={() => setMenu(false)} me={me} />}
+      {!lab && student && <MenuSheet open={menu} onClose={() => setMenu(false)} me={me} />}
     </div>
   )
 }
@@ -224,7 +235,7 @@ function DayCard({ s, count, end, date }: { s: Session; count: number; end: stri
   return (
     <Link {...link(s, date)} className="press mx-3 flex flex-col gap-3.5 rounded-[32px] bg-navy p-[22px] text-cream">
       <span className="flex flex-wrap items-center gap-2">
-        <span className="label text-[12px] tracking-[0.14em] text-ice">First class · {s.cls.code}</span>
+        <span className="label text-[12px] tracking-[0.14em] text-ice">First class · {sessionCode(s, date)}</span>
         <Tags s={s} date={date} dark />
       </span>
       <span className="display text-[96px] leading-[0.8] tracking-[-0.06em] text-sky tabular-nums">{s.meeting.start}</span>
@@ -260,7 +271,7 @@ function LiveCard({ s, nowMin, date }: { s: Session; nowMin: number; date: Date 
   return (
     <Link {...link(s)} className="press mx-3 flex flex-col gap-3.5 rounded-[32px] bg-navy p-[22px] pb-6 text-cream">
       <span className="flex flex-wrap items-center gap-2">
-        <span className="label text-[12px] tracking-[0.14em] text-ice">● Now · {s.cls.code}</span>
+        <span className="label text-[12px] tracking-[0.14em] text-ice">● Now · {sessionCode(s, date)}</span>
         <Tags s={s} date={date} dark />
       </span>
       <span className="display text-[96px] leading-[0.8] tracking-[-0.06em] text-sky tabular-nums">{s.meeting.start}</span>
@@ -342,18 +353,19 @@ function Card({ tone, title, size, children }: { tone: 'navy' | 'sky'; title: st
   )
 }
 
-function NoClasses({ semester }: { semester?: string }) {
+function NoClasses({ semester, teacher }: { semester?: string; teacher?: boolean }) {
   return (
     <>
       <section className="mx-3 flex flex-col gap-3.5 rounded-[32px] px-[22px] py-[26px] shadow-[inset_0_0_0_2.5px_rgb(11_25_87/0.18)]">
         <h2 className="display text-[64px] leading-[0.86] tracking-[-0.05em]">No classes yet.</h2>
         <p className="text-[17px] leading-[1.4] font-semibold">
-          You haven’t picked any courses{semester ? ` for ${semester}` : ''}. It takes about a minute.
+          {teacher ? 'Add the classes you teach' : 'You haven’t picked any courses'}
+          {semester ? ` for ${semester}` : ''}. It takes about a minute.
         </p>
       </section>
       <div className="mt-auto px-6 pt-8">
-        <Link to="/edit" className="press flex h-[60px] items-center justify-center rounded-full bg-navy text-[18px] font-extrabold text-cream">
-          Pick my courses
+        <Link to={teacher ? '/teach/classes' : '/edit'} className="press flex h-[60px] items-center justify-center rounded-full bg-navy text-[18px] font-extrabold text-cream">
+          {teacher ? 'Add my classes' : 'Pick my courses'}
         </Link>
       </div>
     </>
@@ -395,6 +407,8 @@ function MoreLink({ to, onLab, children }: { to: string; onLab: () => void; chil
 
 function List({ title, sessions, date, children }: { title: string; sessions: Session[]; date: Date; children?: ReactNode }) {
   const link = useClassLink()
+  // A teacher can have two sections of one course in a day, and one class under several codes: the row says which.
+  const teacher = useViewer().mode === 'teacher'
   return (
     <section className="flex flex-col px-6 pt-[22px]">
       <div className="mb-2 flex items-baseline justify-between">
@@ -412,6 +426,7 @@ function List({ title, sessions, date, children }: { title: string; sessions: Se
                 </span>
                 <span className="truncate font-mono text-[12px] uppercase">
                   {TYPE_NAME[s.type]}, {s.meeting.room || 'Room TBA'}
+                  {teacher && !s.mine && !s.office && ` · ${sessionCode(s, date)}${!s.merged && s.cls.section.number ? ` sec ${s.cls.section.number}` : ''}`}
                 </span>
               </span>
               <Icon name="out" className="size-6" />

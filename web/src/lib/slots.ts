@@ -1,4 +1,4 @@
-import type { CustomSlot, Meeting, Timetable, TimetableClass, Weeks } from './types'
+import type { ClassChange, CustomSlot, Meeting, OfficeHour, Timetable, TimetableClass, Weeks } from './types'
 import { meetingsOverlap, minutes } from './time'
 
 /** Class slots: every class is 1h30 with 15-minute breaks. The week grid is laid out by slot, not by hour. */
@@ -11,8 +11,8 @@ export const SLOTS = [
   ['16:45', '18:15'],
 ] as const
 
-/** `mine` is a student's own slot. */
-export type ClassType = 'lecture' | 'lab' | 'tutorial' | 'mine' | 'exam'
+/** `mine` is a student's (or teacher's) own slot; `office` is a teacher's office hours on their own timetable. */
+export type ClassType = 'lecture' | 'lab' | 'tutorial' | 'mine' | 'exam' | 'office'
 
 export interface Session {
   plannerEventId?: number
@@ -40,6 +40,14 @@ export interface Session {
   /** For a weekly class or slot: the semester's first and last teaching day ("2026-09-06"), outside which it doesn't meet. */
   firstDate?: string
   lastDate?: string
+  /** The teacher's change that put this session on (a moved, re-roomed or extra class). */
+  change?: ClassChange
+  /** A ghost: drawn in its place, greyed, but not happening. */
+  off?: 'cancelled' | 'moved'
+  /** Teacher side: the sessions (one per course code) that are this one real class, its own included. See blockOn(). */
+  merged?: Session[]
+  /** Teacher side: set for office hours; `cls` is then a stand-in, like an own slot's. */
+  office?: OfficeHour
 }
 
 /** Notes on a session as it falls on a date: whole-class notes plus that day's session notes, weekly classes included. */
@@ -52,9 +60,9 @@ export function sessionType(room: string): ClassType {
   return 'lecture'
 }
 
-export const TYPE_NAME: Record<ClassType, string> = { lecture: 'Lecture', lab: 'Lab', tutorial: 'Tutorial', mine: 'My slot', exam: 'Exam' }
+export const TYPE_NAME: Record<ClassType, string> = { lecture: 'Lecture', lab: 'Lab', tutorial: 'Tutorial', mine: 'My slot', exam: 'Exam', office: 'Office hours' }
 /** Block colours: lecture cream, lab ice, tutorial sky. Text on every block is navy. */
-export const TYPE_BG: Record<ClassType, string> = { lecture: 'bg-cream', lab: 'bg-ice', tutorial: 'bg-sky', mine: 'bg-paper outline-2 outline-dashed -outline-offset-2 outline-navy/50', exam: 'bg-sky outline-2 -outline-offset-2 outline-navy' }
+export const TYPE_BG: Record<ClassType, string> = { lecture: 'bg-cream', lab: 'bg-ice', tutorial: 'bg-sky', mine: 'bg-paper outline-2 outline-dashed -outline-offset-2 outline-navy/50', exam: 'bg-sky outline-2 -outline-offset-2 outline-navy', office: 'bg-paper outline-2 -outline-offset-2 outline-navy' }
 
 /** The slot a meeting belongs to: the one it overlaps most, or the nearest one for times outside the day. */
 export function slotOf(start: number, end: number) {
@@ -91,7 +99,11 @@ function slotClass(s: CustomSlot): TimetableClass {
   }
 }
 
-export function buildSessions(tt: Timetable): Session[] {
+/**
+ * Every session of a timetable. `clashes: false` leaves the clash marks to the caller (the teacher side collapses
+ * merged classes first, then calls markClashes itself).
+ */
+export function buildSessions(tt: Timetable, opts?: { clashes?: boolean }): Session[] {
   const out: Session[] = []
   for (const cls of tt.classes)
     for (const meeting of cls.section.meetings) {
@@ -99,7 +111,8 @@ export function buildSessions(tt: Timetable): Session[] {
       const end = minutes(meeting.end)
       const { slot, span } = slotSpan(start, end)
       const notes = (cls.notes?.classWide ?? 0) + (meeting.date ? (cls.notes?.dates[meeting.date] ?? 0) : 0)
-      out.push({ cls, meeting, type: sessionType(meeting.room), slot, span, start, end, clash: false, clashDates: [], notes, noteDates: cls.notes?.dates ?? {} })
+      const change = meeting.changeId == null ? undefined : tt.changes?.find((c) => c.id === meeting.changeId)
+      out.push({ cls, meeting, type: meeting.type ?? sessionType(meeting.room), slot, span, start, end, clash: false, clashDates: [], notes, noteDates: cls.notes?.dates ?? {}, ...(change && { change }) })
     }
   for (const mine of tt.slots ?? []) {
     const cls = slotClass(mine)
@@ -124,16 +137,44 @@ export function buildSessions(tt: Timetable): Session[] {
         s.firstDate = tt.span.first
         s.lastDate = tt.span.last
       }
+  if (opts?.clashes !== false) markClashes(out)
+  return sortSessions(out)
+}
+
+/** By weekday, then start time: the order every list of sessions is kept in. */
+export const sortSessions = (sessions: Session[]) => sessions.sort((a, b) => a.meeting.day - b.meeting.day || a.start - b.start)
+
+/**
+ * Marks which sessions clash. `same` says when two sessions can't clash with each other: for a student, two sessions
+ * of one course. It clears the marks first, so it can be run again.
+ */
+export function markClashes(sessions: Session[], same: (a: Session, b: Session) => boolean = (a, b) => a.cls.courseId === b.cls.courseId) {
+  for (const s of sessions) {
+    s.clash = false
+    s.clashDates = []
+  }
   // A clash needs both on at once. Two weekly ones clash every week; with a dated one, only on its date, and only when
   // the other meets that day too (not a day off, a cancelled class, or outside the teaching weeks).
-  for (const a of out)
-    for (const b of out) {
-      if (b === a || b.cls.courseId === a.cls.courseId || !meetingsOverlap(a.meeting, b.meeting)) continue
+  for (const a of sessions)
+    for (const b of sessions) {
+      if (b === a || same(a, b) || !meetingsOverlap(a.meeting, b.meeting)) continue
       const date = a.meeting.date ?? b.meeting.date
       if (!date) a.clash = true
       else if (!a.clashDates.includes(date) && onDate(a, new Date(`${date}T12:00`)) && onDate(b, new Date(`${date}T12:00`))) a.clashDates.push(date)
     }
-  return out.sort((a, b) => a.meeting.day - b.meeting.day || a.start - b.start)
+}
+
+/**
+ * Teacher side: the course codes of a merged class that meet on a date. One code can be changed on its own for one
+ * week, so on that date the block is the codes still on. A plain session is just itself.
+ */
+export const blockOn = (s: Session, date?: Date): Session[] => (!s.merged ? [s] : date ? s.merged.filter((m) => onDate(m, date)) : s.merged)
+
+/** "BE1101", or "BE1101 · IBSM1101 · LOG1101" for one real class listed under several codes. */
+export function sessionCode(s: Session, date?: Date) {
+  if (!s.merged) return s.cls.code
+  const on = blockOn(s, date)
+  return (on.length ? on : s.merged).map((m) => m.cls.code).join(' · ')
 }
 
 /** Whether a session clashes with another course as it falls on a date. */

@@ -33,7 +33,7 @@ function palette() {
 }
 type Palette = ReturnType<typeof palette>
 
-const blockFill = (p: Palette, t: ClassType) => ({ lecture: p.cream, lab: p.ice, tutorial: p.sky, mine: p.paper, exam: p.sky })[t]
+const blockFill = (p: Palette, t: ClassType) => ({ lecture: p.cream, lab: p.ice, tutorial: p.sky, mine: p.paper, exam: p.sky, office: p.paper })[t]
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath()

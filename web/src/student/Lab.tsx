@@ -4,7 +4,7 @@ import { AnimatePresence, animate, motion, useReducedMotion, useScroll, useTrans
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import SessionPage from './Session'
 import { DAY_LONG, DAY_SHORT, minutes } from '../lib/time'
-import { SLOTS, TYPE_NAME, addDays, clashOn, fmtWeekRange, inWeek, isoDate, notesOn, nowMinutes, onDate, weekDays, weekStart, weekTitle, type ClassType, type Session } from '../lib/slots'
+import { SLOTS, TYPE_NAME, addDays, blockOn, clashOn, fmtWeekRange, inWeek, isoDate, notesOn, nowMinutes, onDate, weekDays, weekStart, weekTitle, type ClassType, type Session } from '../lib/slots'
 import { tick } from '../lib/native'
 import { Icon, cx } from '../components/ui'
 import { store } from '../lib/api'
@@ -14,7 +14,9 @@ import { MenuSheet } from './StudentShell'
 import SlotSheet, { type SlotPreset } from './SlotSheet'
 import ShareSheet from './ShareSheet'
 import type { CustomSlot } from '../lib/types'
-import { useNow, useTimetable } from './timetable'
+import { useHome, useViewer } from '../lib/viewer'
+import TeachMenu from '../teacher/TeachMenu'
+import { useNow } from './timetable'
 
 /** The weeks the page reaches when the semester's teaching weeks aren't set: last week to the week after next. */
 const NEAR_WEEKS = [-1, 0, 1, 2]
@@ -335,7 +337,11 @@ function onSettle(fn: () => void) {
  * Every move uses the phone's own scrolling, snapped to a day or the week.
  */
 export default function Lab() {
-  const { me, tt, sessions: all, retry, markSeen } = useTimetable()
+  const viewer = useViewer()
+  const teacher = viewer.mode === 'teacher'
+  const { me, teach, tt, sessions: all, weeks, offline, retry, markSeen } = useHome()
+  // Own slots belong to the person: an owner viewing as a teacher has none to add or edit.
+  const ownSlots = !teacher || !!teach?.personal
   const [params, setParams] = useSearchParams()
   const navigate = useNavigate()
   const location = useLocation()
@@ -357,7 +363,7 @@ export default function Lab() {
   const weekOf = useCallback((d: Date) => Math.round((weekStart(d).getTime() - weekStart(now).getTime()) / WEEK_MS), [todayIso])
 
   // The whole semester, week 1 to its last week, when its teaching weeks are set; this week is always in reach.
-  const sem = me?.semester?.weeks
+  const sem = weeks
   const WEEKS = useMemo(() => {
     if (!sem?.week1Start || !sem.lastWeek) return NEAR_WEEKS
     const first = weekOf(new Date(`${sem.week1Start}T00:00`))
@@ -600,10 +606,13 @@ export default function Lab() {
       const p = new URLSearchParams()
       const pin = params.get('now')
       if (pin) p.set('now', pin)
-      p.set('session', `${s.plannerEventId ? `p${s.plannerEventId}` : s.cls.courseId}.${isoDate(date)}.${s.meeting.start}`)
-      return `/?${p}`
+      // A student has one section of a course, so the course names the class. A teacher can teach two sections of
+      // one course, so the teacher side names the section.
+      const id = s.plannerEventId ? `p${s.plannerEventId}` : teacher ? `s${s.cls.section.id}` : s.cls.courseId
+      p.set('session', `${id}.${isoDate(date)}.${s.meeting.start}`)
+      return `${viewer.home}?${p}`
     },
-    [now, params],
+    [now, params, teacher, viewer.home],
   )
 
   const nav = useMemo(
@@ -617,16 +626,23 @@ export default function Lab() {
     if (!id || !iso) return null
     const [y, m, d] = iso.split('-').map(Number)
     const date = new Date(y, m - 1, d)
-    const onDay = all.filter((s) => (id.startsWith('p') ? s.plannerEventId === Number(id.slice(1)) : !s.plannerEventId && s.cls.courseId === Number(id)) && onDate(s, date))
+    const n = Number(/^[ps]/.test(id) ? id.slice(1) : id)
+    // "s": a section, on the teacher side. One real class under several codes answers to any of its sections, so a
+    // notice about IBSM1101 opens the block led by BE1101.
+    const is = (s: Session) =>
+      id.startsWith('p')
+        ? s.plannerEventId === n
+        : !s.plannerEventId && !s.mine && !s.office && (id.startsWith('s') ? (s.merged ?? [s]).some((m) => m.cls.section.id === n) : s.cls.courseId === n)
+    const onDay = all.filter((s) => is(s) && onDate(s, date))
     const s = onDay.find((x) => x.meeting.start === at) ?? onDay[0]
     return s ? { s, date } : null
   }, [params, all])
 
-  // Opening a class that changed counts as having seen the change.
-  const seenId = open?.s.cls.changed ? open.s.cls.section.id : null
+  // Opening a class that changed counts as having seen the change (every code of it, for one class under several).
+  const seenIds = open?.s.cls.changed ? (open.s.merged ?? [open.s]).filter((m) => m.cls.changed).map((m) => m.cls.section.id).join(',') : ''
   useEffect(() => {
-    if (seenId) markSeen(seenId)
-  }, [seenId, markSeen])
+    for (const id of seenIds.split(',').filter(Boolean)) markSeen(Number(id))
+  }, [seenIds, markSeen])
 
   const closeSession = () => {
     if (location.key !== 'default') navigate(-1)
@@ -707,8 +723,8 @@ export default function Lab() {
                     title={weekTitle(o, weekStart(now, o), sem)}
                     selected={dates[dayIndex]}
                     onDay={toDay}
-                    onOpen={(s, d) => navigate(sessionLink(s, d))}
-                    onAdd={setAdding}
+                    onOpen={(s, d) => navigate(s.office ? '/teach/office' : sessionLink(s, d))}
+                    onAdd={ownSlots ? setAdding : undefined}
                     onEdit={setEditing}
                     onShare={() => setSharing(true)}
                     arriving={arriving}
@@ -742,11 +758,11 @@ export default function Lab() {
             transition={{ type: 'spring', visualDuration: 0.35, bounce: 0 }}
             className="fixed inset-0 z-40 overflow-y-auto overscroll-contain bg-sky shadow-[-24px_0_48px_-24px_rgb(11_25_87/0.5)]"
           >
-            <SessionPage s={open.s} date={open.date} now={now} all={all} me={me?.universityId ?? ''} link={sessionLink} onBack={closeSession} onChanged={() => void retry()} weeks={me?.semester?.weeks} />
+            <SessionPage s={open.s} date={open.date} now={now} all={all} me={me?.universityId ?? ''} link={sessionLink} onBack={closeSession} onChanged={() => void retry()} weeks={weeks} viewer={viewer} teach={teach} offline={offline} />
           </motion.div>
         )}
       </AnimatePresence>
-      <MenuSheet open={menu} onClose={() => setMenu(false)} me={me} />
+      {teacher ? <TeachMenu open={menu} onClose={() => setMenu(false)} teach={teach} /> : <MenuSheet open={menu} onClose={() => setMenu(false)} me={me} />}
       <SlotSheet
         slot={editing}
         preset={adding}
@@ -774,6 +790,7 @@ const BLOCK: Record<ClassType, string> = {
   lab: 'bg-ice text-navy',
   tutorial: 'bg-sky text-navy',
   mine: 'bg-paper text-navy outline-2 outline-dashed -outline-offset-2 outline-navy/50',
+  office: 'bg-paper text-navy outline-2 -outline-offset-2 outline-navy',
 }
 
 const HEADLINE: Record<number, string> = { [-1]: 'Last week.', 0: 'This week.', 1: 'Next week.', 2: 'In two weeks.' }
@@ -813,7 +830,8 @@ function WeekPage({
   selected?: Date
   onDay: (d: Date) => void
   onOpen: (s: Session, date: Date) => void
-  onAdd: (preset: SlotPreset) => void
+  /** Missing when there is nothing to add here (an owner viewing as a teacher has no own slots). */
+  onAdd?: (preset: SlotPreset) => void
   onEdit: (slot: CustomSlot) => void
   onShare: () => void
   arriving: MotionValue<number>
@@ -840,7 +858,7 @@ function WeekPage({
   const cols = `38px repeat(${days.length}, minmax(0, 1fr))`
   const lineY = today >= 0 && days.includes(today) ? nowY(nowMin) : null
   const picked = selected && isoDate(weekStart(selected)) === isoDate(start) ? selected.getDay() : -1
-  const types = (['lecture', 'lab', 'tutorial', 'mine'] as ClassType[]).filter((t) => t !== 'mine' || sessions.some((s) => s.mine))
+  const types = (['lecture', 'lab', 'tutorial', 'mine', 'office'] as ClassType[]).filter((t) => (t !== 'mine' && t !== 'office') || sessions.some((s) => s.type === t))
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-[480px] flex-col px-4 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1.75rem,env(safe-area-inset-bottom))]">
@@ -919,7 +937,7 @@ function WeekPage({
           </div>
         )}
         {/* Empty spots: tap to add your own slot there. */}
-        {days.map((d, c) =>
+        {onAdd && days.map((d, c) =>
           SLOTS.map(([from, to], slot) =>
             sessions.some((s) => s.meeting.day === d && s.slot <= slot && slot < s.slot + s.span) ? null : (
               <motion.button
@@ -953,12 +971,14 @@ function WeekPage({
               <motion.div key={`${d}-${slot}`} className="relative z-20 flex min-w-0 gap-0.5" style={{ gridColumn: c + 2, gridRow: `${slot + 1} / span ${Math.max(...cell.map((s) => s.span))}`, y: rise[c] }}>
                 {cell.map((s, i) => {
                   const live = d === today && s.start <= nowMin && nowMin < s.end
+                  // One real class under several course codes (teacher side): the codes that meet this day.
+                  const codes = s.merged ? blockOn(s, addDays(start, d)).map((m) => m.cls.code) : null
                   return (
                     <button
                       key={i}
                       type="button"
                       onClick={() => (s.mine ? onEdit(s.mine) : onOpen(s, addDays(start, d)))}
-                      aria-label={`${s.cls.name}, ${TYPE_NAME[s.type].toLowerCase()}, ${DAY_LONG[d]} ${s.meeting.start} to ${s.meeting.end}${s.meeting.room ? `, room ${s.meeting.room}` : ''}${clashOn(s, addDays(start, d)) ? ', clashes with another class' : ''}${s.cls.changed ? ', changed' : ''}`}
+                      aria-label={`${codes ? `${codes.join(', ')}, ` : ''}${s.cls.name}, ${TYPE_NAME[s.type].toLowerCase()}, ${DAY_LONG[d]} ${s.meeting.start} to ${s.meeting.end}${s.meeting.room ? `, room ${s.meeting.room}` : ''}${clashOn(s, addDays(start, d)) ? ', clashes with another class' : ''}${s.cls.changed ? ', changed' : ''}`}
                       className={cx(
                         'press relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[12px] p-1.5 text-left',
                         BLOCK[s.type],
@@ -966,7 +986,18 @@ function WeekPage({
                         clashOn(s, addDays(start, d)) && 'outline-2 -outline-offset-2 outline-alert',
                       )}
                     >
-                      <span className={cx('display leading-none tracking-[-0.03em]', cell.length > 1 ? 'text-[12px] break-all' : 'truncate text-[16px]')}>{s.cls.code}</span>
+                      {codes ? (
+                        <span className="display flex flex-col text-[11px] leading-[1.08] tracking-[-0.03em]">
+                          {codes.slice(0, codes.length > 3 ? 2 : 3).map((code) => (
+                            <span key={code} className="truncate">
+                              {code}
+                            </span>
+                          ))}
+                          {codes.length > 3 && <span>+{codes.length - 2}</span>}
+                        </span>
+                      ) : (
+                        <span className={cx('display leading-none tracking-[-0.03em]', cell.length > 1 ? 'text-[12px] break-all' : s.office ? 'text-[13px]' : 'truncate text-[16px]')}>{s.office ? 'Office hours' : s.cls.code}</span>
+                      )}
                       <span className="label mt-1 text-[9px] tracking-[0.04em]">
                         {s.meeting.start}
                         {s.span > 1 && `–${s.meeting.end}`}
@@ -984,7 +1015,7 @@ function WeekPage({
         )}
       </div>
 
-      <div className="mt-8 flex items-center justify-center gap-5 border-t-[1.5px] border-navy/10 pt-5">
+      <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 border-t-[1.5px] border-navy/10 pt-5">
         {types.map((t) => (
           <span key={t} className="label flex items-center gap-2 text-[10px]">
             <span className={cx('size-3 rounded-[4px]', BLOCK[t])} />

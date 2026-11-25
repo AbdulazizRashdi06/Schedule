@@ -4,6 +4,7 @@ import { DAY_SHORT } from '../lib/time'
 import { SLOTS, fmtDate } from '../lib/slots'
 import { ErrorText, Loading, Notice, cx } from '../components/ui'
 import { BackButton, useBack, useNow } from './timetable'
+import { useViewer } from '../lib/viewer'
 
 interface FreeRoomsReply {
   date: string
@@ -21,7 +22,7 @@ interface FreeRoomsReply {
  * other events and exams aren't in it, so a "free" room can still be in use.
  */
 export default function FreeRooms() {
-  const back = useBack('/')
+  const back = useBack(useViewer().home)
   const now = useNow()
   // null = now; otherwise a slot's start time today.
   const [at, setAt] = useState<string | null>(null)

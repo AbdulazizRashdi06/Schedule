@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { ENABLE_MESSAGE, enableDevice, useNotifySettings } from '../lib/push'
+import { ENABLE_MESSAGE, enableDevice, useNotifySettings, type PushBase } from '../lib/push'
 import { Link } from 'react-router-dom'
 import { DAY_LONG, DAY_SHORT } from '../lib/time'
-import { TYPE_NAME, addDays, clashOn, fmtDate, initials, isoDate, nowMinutes, onDate, type Session } from '../lib/slots'
+import { TYPE_NAME, addDays, clashOn, fmtDate, initials, isoDate, nowMinutes, onDate, sessionCode, type Session } from '../lib/slots'
 import { cx } from '../components/ui'
 import { counts, heldSoFar, useAbsences } from '../lib/absences'
-import type { Weeks } from '../lib/types'
+import type { TeachMe, Weeks } from '../lib/types'
+import type { Viewer } from '../lib/viewer'
 import ClassNotes from './ClassNotes'
 import { Icon, RoundButton } from './timetable'
 
@@ -20,12 +21,16 @@ function when(date: Date, now: Date) {
   return days > 0 ? `In ${days} days` : `${-days} days ago`
 }
 
-/** The class's next meeting after this one: later the same day, or on a following day (up to ten weeks on). */
-function nextAfter(s: Session, date: Date, all: Session[]) {
+/**
+ * The class's next meeting after this one: later the same day, or on a following day (up to ten weeks on). A student's
+ * class is their course; a teacher can teach two sections of one course, so theirs is the section.
+ */
+function nextAfter(s: Session, date: Date, all: Session[], bySection: boolean) {
+  const same = (x: Session) => (bySection ? x.cls.section.id === s.cls.section.id : x.cls.courseId === s.cls.courseId)
   for (let i = 0; i <= 70; i++) {
     const d = addDays(date, i)
     const found = all
-      .filter((x) => x.cls.courseId === s.cls.courseId && onDate(x, d) && (i > 0 || x.start > s.start))
+      .filter((x) => same(x) && onDate(x, d) && (i > 0 || x.start > s.start))
       .sort((a, b) => a.start - b.start)[0]
     if (found) return { s: found, date: d }
   }
@@ -47,6 +52,9 @@ export default function SessionPage({
   onBack,
   onChanged,
   weeks,
+  viewer,
+  teach,
+  offline,
 }: {
   s: Session
   date: Date
@@ -58,11 +66,22 @@ export default function SessionPage({
   onChanged: () => void
   /** The semester's teaching weeks, to count classes held so far. */
   weeks?: Weeks
+  /** Whose home this is: a student's own classes, or the classes a teacher teaches. */
+  viewer: Viewer
+  /** On the teacher side, who is using it. */
+  teach: TeachMe | null
+  /** Set while the home shows a saved copy: nothing can be changed then. */
+  offline: Date | null
 }) {
   const cls = s.cls
   const nowMin = nowMinutes(now)
   const live = isoDate(date) === isoDate(now) && s.start <= nowMin && nowMin < s.end
-  const next = nextAfter(s, date, all)
+  const student = viewer.mode === 'student'
+  const next = nextAfter(s, date, all, !student)
+  // Reminders are the person's own: an owner viewing as a teacher has none to set.
+  const reminders = student || !!teach?.personal
+  // `offline` is for the teacher's change buttons, which come with class changes.
+  void offline
 
   return (
     <div className="min-h-dvh bg-sky text-navy">
@@ -71,9 +90,16 @@ export default function SessionPage({
           <RoundButton label="Back" onClick={onBack} className="bg-navy text-sky">
             <Icon name="back" />
           </RoundButton>
-          <span className="label rounded-full border-[2.5px] border-navy px-3 py-2 text-[12px] tracking-[0.14em]">
-            {cls.code}
-            {cls.section.number && ` · Section ${cls.section.number}`}
+          <span className={cx('label rounded-full border-[2.5px] border-navy px-3 py-2 text-[12px] tracking-[0.14em]', s.merged && 'min-w-0 text-right leading-[1.5] tracking-[0.08em]')}>
+            {s.merged ? (
+              // One real class under several course codes (teacher side).
+              sessionCode(s, date)
+            ) : (
+              <>
+                {cls.code}
+                {cls.section.number && ` · Section ${cls.section.number}`}
+              </>
+            )}
           </span>
         </header>
 
@@ -98,7 +124,7 @@ export default function SessionPage({
           <div className="flex flex-col gap-2">
             <h2 className="text-[18px] font-extrabold">This session</h2>
             <Row s={s} date={date} live={live} badge={live ? '● Now' : when(date, now)} />
-            {counts(s) && <Attendance s={s} date={date} now={now} all={all} weeks={weeks} />}
+            {student && counts(s) && <Attendance s={s} date={date} now={now} all={all} weeks={weeks} />}
           </div>
 
           {next && (
@@ -120,9 +146,10 @@ export default function SessionPage({
             </span>
           </div>
 
-          <ClassNotes key={isoDate(date)} courseId={cls.courseId} section={cls.section} me={me} onChanged={onChanged} session={isoDate(date)} />
+          {/* Students' notes are theirs: teachers don't see them. */}
+          {student && <ClassNotes key={isoDate(date)} courseId={cls.courseId} section={cls.section} me={me} onChanged={onChanged} session={isoDate(date)} />}
 
-          <RemindButton />
+          {reminders && <RemindButton base={viewer.base} />}
         </section>
       </div>
     </div>
@@ -191,8 +218,8 @@ function Attendance({ s, date, now, all, weeks }: { s: Session; date: Date; now:
  * "Remind me 15 min before": turns on notifications for this device and reminders for every class. Once on, it says so
  * and turns reminders off again; how early is chosen under Menu, Notifications.
  */
-function RemindButton() {
-  const { settings, save, reload } = useNotifySettings()
+function RemindButton({ base }: { base: PushBase }) {
+  const { settings, save, reload } = useNotifySettings(base)
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
   const on = settings?.remindMinutes != null && settings.devices > 0
@@ -205,7 +232,7 @@ function RemindButton() {
         await save({ remindMinutes: null, changes: settings.changes })
         setStatus('Reminders off')
       } else {
-        const r = await enableDevice()
+        const r = await enableDevice(base)
         if (r !== 'on') return setStatus(ENABLE_MESSAGE[r])
         await save({ remindMinutes: settings.remindMinutes ?? 15, changes: settings.changes })
         await reload()

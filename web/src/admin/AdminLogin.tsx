@@ -33,6 +33,7 @@ export default function AdminLogin() {
   const { shakeClass, shake } = useShake()
 
   if (!entering && session?.kind === 'admin') return <Navigate to={session.mustChangePassword ? '/admin/password' : '/admin'} replace />
+  if (session?.kind === 'teacher') return <Navigate to="/teach" replace />
 
   return (
     <SplitPage kicker="Classy" title="Staff." foot="Lost access? Ask an owner to reset your password.">

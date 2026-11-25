@@ -1,3 +1,5 @@
+import { viewAs } from './viewAs'
+
 /** Errors the server sends as { error: "…" } are meant to be shown as-is. */
 export class ApiError extends Error {
   status: number
@@ -19,6 +21,10 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
     init.body = JSON.stringify(body)
     ;(init.headers as Record<string, string>)['Content-Type'] = 'application/json'
   }
+  // An owner looking at the teacher side as a teacher: only the teacher side's own calls say so. "/teachers/…" (the
+  // page students open) must not match.
+  const as = url === '/teach' || url.startsWith('/teach/') || url.startsWith('/teach?') ? viewAs.get() : null
+  if (as) (init.headers as Record<string, string>)['X-Teach-As'] = as
   let res: Response
   try {
     res = await fetch(API_BASE + '/api' + url, init)

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, errorText } from '../lib/api'
+import { useViewer } from '../lib/viewer'
 import { Button, ErrorText, Sheet } from '../components/ui'
 
 /**
@@ -25,14 +26,18 @@ export default function CalendarSheet({ open, onClose }: { open: boolean; onClos
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const [resetting, setResetting] = useState(false)
+  // A student's private link, or on the teacher side a teacher's.
+  const viewer = useViewer()
+  const teacher = viewer.mode === 'teacher'
+  const calendar = `${viewer.base}/calendar`
 
   useEffect(() => {
     if (!open || url) return
-    api.get<Links>('/me/calendar').then(
+    api.get<Links>(calendar).then(
       (r) => (setUrl(r.url), setTextUrl(r.textUrl)),
       (e) => setError(errorText(e)),
     )
-  }, [open, url])
+  }, [open, url, calendar])
 
   const webcal = url?.replace(/^https?:\/\//, 'webcal://') ?? ''
   const google = `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcal)}`
@@ -59,7 +64,7 @@ export default function CalendarSheet({ open, onClose }: { open: boolean; onClos
     <Sheet open={open} onClose={onClose} label="Calendar and ChatGPT">
       <div className="flex flex-col gap-1.5 pt-1">
         <h2 className="text-[30px] leading-none font-extrabold tracking-[-0.03em]">Add to my calendar</h2>
-        <p className="text-[15px] leading-snug font-semibold text-muted">Your classes and slots in your calendar app. They update on their own.</p>
+        <p className="text-[15px] leading-snug font-semibold text-muted">{teacher ? 'Your classes, office hours and slots' : 'Your classes and slots'} in your calendar app. They update on their own.</p>
       </div>
       <ErrorText>{error}</ErrorText>
       {!url && !error && (
@@ -95,7 +100,7 @@ export default function CalendarSheet({ open, onClose }: { open: boolean; onClos
           </a>
 
           {/* The same private link as plain text: saved in ChatGPT's memory, it opens it when asked about classes. */}
-          <section className="mt-2 flex flex-col gap-3 rounded-[24px] bg-navy p-5 text-cream">
+          {textUrl && <section className="mt-2 flex flex-col gap-3 rounded-[24px] bg-navy p-5 text-cream">
             <div className="flex flex-col gap-1.5">
               <span className="label text-[11px] tracking-[0.14em] text-sky">ChatGPT</span>
               <h3 className="text-[24px] leading-[1.05] font-extrabold tracking-[-0.02em]">Ask “when’s my next class?”</h3>
@@ -104,7 +109,7 @@ export default function CalendarSheet({ open, onClose }: { open: boolean; onClos
             <Button variant="sky" onClick={() => copy(aiPrompt(textUrl), () => setCopiedAi(true), 'Copy didn’t work here. Try again in your browser.')}>
               {copiedAi ? 'Copied ✓' : 'Copy for ChatGPT'}
             </Button>
-          </section>
+          </section>}
 
           <details className="group mt-1 border-t-[1.5px] border-navy/10">
             <summary className="tint flex h-12 cursor-pointer list-none items-center justify-between text-[16px] font-extrabold [&::-webkit-details-marker]:hidden">
@@ -125,7 +130,7 @@ export default function CalendarSheet({ open, onClose }: { open: boolean; onClos
                     setResetting(true)
                     setError('')
                     try {
-                      const r = await api.post<Links>('/me/calendar/reset')
+                      const r = await api.post<Links>(`${calendar}/reset`)
                       setUrl(r.url)
                       setTextUrl(r.textUrl)
                       setCopied(false)

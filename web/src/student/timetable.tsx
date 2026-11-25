@@ -1,134 +1,34 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ApiError, api, errorText, store } from '../lib/api'
+import { api } from '../lib/api'
 import type { Me, Timetable } from '../lib/types'
-import { buildSessions, campusNow, campusTime, type Session } from '../lib/slots'
+import { buildSessions, campusNow } from '../lib/slots'
+import { createHomeStore } from '../lib/homeStore'
 import { Icon, cx } from '../components/ui'
 
 export { Icon }
 
-interface Data {
-  me: Me
-  tt: Timetable | null
-}
+// The student's timetable: shared by Today, the week and Course so moving between them doesn't reload or flash, with a
+// copy saved for offline. The store itself is lib/homeStore; the teacher side has its own instance (teacher/teachData).
+const home = createHomeStore({
+  savedKey: 'timetable',
+  fetch: async () => {
+    const me = await api.get<Me>('/me')
+    const tt = me.setupDone ? await api.get<Timetable>('/me/timetable') : null
+    return { me, teach: null, tt }
+  },
+  seenUrl: '/me/seen',
+  build: (tt) => buildSessions(tt),
+  canSave: () => true,
+})
 
-// Shared by Today, Schedule and Course so moving between them doesn't reload or flash. Screens on at the same time
-// (home and the Today inside it) all show it, so a change one of them loads or makes shows in every one.
-let cache: Data | null = null
-/** When set, we're offline and showing what was saved at this time (campus time). Shared like the timetable. */
-let offlineAt: Date | null = null
-const listeners = new Set<() => void>()
-function share(d: Data | null, offline: Date | null) {
-  cache = d
-  offlineAt = offline
-  listeners.forEach((l) => l())
-}
-const subscribe = (l: () => void) => {
-  listeners.add(l)
-  return () => {
-    listeners.delete(l)
-  }
-}
-
-/** The last timetable that loaded, shown (with a banner) when the server can't be reached. */
-const SAVED = 'timetable'
-const save = (d: Data) => store.set(SAVED, JSON.stringify({ ...d, savedAt: new Date().toISOString() }))
-function saved(): (Data & { savedAt: string }) | null {
-  try {
-    return JSON.parse(store.get(SAVED) ?? 'null')
-  } catch {
-    return null
-  }
-}
-
-async function fetchData(): Promise<Data> {
-  const me = await api.get<Me>('/me')
-  const tt = me.setupDone ? await api.get<Timetable>('/me/timetable') : null
-  return { me, tt }
-}
-
-// Screens that mount together (home and the Today inside it) share one request instead of each sending their own,
-// and a screen that mounts just after a load (the Today home draws once the data is in) uses it rather than asking again.
-let inflight: Promise<Data> | null = null
-let loadedAt = 0
-const FRESH_MS = 5_000
-/** Goes up on sign-out, so a reply asked for by the signed-out student is thrown away rather than shown to the next. */
-let generation = 0
-function load(): Promise<Data> {
-  if (inflight) return inflight
-  const asked = generation
-  const request: Promise<Data> = fetchData()
-    .then((d) => {
-      if (asked !== generation) throw new Error('Signed out')
-      loadedAt = Date.now()
-      return d
-    })
-    .finally(() => {
-      if (inflight === request) inflight = null
-    })
-  inflight = request
-  return request
-}
-
-export function useTimetable() {
-  const data = useSyncExternalStore(subscribe, () => cache)
-  const offline = useSyncExternalStore(subscribe, () => offlineAt)
-  const [error, setError] = useState('')
-
-  const fetchNow = useCallback(async () => {
-    try {
-      const d = await load()
-      save(d)
-      share(d, null)
-      setError('')
-      return true
-    } catch (e) {
-      // As in the session: offline (0) or the server restarting (5xx) shows the saved timetable.
-      const old = e instanceof ApiError && (e.status === 0 || e.status >= 500) ? saved() : null
-      if (old) share(cache ?? { me: old.me, tt: old.tt }, campusTime(new Date(old.savedAt)))
-      else setError(errorText(e))
-      return false
-    }
-  }, [])
-
-  useEffect(() => {
-    if (cache && Date.now() - loadedAt < FRESH_MS) return
-    void fetchNow()
-  }, [fetchNow])
-
-  // Back online: try again without waiting for a tap.
-  useEffect(() => {
-    if (!offline) return
-    const on = () => void fetchNow()
-    window.addEventListener('online', on)
-    return () => window.removeEventListener('online', on)
-  }, [offline, fetchNow])
-
-  const sessions = useMemo<Session[]>(() => (data?.tt ? buildSessions(data.tt) : []), [data])
-
-  /** Clears the "Changed" badge once the student has looked at the class. */
-  const markSeen = useCallback((sectionId: number) => {
-    api.post('/me/seen', { sectionId }).catch(() => {})
-    if (!cache?.tt) return
-    share({ ...cache, tt: { ...cache.tt, classes: cache.tt.classes.map((c) => (c.section.id === sectionId ? { ...c, changed: false } : c)) } }, offlineAt)
-  }, [])
-
-  return { me: data?.me ?? null, tt: data?.tt ?? null, sessions, error, markSeen, offline, retry: fetchNow }
-}
+export const useTimetable = home.useData
 
 /** Forget the cached timetable (after the student edits their courses). */
-export const clearTimetableCache = () => {
-  cache = null
-}
+export const clearTimetableCache = home.clear
 
 /** On sign-out: forget everything about this student, including a load still on its way. */
-export const resetTimetable = () => {
-  cache = null
-  offlineAt = null
-  inflight = null
-  loadedAt = 0
-  generation++
-}
+export const resetTimetable = home.reset
 
 /**
  * The time on campus (see campusNow), whatever the device's time zone. Dev only: `?now=2026-10-14T10:05` (an Oman
