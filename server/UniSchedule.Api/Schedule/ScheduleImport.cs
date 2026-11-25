@@ -22,7 +22,15 @@ public record ImportPreview(
     int Rows, int Courses, int Sections,
     List<RowIssue> Errors, List<RowIssue> Warnings, List<string> NewMajors,
     List<Change> Added, List<Change> Updated, List<Change> Removed,
-    int StudentsAffected, bool CanApply);
+    int StudentsAffected, bool CanApply,
+    List<TeacherChangeEffect>? TeacherChanges = null);
+
+/// <summary>
+/// What applying would do to one teacher's change: <paramref name="Effect"/> is "dropped" (the university moved or
+/// removed the class), "merged" (the timetable now shows what the teacher did) or "room-differs" (it stays, and the
+/// teacher is told the university lists another room). <paramref name="What"/>: "Cancelled Tue 2 Dec 10:00".
+/// </summary>
+public record TeacherChangeEffect(string Effect, string Code, string Section, string What, string By);
 
 public static class ScheduleImport
 {
@@ -249,10 +257,27 @@ public static class ScheduleImport
         majors.FirstOrDefault(m => string.Equals(m.Code, token, StringComparison.OrdinalIgnoreCase))
         ?? majors.FirstOrDefault(m => string.Equals(m.Name, token, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>Compares the upload with what the semester holds now, without saving anything.</summary>
-    public static async Task<ImportPreview> PreviewAsync(AppDb db, int semesterId, ParsedSchedule parsed, CancellationToken ct)
+    /// <summary>
+    /// Compares the upload with what the semester holds now, without saving anything. It also lists what applying
+    /// would do to teachers' changes (<see cref="ImportPreview.TeacherChanges"/>): the same decision the apply makes,
+    /// which decides again inside its own transaction.
+    /// </summary>
+    /// <param name="now">Left out: the system clock. Changes that are over by then are history and aren't listed.</param>
+    public static async Task<ImportPreview> PreviewAsync(AppDb db, int semesterId, ParsedSchedule parsed, CancellationToken ct, DateTimeOffset? now = null)
     {
         var existing = await LoadSemester(db, semesterId, ct);
+        // Normally there are no live changes, and nothing more is read.
+        var live = (await db.ClassChanges.AsNoTracking().Where(c => c.SemesterId == semesterId && c.EndedAt == null && c.SectionId != null).ToListAsync(ct))
+            .ToLookup(c => c.SectionId!.Value);
+        var span = live.Count == 0 ? null : await SemesterSpan.ForAsync(db, await db.Semesters.AsNoTracking().FirstAsync(s => s.Id == semesterId, ct), ct);
+        var effects = span is null ? null : new List<TeacherChangeEffect>();
+        var at = now ?? DateTimeOffset.UtcNow;
+        void Effects(Section sec, List<ParsedMeeting>? newMeetings)
+        {
+            if (span is not null && live[sec.Id].Any())
+                effects!.AddRange(ClassChanges.Effects(live[sec.Id], sec.Meetings.Select(ParsedMeeting.Of).ToList(), newMeetings, span, at));
+        }
+
         var majors = await db.Majors.ToListAsync(ct);
         var byCode = existing.ToDictionary(c => c.Code, StringComparer.OrdinalIgnoreCase);
         var added = new List<Change>();
@@ -294,12 +319,14 @@ public static class ScheduleImport
                 {
                     updated.Add(new("section", pc.Code, ps.Number, change));
                     affectedSections.Add(sec.Id);
+                    Effects(sec, ps.Meetings);
                 }
             }
             foreach (var sec in course.Sections.Where(s => !pc.Sections.Any(ps => string.Equals(ps.Number, s.Number, StringComparison.OrdinalIgnoreCase))))
             {
                 removed.Add(new("section", pc.Code, sec.Number, MeetingText(sec.Meetings.Select(ParsedMeeting.Of))));
                 affectedSections.Add(sec.Id);
+                Effects(sec, null);
             }
         }
         var withDefaults = (await db.CourseDefaults.Where(d => d.SemesterId == semesterId).Select(d => d.CourseId).Distinct().ToListAsync(ct)).ToHashSet();
@@ -309,6 +336,7 @@ public static class ScheduleImport
                 ? $"{course.Name} · its default-course settings are kept for when it comes back"
                 : course.Name));
             affectedCourses.Add(course.Id);
+            foreach (var sec in course.Sections) Effects(sec, null);
         }
 
         var studentsAffected = await db.Picks
@@ -317,13 +345,17 @@ public static class ScheduleImport
 
         return new(parsed.RowCount, parsed.Courses.Count, parsed.Courses.Sum(c => c.Sections.Count),
             parsed.Errors, parsed.Warnings, newMajors, added, updated, removed, studentsAffected,
-            CanApply: parsed.Errors.Count == 0 && parsed.Courses.Count > 0);
+            CanApply: parsed.Errors.Count == 0 && parsed.Courses.Count > 0,
+            TeacherChanges: effects?.OrderBy(e => e.Code, StringComparer.Ordinal).ThenBy(e => e.Section, StringComparer.Ordinal).ToList());
     }
 
     /// <summary>
     /// Updates the semester to match the upload: only changed rows are touched, so students keep their picks.
     /// A removed section clears that pick and flags it; a removed course drops its picks.
     /// Changes to a published semester mark the section as "Changed" for students.
+    /// Teachers' changes to single sessions follow the new timetable inside the same transaction (ClassChanges.ReconcileAsync):
+    /// a class the university moved or removed drops the change, a room-only change keeps it, and a timetable that now
+    /// shows what the teacher did merges with it quietly.
     /// </summary>
     public static async Task ApplyAsync(AppDb db, Semester semester, ParsedSchedule parsed, TimeProvider clock, CancellationToken ct)
     {
@@ -346,11 +378,16 @@ public static class ScheduleImport
         var existing = await LoadSemester(db, semester.Id, ct);
         var byCode = existing.ToDictionary(c => c.Code, StringComparer.OrdinalIgnoreCase);
         var markChanges = semester.IsCurrent;
+        // Null when no teacher has anything on this semester: then none of the teacher steps below run.
+        var tell = await ClassChanges.StartAsync(db, semester, now, ct);
+        tell?.Remember(existing);
 
         // A section that goes away: students who picked it are told to pick another, and their notes on its sessions are
         // kept (as notes on the course's dates) instead of being deleted along with it.
         async Task DropSection(Course course, Section sec)
         {
+            // Teachers' changes on it end before it goes.
+            if (tell is not null) await ClassChanges.EndSectionAsync(db, course, sec, ClassChanges.DroppedRemoved, tell, now, ct);
             foreach (var pick in await db.Picks.Where(p => p.SectionId == sec.Id).ToListAsync(ct))
             {
                 pick.SectionId = null;
@@ -376,7 +413,12 @@ public static class ScheduleImport
             // apply again when it comes back (until then a course with no sections isn't ticked for anyone).
             if (await db.Picks.AnyAsync(p => p.CourseId == course.Id, ct) || await db.CourseDefaults.AnyAsync(d => d.CourseId == course.Id, ct))
                 foreach (var sec in course.Sections.ToList()) await DropSection(course, sec);
-            else db.Courses.Remove(course);
+            else
+            {
+                if (tell is not null)
+                    foreach (var sec in course.Sections) await ClassChanges.EndSectionAsync(db, course, sec, ClassChanges.DroppedRemoved, tell, now, ct);
+                db.Courses.Remove(course);
+            }
         }
 
         foreach (var pc in parsed.Courses)
@@ -413,13 +455,19 @@ public static class ScheduleImport
                 }
                 var change = DescribeChange(sec.Instructor, sec.Meetings, ps.Instructor, newMeetings);
                 if (change is null) continue;
+                // Quiet: the section had teacher changes and students see the same sessions as before (the university
+                // only caught up with what the teacher did), so nobody is told "changed".
+                var quiet = tell is not null && await ClassChanges.ReconcileAsync(db, semester, course, sec, sec.Instructor, ps.Instructor,
+                    sec.Meetings.Select(ParsedMeeting.Of).ToList(), newMeetings, change, tell, now, ct);
                 sec.Instructor = ps.Instructor;
                 db.Meetings.RemoveRange(sec.Meetings);
                 sec.Meetings = ps.Meetings.Select(m => new Meeting { Day = m.Day, Start = m.Start, End = m.End, Room = m.Room, Date = m.Date }).ToList();
-                if (markChanges) { sec.ChangedAt = now; sec.ChangeSummary = change; }
+                if (markChanges && !quiet) { sec.ChangedAt = now; sec.ChangeSummary = change; }
             }
         }
+        if (tell is not null) await ClassChanges.TellTeachersAsync(db, tell, now, ct);
         await db.SaveChangesAsync(ct);
+        if (tell is not null) await ClassChanges.AfterApplyAsync(db, semester, tell, now, ct);
         await tx.CommitAsync(ct);
     }
 }

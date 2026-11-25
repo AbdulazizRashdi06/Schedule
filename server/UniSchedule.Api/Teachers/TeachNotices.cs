@@ -28,9 +28,9 @@ public static class TeachNotices
 
     /// <summary>"Tue 2 Dec 10:00".</summary>
     public static string When(DateOnly date, TimeOnly time) => string.Create(Inv, $"{date:ddd d MMM} {time:HH:mm}");
-    static string Day(DateOnly date) => date.ToString("ddd d MMM", Inv);
+    internal static string Day(DateOnly date) => date.ToString("ddd d MMM", Inv);
     static string RoomText(string? room) => string.IsNullOrWhiteSpace(room) ? "room to be announced" : $"room {room.Trim()}";
-    static string Cut(string text, int max) => text.Length <= max ? text : text[..(max - 1)].TrimEnd() + "…";
+    internal static string Cut(string text, int max) => text.Length <= max ? text : text[..(max - 1)].TrimEnd() + "…";
 
     /// <summary>Who did it, as students read it: the shown name, and for an owner's "view as" the name it was done for.</summary>
     static string Who(ClassChange c) => c.OnBehalfOf is null ? c.ByName : $"{c.ByName} for {c.OnBehalfOf}";
@@ -56,7 +56,7 @@ public static class TeachNotices
         c.Kind is ClassChanges.Move or ClassChanges.Extra ? (c.NewDate!.Value, c.NewStart!.Value) : (c.OrigDate!.Value, c.OrigStart!.Value);
 
     static string StudentUrl(int courseId, DateOnly date, TimeOnly start) => string.Create(Inv, $"/?session={courseId}.{PlannerEngine.Iso(date)}.{Timeslots.Format(start)}");
-    static string TeacherUrl(int sectionId, DateOnly date, TimeOnly start) => string.Create(Inv, $"/teach?session=s{sectionId}.{PlannerEngine.Iso(date)}.{Timeslots.Format(start)}");
+    internal static string TeacherUrl(int sectionId, DateOnly date, TimeOnly start) => string.Create(Inv, $"/teach?session=s{sectionId}.{PlannerEngine.Iso(date)}.{Timeslots.Format(start)}");
 
     /// <summary>
     /// Removes the notices to students about these sessions that nobody has started sending. So a change that ends,

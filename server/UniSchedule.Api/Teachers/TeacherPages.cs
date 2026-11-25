@@ -23,7 +23,7 @@ public static class TeacherPages
     static string? EmailOf(Teacher t) => t.ShowEmail ? t.Email : null;
 
     /// <summary>The names students see for these accounts (<see cref="TeacherNames.Shown"/>), by account id.</summary>
-    static async Task<Dictionary<int, string>> ShownAsync(AppDb db, IReadOnlyCollection<Teacher> accounts, CancellationToken ct)
+    internal static async Task<Dictionary<int, string>> ShownAsync(AppDb db, IReadOnlyCollection<Teacher> accounts, CancellationToken ct)
     {
         if (accounts.Count == 0) return [];
         var ids = accounts.Select(t => t.Id).ToList();
