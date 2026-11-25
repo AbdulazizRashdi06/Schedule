@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api, errorText } from '../lib/api'
 import { DAY_LONG } from '../lib/time'
 import { SLOTS } from '../lib/slots'
@@ -222,6 +222,11 @@ export default function OfficeHours() {
               <Button type="submit" className="h-[60px] text-[18px]" busy={busy}>
                 {busy ? 'Saving…' : 'Save'}
               </Button>
+              {teach?.id != null && (
+                <Link to={`/teacher/t-${teach.id}`} className="label flex min-h-11 items-center justify-center gap-1.5 text-[12px] link-hover">
+                  See my page as students do <span aria-hidden="true">→</span>
+                </Link>
+              )}
             </div>
           </>
         )}

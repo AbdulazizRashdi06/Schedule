@@ -40,6 +40,8 @@ import TeachGate from './teacher/TeachGate'
 import PickName from './teacher/PickName'
 import EditClasses from './teacher/EditClasses'
 import OfficeHours from './teacher/OfficeHours'
+import MyChanges from './teacher/MyChanges'
+import TeacherPage from './student/TeacherPage'
 
 /** A teacher who lands on a student page goes to the teacher's version of it; anything without one, to their home. */
 const TEACHER_PAGE: Record<string, string> = { '/': '/teach', '/rooms': '/teach/rooms', '/colours': '/teach/colours' }
@@ -64,6 +66,14 @@ function StaffOnly({ children, ownerOnly }: { children: ReactNode; ownerOnly?: b
   const staff = session.kind === 'admin' || session.role === 'owner'
   if (!staff) return <Navigate to={session.kind === 'student' ? '/' : '/admin/login'} replace state={{ from: location.pathname }} />
   if (ownerOnly && session.role !== 'owner') return <Navigate to="/admin" replace />
+  return children
+}
+
+/** Anyone signed in: a student, a teacher, or a dashboard account (an owner follows teacher-name links too). */
+function SignedIn({ children }: { children: ReactNode }) {
+  const { session } = useSession()
+  if (!session) return <div className="min-h-dvh bg-cream" aria-busy="true" />
+  if (!session.kind) return <Navigate to="/login" replace />
   return children
 }
 
@@ -102,6 +112,9 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/teach/name" element={<TeacherScope><PickName /></TeacherScope>} />
           <Route path="/teach/classes" element={<TeacherScope><EditClasses /></TeacherScope>} />
           <Route path="/teach/office" element={<TeacherScope><OfficeHours /></TeacherScope>} />
+          <Route path="/teach/changes" element={<TeacherScope><MyChanges /></TeacherScope>} />
+          {/* A teacher as students see them: their office hours and this week's classes. */}
+          <Route path="/teacher/:key" element={<SignedIn><TeacherPage /></SignedIn>} />
           <Route path="/teach/rooms" element={<TeacherScope><FreeRooms /></TeacherScope>} />
           <Route path="/teach/colours" element={<TeacherScope><Colours /></TeacherScope>} />
           <Route path="/admin/login" element={<AdminLogin />} />

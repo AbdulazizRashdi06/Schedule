@@ -220,6 +220,8 @@ export interface ChangePreview {
   others: { start: string; end: string; room: string }[]
   needsCode: boolean
   blocked: 'started' | 'switched-off' | null
+  /** What a write would refuse about the new time or room, in words. */
+  problem?: string | null
   warnings: { code: string; text: string }[]
 }
 

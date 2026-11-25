@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
 import { DAY_SHORT } from '../lib/time'
-import { TYPE_NAME, addDays, clashOn, fmtDate, inWeek, initials, isoDate, nowMinutes, onDate, type Session } from '../lib/slots'
+import { TYPE_NAME, addDays, changeLine, changeTag, clashOn, fmtDate, inWeek, isoDate, nowMinutes, onDate, type Session } from '../lib/slots'
 import { ErrorText, Sk, cx } from '../components/ui'
 import ClassNotes from './ClassNotes'
+import ClassTeachers from './ClassTeachers'
 import NotFound from './NotFound'
 import { Icon, RoundButton, useBack, useNow, useTimetable } from './timetable'
 
 export default function Course() {
   const { courseId } = useParams()
-  const { me, tt, sessions, error, markSeen, retry } = useTimetable()
+  const { me, tt, sessions, ghosts, error, markSeen, retry } = useTimetable()
   const now = useNow()
   const back = useBack('/')
   const [soon, setSoon] = useState(false)
@@ -42,9 +43,14 @@ export default function Course() {
     from = new Date(`${next.meeting.date}T00:00`)
     dated = inWeek(all.filter((s) => s.meeting.date), from)
   }
-  const rows = all
-    .filter((s) => weekly.includes(s) || dated.includes(s))
+  // Sessions a teacher cancelled or moved away in those days stay listed, greyed: on their weekly row when there is
+  // one, otherwise as a row of their own.
+  const off = inWeek(ghosts.filter((g) => g.cls.courseId === Number(courseId)), from)
+  const ghostOf = (s: Session, date: Date) => off.find((g) => g.meeting.date === isoDate(date) && g.meeting.start === s.meeting.start)
+  const rows = [...all.filter((s) => weekly.includes(s) || dated.includes(s)), ...off]
     .map((s) => ({ s, date: s.meeting.date ? new Date(`${s.meeting.date}T12:00`) : addDays(from, (s.meeting.day - from.getDay() + 7) % 7) }))
+    .filter(({ s, date }) => !s.off || !weekly.some((w) => w.meeting.day === s.meeting.day && ghostOf(w, date) === s))
+    .sort((a, b) => a.s.meeting.day - b.s.meeting.day || a.s.start - b.s.start)
   const types = [...new Set(rows.map(({ s }) => TYPE_NAME[s.type]))].join(' & ')
 
   if (!error && me && tt && !cls) return <NotFound course />
@@ -110,7 +116,9 @@ export default function Course() {
                     const isLive = s === live
                     const isNext = s === next && !live
                     // A weekly time that doesn't meet in the coming week: before week 1, after the last, or a day off.
-                    const off = !onDate(s, date) && (s.firstDate && isoDate(date) < s.firstDate ? `From ${fmtDate(firstOn(s, date) ?? date)}` : s.lastDate && isoDate(date) > s.lastDate ? 'Ended' : 'Not this week')
+                    const ghost = s.off ? s : !onDate(s, date) ? ghostOf(s, date) : undefined
+                    const tag = changeTag(s)
+                    const off = ghost ? changeLine(ghost) : !onDate(s, date) && (s.firstDate && isoDate(date) < s.firstDate ? `From ${fmtDate(firstOn(s, date) ?? date)}` : s.lastDate && isoDate(date) > s.lastDate ? 'Ended' : 'Not this week')
                     return (
                       <li
                         key={i}
@@ -118,14 +126,15 @@ export default function Course() {
                       >
                         <span className={cx('label text-[12px] tracking-normal', !isLive && 'text-ice')}>{DAY_SHORT[s.meeting.day]}</span>
                         <span className="flex min-w-0 flex-col gap-0.5">
-                          <span className="text-[18px] leading-none font-extrabold tabular-nums">
+                          <span className={cx('text-[18px] leading-none font-extrabold tabular-nums', ghost && 'text-ice/70 line-through decoration-2')}>
                             {s.meeting.start}–{s.meeting.end}
                           </span>
                           <span className={cx('text-[13px] font-semibold', !isLive && 'text-ice')}>
                             {s.meeting.room ? `Room ${s.meeting.room}` : 'Room TBA'} · {TYPE_NAME[s.type]}
                           </span>
                         </span>
-                        <span className="flex flex-col items-end gap-1">
+                        <span className="flex max-w-[112px] flex-col items-end gap-1 text-right">
+                          {!ghost && tag && <span className="label rounded-full bg-sky px-2 py-1 text-[10px] text-navy">{tag}</span>}
                           {isLive && <span className="label rounded-full bg-navy px-2 py-1 text-[10px] text-sky">● Now</span>}
                           {isNext && <span className="label text-[10px] text-ice">Next</span>}
                           {off && <span className="label text-[10px] text-ice">{off}</span>}
@@ -137,15 +146,7 @@ export default function Course() {
                 </ul>
               </div>
 
-              <div className="flex items-center gap-3">
-                <span aria-hidden="true" className="grid size-11 shrink-0 place-items-center rounded-full bg-ice text-[16px] font-extrabold text-navy">
-                  {cls.section.instructor ? initials(cls.section.instructor) : '?'}
-                </span>
-                <span className="flex min-w-0 flex-col gap-0.5">
-                  <span className="text-[16px] font-extrabold">{cls.section.instructor || 'Lecturer to be announced'}</span>
-                  <span className="label text-[11px] tracking-normal text-ice">Lecturer</span>
-                </span>
-              </div>
+              <ClassTeachers cls={cls} />
 
               <ClassNotes courseId={cls.courseId} section={cls.section} me={me?.universityId ?? ''} onChanged={() => void retry()} />
 
