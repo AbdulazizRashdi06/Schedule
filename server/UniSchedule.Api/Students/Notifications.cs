@@ -331,7 +331,21 @@ public sealed class PushSender(IHttpClientFactory http, IConfiguration config, I
                 log.LogWarning("A notification didn't go out: {Error}", e.Message);
             }
         }
-        await db.SaveChangesAsync(ct);
+        while (true)
+        {
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                break;
+            }
+            catch (DbUpdateConcurrencyException e) when (e.Entries.Count > 0 && e.Entries.All(x => x.Entity is Sub or TeacherPushSubscription))
+            {
+                // A device being forgotten was removed by its owner in the same moment: it is gone either way. The
+                // pushes went out, so the caller carries on. The row is let go of, so no later save fails on it, and
+                // the rest are saved.
+                foreach (var entry in e.Entries) entry.State = EntityState.Detached;
+            }
+        }
         return sent;
     }
 }
@@ -469,7 +483,7 @@ public sealed class NotificationWorker(IServiceScopeFactory scopes, PushSender p
         {
             using var scope = scopes.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDb>();
-            await TeachNotices.RoundAsync(db, push, now, stop);
+            await TeachNotices.RoundAsync(db, push, now, stop, clock);
         }
         catch (Exception e) when (!stop.IsCancellationRequested)
         {

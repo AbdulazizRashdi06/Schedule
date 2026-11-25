@@ -609,4 +609,81 @@ public class TeachNoticeTests
         Assert.Equal(HttpStatusCode.NotFound, (await Get(fresh.Replace(".ics", ".txt"))).Status);
         await w.AssertNoOrphans();
     }
+
+    [Fact]
+    public async Task A_claim_made_late_in_a_slow_round_is_stamped_with_the_time_it_was_made()
+    {
+        using var w = await TeachWorld.Create();
+        var s = await Sections(w);
+        await On(w.Students[2], "/me", "s2");
+        await w.Teacher2.Made(Cancel(s.Cs2, w.Date(0, 2)));
+        var id = Assert.Single(await w.Notices(TeachNotice.Students)).Id;
+
+        // The worker's round started three minutes ago and only now gets to the notices.
+        var started = w.Time.GetUtcNow();
+        w.Time.Advance(TimeSpan.FromMinutes(3));
+        Task<int> Late() => w.Db(db => TeachNotices.RoundAsync(db, w.Services.GetRequiredService<PushSender>(), started, default, w.Time));
+        Assert.Equal(1, await Late());
+        Assert.Equal(w.Time.GetUtcNow(), Assert.Single(await w.Notices(TeachNotice.Students)).ClaimedAt);
+
+        // Still being sent (not marked sent yet): another slow round, of another process, leaves the fresh claim alone.
+        await w.Db(db => db.TeachNotices.Where(n => n.Id == id).ExecuteUpdateAsync(u => u.SetProperty(n => n.SentAt, (DateTimeOffset?)null)));
+        Assert.Equal(0, await Late());
+        Assert.Equal(["s2"], Pushed(w));
+    }
+
+    /// <summary>A push service where the device "dead" has unsubscribed, and its owner removes it at that very moment.</summary>
+    sealed class DeadDevice(TeachWorld w) : HttpMessageHandler, IHttpClientFactory
+    {
+        public readonly List<string> Sent = [];
+        public HttpClient CreateClient(string name) => new(this, disposeHandler: false);
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            var address = request.RequestUri!.ToString();
+            if (!address.EndsWith("/dead", StringComparison.Ordinal))
+            {
+                lock (Sent) Sent.Add(address[(address.LastIndexOf('/') + 1)..]);
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+            await w.Db(db => db.PushSubscriptions.Where(x => x.Endpoint == address).ExecuteDeleteAsync());
+            return new HttpResponseMessage(HttpStatusCode.Gone);
+        }
+    }
+
+    [Fact]
+    public async Task A_dead_device_its_owner_removed_at_the_same_moment_does_not_send_the_notice_again()
+    {
+        using var w = await TeachWorld.Create();
+        var s = await Sections(w);
+        await On(w.Students[2], "/me", "dead");
+        await On(w.Students[2], "/me", "s2");
+        await w.Teacher2.Made(Cancel(s.Cs2, w.Date(0, 2)));
+        var pushes = new DeadDevice(w);
+        var sender = new PushSender(pushes, w.Services.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>(), NullLogger<PushSender>.Instance);
+        Task<int> Round() => w.Db(db => TeachNotices.RoundAsync(db, sender, w.Time.GetUtcNow(), default));
+
+        Assert.Equal(1, await Round());
+        Assert.NotNull(Assert.Single(await w.Notices(TeachNotice.Students)).SentAt);
+        // Not again once the claim has run out.
+        w.Time.Advance(TimeSpan.FromMinutes(3));
+        Assert.Equal(0, await Round());
+        Assert.Equal(["s2"], pushes.Sent);
+        Assert.Equal(1, await w.Db(db => db.PushSubscriptions.CountAsync()));
+    }
+
+    [Fact]
+    public async Task Working_out_teachers_reminders_leaves_the_semester_untracked()
+    {
+        using var w = await TeachWorld.Create();
+        var sun = w.Date(0, 0);
+        await On(w.Teacher1, "/teach", "t1");
+        await Settings(w.Teacher1, "/teach", 15);
+        await w.Db(async db =>
+        {
+            Assert.NotEmpty(await TeachReminders.DueAsync(db, At(sun, 7, 44, 30), At(sun, 7, 45, 10), default));
+            Assert.Empty(db.ChangeTracker.Entries<Section>());
+            Assert.Empty(db.ChangeTracker.Entries<Course>());
+            Assert.Empty(db.ChangeTracker.Entries<Meeting>());
+        });
+    }
 }

@@ -570,4 +570,27 @@ public class TeacherDashboardTests
         w.Time.Advance(TimeSpan.FromMinutes(61));
         Assert.Equal(JsonValueKind.Null, (await Attention(rsa)).GetProperty("teacherSignInPaused").ValueKind);
     }
+
+    [Fact]
+    public async Task Removing_the_account_that_held_a_name_clears_the_conflict_for_those_waiting()
+    {
+        using var w = await TeachWorld.Create();
+        // Teacher 1 asked for the name teacher 2 holds.
+        await w.Db(async db =>
+        {
+            db.TeacherNames.Add(new TeacherName
+            {
+                TeacherId = w.Teacher1Id, Name = TeachWorld.Teacher2Name, NameKey = TeacherNames.NameKey(TeachWorld.Teacher2Name),
+                State = TeacherName.Pending, How = TeacherName.Picked, Conflict = true, CreatedAt = w.Time.GetUtcNow(),
+            });
+            await db.SaveChangesAsync();
+        });
+        var waiting = Assert.Single((await Teachers(w.Rsa)).GetProperty("waiting").EnumerateArray());
+        Assert.Equal((true, TeachWorld.Teacher2Email), (waiting.GetProperty("conflict").GetBoolean(), waiting.GetProperty("heldBy").GetString()));
+
+        await Json(await w.Rsa.PostAsJsonAsync($"/api/admin/teachers/{w.Teacher2Id}/remove", new { undoChanges = false }));
+        waiting = Assert.Single((await Teachers(w.Rsa)).GetProperty("waiting").EnumerateArray());
+        Assert.False(waiting.GetProperty("conflict").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, waiting.GetProperty("heldBy").ValueKind);
+    }
 }

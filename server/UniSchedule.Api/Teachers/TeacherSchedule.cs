@@ -38,8 +38,10 @@ public static class TeacherSchedule
     /// <summary>The key of a session a change put on: one teacher action is one real class, whatever room it was given.</summary>
     public static string GroupKey(ClassChange c) => "g:" + c.GroupId;
 
-    internal static Task<List<Section>> SemesterSectionsAsync(AppDb db, int semesterId, CancellationToken ct) =>
-        db.Sections.Where(s => s.Course.SemesterId == semesterId).Include(s => s.Course).Include(s => s.Meetings).AsSplitQuery().ToListAsync(ct);
+    /// <param name="tracked">False for a caller that only reads (the reminders worker): the same objects, one per row, not kept by the context.</param>
+    internal static Task<List<Section>> SemesterSectionsAsync(AppDb db, int semesterId, CancellationToken ct, bool tracked = true) =>
+        (tracked ? db.Sections : db.Sections.AsNoTrackingWithIdentityResolution())
+            .Where(s => s.Course.SemesterId == semesterId).Include(s => s.Course).Include(s => s.Meetings).AsSplitQuery().ToListAsync(ct);
 
     /// <summary>The sections a teacher has to do with this semester: under their names, plus those they added. Hidden ones are marked, not removed.</summary>
     public static Task<List<Taught>> SectionsAsync(AppDb db, int semesterId, TeachActor actor, CancellationToken ct) =>
@@ -233,13 +235,14 @@ public static class TeacherSchedule
     /// </summary>
     /// <param name="cancelled">Filled with the sessions that stay visible though they aren't on: cancelled ones, and the
     /// old slot of a moved one. One per real class; never in the returned lists.</param>
+    /// <param name="tracked">False for a caller that only reads (the reminders worker): the semester's sections aren't kept by the context.</param>
     public static async Task<Dictionary<int, List<StudentSchedule.Item>>> ItemsAsync(AppDb db, Semester semester, IReadOnlyCollection<Teacher> teachers,
-        bool slots, bool planner, CancellationToken ct, List<(int TeacherId, StudentSchedule.Item Item)>? cancelled = null)
+        bool slots, bool planner, CancellationToken ct, List<(int TeacherId, StudentSchedule.Item Item)>? cancelled = null, bool tracked = true)
     {
         var result = teachers.Select(t => t.Id).Distinct().ToDictionary(id => id, _ => new List<StudentSchedule.Item>());
         if (result.Count == 0) return result;
         var ids = result.Keys.ToList();
-        var sections = await SemesterSectionsAsync(db, semester.Id, ct);
+        var sections = await SemesterSectionsAsync(db, semester.Id, ct, tracked);
         var keys = (await db.TeacherNames.Where(n => ids.Contains(n.TeacherId) && (n.State == TeacherName.Auto || n.State == TeacherName.Approved))
             .Select(n => new { n.TeacherId, n.NameKey }).ToListAsync(ct)).ToLookup(n => n.TeacherId, n => n.NameKey);
         var rows = (await db.TeacherSections.Where(r => ids.Contains(r.TeacherId) && r.SemesterId == semester.Id && r.SectionId != null).ToListAsync(ct))

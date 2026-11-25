@@ -233,6 +233,10 @@ public static class AuthEndpoints
                 await db.SaveChangesAsync(CancellationToken.None);
             }
             if (error is not null) return error;
+            // The block is checked and the account found or made in one transaction. Opened before either is read, it
+            // takes the database's write lock, as a removal does: a removal is wholly before this or wholly after it,
+            // so it never lands between the check and a new account.
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
             // A code asked for just before the address was blocked signs nobody in.
             if (await db.BlockedEmails.AnyAsync(b => b.Email == email, ct))
                 return Errors.BadRequest("That code has expired. Send a new one.");
@@ -257,6 +261,7 @@ public static class AuthEndpoints
             }
             teacher.LastSeenAt = now;
             await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
             // Links the account to its timetable name when the email clearly matches exactly one.
             await TeacherNames.LinkOnSignInAsync(db, teacher, now, ct);
 

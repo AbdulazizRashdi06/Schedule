@@ -141,7 +141,7 @@ public static class TeachReminders
             .ToListAsync(ct);
         if (teachers.Count == 0) return [];
         var span = await SemesterSpan.ForAsync(db, semester, ct);
-        var items = await TeacherSchedule.ItemsAsync(db, semester, teachers, slots: true, planner, ct);
+        var items = await TeacherSchedule.ItemsAsync(db, semester, teachers, slots: true, planner, ct, tracked: false);
 
         var due = new List<(Teacher, Note)>();
         var now = to.ToOffset(Oman);

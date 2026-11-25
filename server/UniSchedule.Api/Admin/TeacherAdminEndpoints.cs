@@ -115,6 +115,10 @@ public static class TeacherAdminEndpoints
             await db.LoginCodes.Where(c => c.UniversityId == email).ExecuteDeleteAsync(ct);
         }
         await db.SaveChangesAsync(ct);
+        // Nobody holds its names any more: those waiting for them are no longer in anyone's way.
+        var held = await db.TeacherNames.Where(n => n.TeacherId == teacher.Id && (n.State == TeacherName.Auto || n.State == TeacherName.Approved))
+            .Select(n => n.NameKey).ToListAsync(ct);
+        foreach (var key in held) await MarkWaitingAsync(db, key, teacher.Id, false, ct);
         // Session validation doesn't read the block list: deleting the row in this same transaction is what ends the sign-ins.
         await db.Teachers.Where(t => t.Id == teacher.Id).ExecuteDeleteAsync(ct);
         return undone;
@@ -145,7 +149,8 @@ public static class TeacherAdminEndpoints
             var universityIds = isOwner
                 ? await db.Students.Where(s => db.Teachers.Any(t => t.StudentId == s.Id)).ToDictionaryAsync(s => s.Id, s => s.UniversityId, ct)
                 : [];
-            string Label(int teacherId) => byId[teacherId].Email ?? shown[teacherId];
+            // The links are read after the teachers: an account made in between isn't among them yet.
+            string Label(int teacherId) => byId.TryGetValue(teacherId, out var t) ? t.Email ?? shown[teacherId] : "another account";
 
             var rows = semester is null ? [] : await (
                 from r in db.TeacherSections.AsNoTracking()

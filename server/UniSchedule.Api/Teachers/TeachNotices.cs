@@ -182,11 +182,14 @@ public static class TeachNotices
     /// A notice past its <c>ExpiresAt</c> (the class has started) is marked sent without a push; a teacher's still
     /// shows in their inbox. Returns how many notices were pushed.
     /// </summary>
-    public static async Task<int> RoundAsync(AppDb db, PushSender push, DateTimeOffset now, CancellationToken ct)
+    /// <param name="now">When the worker's round started: what expiry and <c>SentAt</c> go by.</param>
+    /// <param name="clock">Read at each claim, so a claim made late in a slow round holds for all of <see cref="ClaimFor"/>.
+    /// Without one, claims go by <paramref name="now"/>.</param>
+    public static async Task<int> RoundAsync(AppDb db, PushSender push, DateTimeOffset now, CancellationToken ct, TimeProvider? clock = null)
     {
         // Stored times are UTC, and the database compares them as stored.
         now = now.ToUniversalTime();
-        var stale = now - ClaimFor;
+        DateTimeOffset Current() => clock?.GetUtcNow().ToUniversalTime() ?? now;
         var waiting = await db.TeachNotices.AsNoTracking().Where(n => n.SentAt == null).OrderBy(n => n.Id).Take(RoundSize).ToListAsync(ct);
         var pushed = 0;
         foreach (var n in waiting)
@@ -197,6 +200,7 @@ public static class TeachNotices
                 await db.TeachNotices.Where(x => x.Id == n.Id && x.SentAt == null).ExecuteUpdateAsync(u => u.SetProperty(x => x.SentAt, now), ct);
                 continue;
             }
+            var stale = Current() - ClaimFor;
             if (n.Audience == TeachNotice.Students)
             {
                 // The states of one session reach phones in the order they happened. An earlier one that another
@@ -215,9 +219,11 @@ public static class TeachNotices
             }
 
             // The claim: one statement, so of two rounds only one gets the row. A row an undo or an edit deleted
-            // meanwhile is claimed by nobody and never sent.
+            // meanwhile is claimed by nobody and never sent. Stamped with the time it is made, not the round's.
+            var claimed = Current();
+            stale = claimed - ClaimFor;
             if (await db.TeachNotices.Where(x => x.Id == n.Id && x.SentAt == null && (x.ClaimedAt == null || x.ClaimedAt < stale))
-                    .ExecuteUpdateAsync(u => u.SetProperty(x => x.ClaimedAt, now), ct) != 1)
+                    .ExecuteUpdateAsync(u => u.SetProperty(x => x.ClaimedAt, claimed), ct) != 1)
                 continue;
 
             var ttl = n.ExpiresAt is DateTimeOffset until ? (int)Math.Clamp((until - now).TotalSeconds, 60, LongestTtl) : LongestTtl;
