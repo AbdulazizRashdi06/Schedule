@@ -50,6 +50,8 @@ export default function Course() {
   const rows = [...all.filter((s) => weekly.includes(s) || dated.includes(s)), ...off]
     .map((s) => ({ s, date: s.meeting.date ? new Date(`${s.meeting.date}T12:00`) : addDays(from, (s.meeting.day - from.getDay() + 7) % 7) }))
     .filter(({ s, date }) => !s.off || !weekly.some((w) => w.meeting.day === s.meeting.day && ghostOf(w, date) === s))
+    // A weekly time whose room a teacher changed this week is listed once, as the re-roomed session.
+    .filter(({ s, date }) => s.meeting.date || onDate(s, date) || !dated.some((d) => d.change?.kind === 'room' && d.meeting.date === isoDate(date) && d.meeting.start === s.meeting.start))
     .sort((a, b) => a.s.meeting.day - b.s.meeting.day || a.s.start - b.s.start)
   const types = [...new Set(rows.map(({ s }) => TYPE_NAME[s.type]))].join(' & ')
 
@@ -118,7 +120,7 @@ export default function Course() {
                     // A weekly time that doesn't meet in the coming week: before week 1, after the last, or a day off.
                     const ghost = s.off ? s : !onDate(s, date) ? ghostOf(s, date) : undefined
                     const tag = changeTag(s)
-                    const off = ghost ? changeLine(ghost) : !onDate(s, date) && (s.firstDate && isoDate(date) < s.firstDate ? `From ${fmtDate(firstOn(s, date) ?? date)}` : s.lastDate && isoDate(date) > s.lastDate ? 'Ended' : 'Not this week')
+                    const off = ghost ? changeTag(ghost) : !onDate(s, date) && (s.firstDate && isoDate(date) < s.firstDate ? `From ${fmtDate(firstOn(s, date) ?? date)}` : s.lastDate && isoDate(date) > s.lastDate ? 'Ended' : 'Not this week')
                     return (
                       <li
                         key={i}
@@ -132,8 +134,9 @@ export default function Course() {
                           <span className={cx('text-[13px] font-semibold', !isLive && 'text-ice')}>
                             {s.meeting.room ? `Room ${s.meeting.room}` : 'Room TBA'} · {TYPE_NAME[s.type]}
                           </span>
+                          {ghost && <span className="text-[13px] font-semibold text-ice">{changeLine(ghost)}</span>}
                         </span>
-                        <span className="flex max-w-[112px] flex-col items-end gap-1 text-right">
+                        <span className="flex flex-col items-end gap-1 text-right">
                           {!ghost && tag && <span className="label rounded-full bg-sky px-2 py-1 text-[10px] text-navy">{tag}</span>}
                           {isLive && <span className="label rounded-full bg-navy px-2 py-1 text-[10px] text-sky">● Now</span>}
                           {isNext && <span className="label text-[10px] text-ice">Next</span>}

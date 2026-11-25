@@ -149,7 +149,8 @@ export default function SessionPage({
             </div>
           )}
 
-          <ClassTeachers cls={cls} />
+          {/* One real class under several codes (teacher side): everyone who teaches any of them. */}
+          <ClassTeachers cls={s.merged ? { ...cls, teachers: s.merged.flatMap((m) => m.cls.teachers ?? []).filter((t, i, list) => list.findIndex((x) => x.key === t.key) === i) } : cls} />
 
           {/* Students' notes are theirs: teachers don't see them. */}
           {student && <ClassNotes key={isoDate(date)} courseId={cls.courseId} section={cls.section} me={me} onChanged={onChanged} session={isoDate(date)} />}
@@ -289,11 +290,12 @@ function Row({ s, date, live, badge, arrow }: { s: Session; date: Date; live: bo
         <span className={cx('text-[13px] font-semibold', !live && 'text-ice')}>
           {s.meeting.room ? `Room ${s.meeting.room}` : 'Room TBA'} · {TYPE_NAME[s.type]}
         </span>
+        {tag && <span className={cx('label mt-1 self-start rounded-full px-2 py-1 text-[10px]', s.off ? 'bg-cream text-navy' : 'bg-sky text-navy')}>{tag}</span>}
       </span>
       <span className="flex items-center gap-1.5">
         <span className={cx('flex flex-col items-end gap-1')}>
           <span className={cx('label rounded-full px-2 py-1 text-[10px]', live ? 'bg-navy text-sky' : 'text-ice')}>{badge}</span>
-          {tag && <span className={cx('label rounded-full px-2 py-1 text-[10px]', s.off ? 'bg-cream text-navy' : 'bg-sky text-navy')}>{tag}</span>}
+
           {clashOn(s, date) && <span className="label rounded-full bg-alert-ink px-2 py-1 text-[10px] text-cream">Clash</span>}
         </span>
         {arrow && <Icon name="next" className="size-4 text-ice" />}

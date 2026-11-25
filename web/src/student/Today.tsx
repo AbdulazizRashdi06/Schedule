@@ -451,9 +451,9 @@ function List({ title, sessions, ghosts = [], date, children }: { title: string;
                   {!s.off && <Tags s={s} date={date} />}
                 </span>
                 {s.off ? (
-                  <span className="truncate font-mono text-[12px] font-bold uppercase">
+                  <span className="font-mono text-[12px] font-bold uppercase">
+                    {teacher && `${sessionCode(s, date)} · `}
                     {changeLine(s)}
-                    {teacher && ` · ${sessionCode(s, date)}`}
                   </span>
                 ) : (
                   <span className="truncate font-mono text-[12px] uppercase">

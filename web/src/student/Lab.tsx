@@ -1135,7 +1135,7 @@ function WeekPage({
                       {codes ? (
                         <span className={cx('display flex flex-col text-[11px] leading-[1.08] tracking-[-0.03em]', s.off && 'line-through')}>
                           {codes.slice(0, codes.length > 3 ? 2 : 3).map((code) => (
-                            <span key={code} className="truncate">
+                            <span key={code} className={cell.length > 1 ? 'break-all' : 'truncate'}>
                               {code}
                             </span>
                           ))}
@@ -1149,14 +1149,14 @@ function WeekPage({
                         {s.span > 1 && `–${s.meeting.end}`}
                       </span>
                       {s.off ? (
-                        <span className="label mt-auto truncate text-[9px] tracking-[0.02em]">{tag}</span>
+                        <span className="label mt-auto text-[8px] tracking-normal">{cell.length > 1 ? 'Off' : tag}</span>
                       ) : (
                         cell.length === 1 && <span className="mt-auto truncate text-[11px] font-semibold">{s.meeting.room}</span>
                       )}
                       {/* Changed since you last looked (dot), and has notes (square), in the block's own text colour. A
                           class a teacher moved here, re-roomed or added has a ring where the dot sits. */}
                       {!s.off && tag ? (
-                        <span aria-hidden="true" className={cx('absolute top-1 right-1 size-2.5 rounded-full border-[1.5px] border-current', s.cls.changed && 'bg-current bg-clip-content p-px')} />
+                        <span aria-hidden="true" className={cx('absolute top-1 right-1 size-[7px] rounded-full border-[1.5px] border-current', s.cls.changed && 'bg-current bg-clip-content p-px')} />
                       ) : (
                         !s.off && s.cls.changed && <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-current" />
                       )}
