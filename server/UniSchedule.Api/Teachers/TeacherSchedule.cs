@@ -323,8 +323,12 @@ public static class TeacherSchedule
             foreach (var date in union.Order())
             {
                 var still = members.Where(m => !m.Skip.Contains(date)).ToList();
+                // Dated here, but a session of a weekly class: it keeps that date's calendar id, not one id for every such date.
                 if (still.Count > 0 && span.Weekly(lead.Day, date, true))
-                    yield return Item(still.Select(m => m.Class).ToList(), still[0].Meeting, date, NoDates);
+                    yield return Item(still.Select(m => m.Class).ToList(), still[0].Meeting, date, NoDates) with
+                    {
+                        Uid = ClassChanges.Uid(still[0].Class.Section.Id, still[0].Meeting, date),
+                    };
             }
         }
     }

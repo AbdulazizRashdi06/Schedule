@@ -10,7 +10,8 @@ namespace UniSchedule.Api.Teachers;
 
 /// <summary>
 /// The teacher side (/api/teach): who I am, my timetable name and inbox of notices, my teaching timetable, the
-/// sections on it, my own slots, and my office hours and details.
+/// sections on it, my own slots, and my office hours and details. Class changes are in <see cref="ClassChangeEndpoints"/>,
+/// devices, reminders and the calendar link in <see cref="TeachDevices"/>.
 /// </summary>
 public static class TeachEndpoints
 {
@@ -501,6 +502,7 @@ public static class TeachEndpoints
         });
 
         teach.MapClassChanges();
+        teach.MapTeachDevices();
     }
 
     /// <summary>Picking a name is for staff accounts: owners attach names to a teaching assistant in the dashboard.</summary>

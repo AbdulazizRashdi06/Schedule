@@ -6,23 +6,25 @@ using Microsoft.EntityFrameworkCore;
 using UniSchedule.Api.Auth;
 using UniSchedule.Api.Data;
 using UniSchedule.Api.Schedule;
+using UniSchedule.Api.Teachers;
 
 namespace UniSchedule.Api.Students;
 
 /// <summary>
 /// A student's timetable as a calendar feed (iCalendar), so Apple, Google, Outlook and Samsung calendars can subscribe to
 /// it and keep up with changes. Calendar apps can't sign in, so the link carries a long secret; the student can reset it.
+/// A teacher has the same for the classes they teach, their office hours and own slots (the link is made under /api/teach).
 /// </summary>
 public static partial class CalendarFeed
 {
     static readonly TimeSpan Oman = TimeSpan.FromHours(4);
 
-    static string NewToken() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
+    internal static string NewToken() => Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
 
     static string Link(HttpRequest req, string token, string ext = "ics") => $"{req.Scheme}://{req.Host}/api/calendar/{token}.{ext}";
 
     /// <summary>The feed link, and the same link as plain text for AI assistants such as ChatGPT.</summary>
-    static object Links(HttpRequest req, string token) => new { url = Link(req, token), textUrl = Link(req, token, "txt") };
+    internal static object Links(HttpRequest req, string token) => new { url = Link(req, token), textUrl = Link(req, token, "txt") };
 
     /// <summary>The class type, read from the room the way the app does: "Lab L2" is a lab, "Tut 3" a tutorial.</summary>
     static string Kind(string room) => SessionKinds.Label(SessionKinds.Of(room));
@@ -59,10 +61,14 @@ public static partial class CalendarFeed
         api.MapGet("/calendar/{token}.ics", async (string token, AppDb db, TimeProvider clock, IConfiguration config, CancellationToken ct) =>
         {
             var s = token.Length >= 40 ? await db.Students.FirstOrDefaultAsync(x => x.CalendarToken == token, ct) : null;
-            if (s is null) return Errors.NotFound("This calendar link was reset or doesn't exist. Add the new one from Classy.");
+            // Not a student's link: a teacher's, then. A removed teacher's link is dead with the account.
+            var teacher = s is null && token.Length >= 40 ? await db.Teachers.AsNoTracking().FirstOrDefaultAsync(x => x.CalendarToken == token, ct) : null;
+            if (s is null && teacher is null) return Errors.NotFound("This calendar link was reset or doesn't exist. Add the new one from Classy.");
             var semester = await StudentEndpoints.CurrentSemester(db, ct);
             var planner = await Planner.PlannerEngine.Enabled(db, config, ct);
-            return Results.Text(await Build(db, s.Id, semester, clock.GetUtcNow(), planner, ct), "text/calendar; charset=utf-8");
+            return Results.Text(teacher is not null
+                ? await BuildTeacher(db, teacher, semester, clock.GetUtcNow(), planner, ct)
+                : await Build(db, s!.Id, semester, clock.GetUtcNow(), planner, ct), "text/calendar; charset=utf-8");
         }).RequireRateLimiting(PublicTimetableEndpoints.Limit);
 
         // The same timetable as plain text, for an AI assistant the student told to open this link when they ask about
@@ -71,7 +77,8 @@ public static partial class CalendarFeed
         {
             const string text = "text/plain; charset=utf-8";
             var s = token.Length >= 40 ? await db.Students.FirstOrDefaultAsync(x => x.CalendarToken == token, ct) : null;
-            if (s is null)
+            var teacher = s is null && token.Length >= 40 ? await db.Teachers.AsNoTracking().FirstOrDefaultAsync(x => x.CalendarToken == token, ct) : null;
+            if (s is null && teacher is null)
                 return Results.Text("This Classy link was reset or doesn't exist. Get the new one in Classy: Menu, then Calendar & ChatGPT.", text, statusCode: StatusCodes.Status404NotFound);
             DateOnly? start = null;
             if (from is not null && (start = ScheduleImport.ParseDate(from)) is null)
@@ -81,7 +88,10 @@ public static partial class CalendarFeed
             http.Response.Headers["X-Robots-Tag"] = "noindex, nofollow";
             var semester = await StudentEndpoints.CurrentSemester(db, ct);
             var planner = await Planner.PlannerEngine.Enabled(db, config, ct);
-            return Results.Text(await Text(db, s.Id, semester, clock.GetUtcNow(), start, Math.Clamp(days ?? 14, 1, MaxTextDays), planner, ct), text);
+            var count = Math.Clamp(days ?? 14, 1, MaxTextDays);
+            return Results.Text(teacher is not null
+                ? await TeacherText(db, teacher, semester, clock.GetUtcNow(), start, count, planner, ct)
+                : await Text(db, s!.Id, semester, clock.GetUtcNow(), start, count, planner, ct), text);
         }).RequireRateLimiting(PublicTimetableEndpoints.Limit);
     }
 
@@ -117,6 +127,7 @@ public static partial class CalendarFeed
             Join($"{i.Code} {i.Name}", KindOf(i), RoomText(i.Room), $"Section {i.Section}", i.Instructor, ChangeWords(i), i.Note),
         StudentSchedule.Source.Class => Join($"{i.Code} {i.Name}", KindOf(i), RoomText(i.Room), $"Section {i.Section}", i.Instructor),
         StudentSchedule.Source.Planner => Join($"{i.Code} {i.Name}", KindOf(i), RoomText(i.Room), "set by the batch rep", i.Note),
+        _ when i.EventKind == TeacherSchedule.OfficeKind => Join(i.Name, RoomText(i.Room), "not a class"),
         _ => Join(i.Name, "own slot, not a class", i.Room, i.Note),
     };
 
@@ -126,22 +137,58 @@ public static partial class CalendarFeed
     /// </summary>
     public static async Task<string> Text(AppDb db, int studentId, Semester? semester, DateTimeOffset now, DateOnly? from, int days, bool planner, CancellationToken ct)
     {
-        var inv = CultureInfo.InvariantCulture;
-        var local = now.ToOffset(Oman);
-        var t = new StringBuilder();
-        t.AppendLine("Classy timetable. This link is private: don't share it or show it to anyone.");
-        t.AppendLine($"Now: {local.ToString("dddd d MMMM yyyy, HH:mm", inv)}, Oman time (UTC+4). Times below are 24-hour Oman time.");
-        if (semester is null)
-        {
-            t.AppendLine("No timetable is published in Classy yet.");
-            return t.ToString();
-        }
-
+        var t = TextStart(semester, now);
+        if (semester is null) return t.ToString();
         var span = await SemesterSpan.ForAsync(db, semester, ct);
         var off = new List<StudentSchedule.Item>();
         var items = await StudentSchedule.ForAsync(db, semester.Id, [studentId], slots: true, planner, ct, off);
         TextFrom(t, items, off, span, semester.Name, now, from, days, "The student hasn't picked their classes in Classy yet.");
         return t.ToString();
+    }
+
+    /// <summary>How the text feed opens, for a student and for a teacher: whose time it is, and that nothing is published when nothing is.</summary>
+    static StringBuilder TextStart(Semester? semester, DateTimeOffset now)
+    {
+        var t = new StringBuilder();
+        t.AppendLine("Classy timetable. This link is private: don't share it or show it to anyone.");
+        t.AppendLine($"Now: {now.ToOffset(Oman).ToString("dddd d MMMM yyyy, HH:mm", CultureInfo.InvariantCulture)}, Oman time (UTC+4). Times below are 24-hour Oman time.");
+        if (semester is null) t.AppendLine("No timetable is published in Classy yet.");
+        return t;
+    }
+
+    /// <summary>The same text for a teacher: the classes they teach, their office hours and own slots.</summary>
+    public static async Task<string> TeacherText(AppDb db, Teacher teacher, Semester? semester, DateTimeOffset now, DateOnly? from, int days, bool planner, CancellationToken ct)
+    {
+        var t = TextStart(semester, now);
+        if (semester is null) return t.ToString();
+        var (items, off) = await TeacherItemsAsync(db, teacher, semester, planner, ct);
+        TextFrom(t, items, off, await SemesterSpan.ForAsync(db, semester, ct), semester.Name, now, from, days, "No classes on this timetable yet.");
+        return t.ToString();
+    }
+
+    /// <summary>The iCalendar text for a teacher: one entry per real class (a class under three codes is one), office hours and own slots.</summary>
+    public static async Task<string> BuildTeacher(AppDb db, Teacher teacher, Semester? semester, DateTimeOffset now, bool planner, CancellationToken ct)
+    {
+        const string name = "Classy Teaching";
+        if (semester is null) return BuildFrom([], [], null, now, name);
+        var (items, off) = await TeacherItemsAsync(db, teacher, semester, planner, ct);
+        return BuildFrom(items, off, await SemesterSpan.ForAsync(db, semester, ct), now, name);
+    }
+
+    /// <summary>
+    /// What a teacher has on, and the sessions that aren't on. Office hours and own slots get calendar ids of their
+    /// own: a teacher's slot is never taken for a student's with the same number, and each office hour is its own entry.
+    /// </summary>
+    static async Task<(List<StudentSchedule.Item> Items, List<StudentSchedule.Item> Off)> TeacherItemsAsync(AppDb db, Teacher teacher, Semester semester, bool planner, CancellationToken ct)
+    {
+        var cancelled = new List<(int TeacherId, StudentSchedule.Item Item)>();
+        var items = (await TeacherSchedule.ItemsAsync(db, semester, [teacher], slots: true, planner, ct, cancelled))[teacher.Id];
+        return (items.Select(i => i.From != StudentSchedule.Source.Slot ? i : i with
+        {
+            Uid = i.EventKind == TeacherSchedule.OfficeKind
+                ? string.Create(CultureInfo.InvariantCulture, $"office-{teacher.Id}-{i.Day}-{i.Start:HHmm}-{i.End:HHmm}@classy")
+                : string.Create(CultureInfo.InvariantCulture, $"tslot-{i.SlotId}@classy"),
+        }).ToList(), cancelled.Select(c => c.Item).ToList());
     }
 
     /// <summary>
@@ -234,7 +281,7 @@ public static partial class CalendarFeed
                     StudentSchedule.Source.Class => (i.Uid ?? $"class-{i.SectionId}-{i.MeetingId}@classy", $"{i.Name} · {KindOf(i)}",
                         Join(i.Code, $"Section {i.Section}", i.Instructor, ChangeSentence(i), i.ChangeId is null ? null : i.Note)),
                     StudentSchedule.Source.Planner => ($"planner-{i.EventId}-{i.Date:yyyyMMdd}@classy", $"{i.Name} · {KindOf(i)}", Join(i.Code, "Set by the batch rep", i.Note)),
-                    _ => ($"slot-{i.SlotId}@classy", i.Name, i.Note ?? ""),
+                    _ => (i.Uid ?? $"slot-{i.SlotId}@classy", i.Name, i.Note ?? ""),
                 };
                 Event(ics, uid, stamp, summary, i.Room, details, i, span);
             }

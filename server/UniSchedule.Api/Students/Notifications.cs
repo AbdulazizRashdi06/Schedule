@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using UniSchedule.Api.Auth;
 using UniSchedule.Api.Data;
 using UniSchedule.Api.Schedule;
+using UniSchedule.Api.Teachers;
 using WebPush;
 using Sub = UniSchedule.Api.Data.PushSubscription;
 
@@ -27,7 +28,9 @@ public static class Notifications
     /// <summary>Set when a semester is published (its name), removed once students were told it's out.</summary>
     public const string PublishPending = "push.publish.pending";
     static readonly TimeSpan Oman = TimeSpan.FromHours(4);
-    static readonly int[] RemindChoices = [5, 10, 15, 30, 60];
+    internal static readonly int[] RemindChoices = [5, 10, 15, 30, 60];
+    internal const string PickMinutes = "Pick 5, 10, 15, 30 or 60 minutes before.";
+    internal const string IncompleteSubscription = "This browser sent an incomplete subscription. Try again.";
 
     public record SubscribeBody(string? Endpoint, Keys? Keys);
     public record Keys(string? P256dh, string? Auth);
@@ -102,6 +105,34 @@ public static class Notifications
         }
     }
 
+    /// <summary>What a browser sent to subscribe, when it is complete and usable: a real push service's address and keys that can be encrypted to.</summary>
+    internal static (string Endpoint, string P256dh, string Auth)? Subscription(SubscribeBody body) =>
+        body.Endpoint is { Length: > 0 and < 1000 } endpoint && AllowedEndpoint(endpoint)
+            && body.Keys?.P256dh is { Length: > 0 and < 200 } p256dh && body.Keys.Auth is { Length: > 0 and < 100 } auth
+            && ValidKeys(p256dh, auth)
+            ? (endpoint, p256dh, auth) : null;
+
+    /// <summary>
+    /// Saves this device for a student. An endpoint is one device and belongs to one person: a teacher who had it stops
+    /// getting notifications on it, in the same transaction. Null when saved, else the refusal.
+    /// </summary>
+    internal static async Task<IResult?> SaveDeviceAsync(AppDb db, int studentId, (string Endpoint, string P256dh, string Auth) device, DateTimeOffset now, CancellationToken ct)
+    {
+        var (endpoint, p256dh, auth) = device;
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var sub = await db.PushSubscriptions.FirstOrDefaultAsync(x => x.Endpoint == endpoint, ct);
+        if (sub is null && await db.PushSubscriptions.CountAsync(x => x.StudentId == studentId, ct) >= MaxDevices)
+            return Errors.Conflict($"Notifications are on for {MaxDevices} devices already. Turn them off on one you don't use first.");
+        if (sub is null) db.PushSubscriptions.Add(sub = new Sub { Endpoint = endpoint, CreatedAt = now });
+        sub.StudentId = studentId;
+        sub.P256dh = p256dh;
+        sub.Auth = auth;
+        await db.TeacherPushSubscriptions.Where(x => x.Endpoint == endpoint).ExecuteDeleteAsync(ct);
+        await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
+        return null;
+    }
+
     public static void MapNotifications(this RouteGroupBuilder api)
     {
         // The public half of the signing key, which the browser needs to subscribe.
@@ -119,7 +150,7 @@ public static class Notifications
 
         me.MapPut("/notifications", async (SettingsBody body, HttpContext http, AppDb db, CancellationToken ct) =>
         {
-            if (body.RemindMinutes is int m && !RemindChoices.Contains(m)) return Errors.BadRequest("Pick 5, 10, 15, 30 or 60 minutes before.");
+            if (body.RemindMinutes is int m && !RemindChoices.Contains(m)) return Errors.BadRequest(PickMinutes);
             var s = await db.Students.FirstAsync(x => x.Id == http.User.Id(), ct);
             s.RemindMinutes = body.RemindMinutes;
             s.MuteChanges = !body.Changes;
@@ -130,20 +161,8 @@ public static class Notifications
         // This browser or installed app accepts notifications. An endpoint is one device: it moves to whoever signs in there.
         me.MapPost("/push", async (SubscribeBody body, HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) =>
         {
-            if (body.Endpoint is not { Length: > 0 and < 1000 } endpoint || !AllowedEndpoint(endpoint)
-                || body.Keys?.P256dh is not { Length: > 0 and < 200 } p256dh || body.Keys.Auth is not { Length: > 0 and < 100 } auth
-                || !ValidKeys(p256dh, auth))
-                return Errors.BadRequest("This browser sent an incomplete subscription. Try again.");
-            var id = http.User.Id();
-            var sub = await db.PushSubscriptions.FirstOrDefaultAsync(x => x.Endpoint == endpoint, ct);
-            if (sub is null && await db.PushSubscriptions.CountAsync(x => x.StudentId == id, ct) >= MaxDevices)
-                return Errors.Conflict($"Notifications are on for {MaxDevices} devices already. Turn them off on one you don't use first.");
-            if (sub is null) db.PushSubscriptions.Add(sub = new Sub { Endpoint = endpoint, CreatedAt = clock.GetUtcNow() });
-            sub.StudentId = id;
-            sub.P256dh = p256dh;
-            sub.Auth = auth;
-            await db.SaveChangesAsync(ct);
-            return Results.NoContent();
+            if (Subscription(body) is not { } device) return Errors.BadRequest(IncompleteSubscription);
+            return await SaveDeviceAsync(db, http.User.Id(), device, clock.GetUtcNow(), ct) ?? Results.NoContent();
         });
 
         me.MapPost("/push/remove", async (EndpointBody body, HttpContext http, AppDb db, CancellationToken ct) =>
@@ -255,37 +274,56 @@ public static class Notifications
     }
 }
 
-/// <summary>Sends notifications to students' devices, forgetting devices that have unsubscribed.</summary>
+/// <summary>Sends notifications to students' and teachers' devices, forgetting devices that have unsubscribed.</summary>
 public sealed class PushSender(IHttpClientFactory http, IConfiguration config, ILogger<PushSender> log)
 {
+    /// <summary>One browser or installed app, and how to forget it once it has unsubscribed.</summary>
+    readonly record struct Device(string Endpoint, string P256dh, string Auth, Action Forget);
+
     /// <summary>Sends to every device of the given students; returns how many devices accepted it.</summary>
     public async Task<int> SendAsync(AppDb db, IReadOnlyCollection<int> studentIds, Note note, CancellationToken ct)
     {
         var subs = await db.PushSubscriptions.Where(p => studentIds.Contains(p.StudentId)).ToListAsync(ct);
-        if (subs.Count == 0) return 0;
+        return await DeliverAsync(db, subs.Select(sub => new Device(sub.Endpoint, sub.P256dh, sub.Auth, () => db.PushSubscriptions.Remove(sub))).ToList(), note, ct);
+    }
+
+    /// <summary>
+    /// Sends to a teaching account's devices: its own for a staff account, the student's for a teaching assistant.
+    /// The only way teacher code reaches a device: a teacher id is never a student id.
+    /// </summary>
+    public async Task<int> SendToTeacherAsync(AppDb db, Teacher t, Note note, CancellationToken ct)
+    {
+        if (t.StudentId is int studentId) return await SendAsync(db, [studentId], note, ct);
+        var subs = await db.TeacherPushSubscriptions.Where(p => p.TeacherId == t.Id).ToListAsync(ct);
+        return await DeliverAsync(db, subs.Select(sub => new Device(sub.Endpoint, sub.P256dh, sub.Auth, () => db.TeacherPushSubscriptions.Remove(sub))).ToList(), note, ct);
+    }
+
+    async Task<int> DeliverAsync(AppDb db, IReadOnlyList<Device> devices, Note note, CancellationToken ct)
+    {
+        if (devices.Count == 0) return 0;
         var keys = await Notifications.KeysAsync(db, config, ct);
         var client = new WebPushClient(http.CreateClient("push"));
         var payload = JsonSerializer.Serialize(new { title = note.Title, body = note.Body, url = note.Url, tag = note.Tag });
         var sent = 0;
-        foreach (var sub in subs)
+        foreach (var device in devices)
         {
             // Keys nothing can be encrypted to (saved before keys were checked) would fail on every send: forget them.
-            if (!Notifications.ValidKeys(sub.P256dh, sub.Auth) || !Notifications.AllowedEndpoint(sub.Endpoint))
+            if (!Notifications.ValidKeys(device.P256dh, device.Auth) || !Notifications.AllowedEndpoint(device.Endpoint))
             {
                 log.LogWarning("Dropped a device with unusable push keys or address");
-                db.PushSubscriptions.Remove(sub);
+                device.Forget();
                 continue;
             }
             try
             {
-                await client.SendNotificationAsync(new WebPush.PushSubscription(sub.Endpoint, sub.P256dh, sub.Auth), payload,
+                await client.SendNotificationAsync(new WebPush.PushSubscription(device.Endpoint, device.P256dh, device.Auth), payload,
                     new Dictionary<string, object> { ["vapidDetails"] = keys, ["TTL"] = note.TtlSeconds }, ct);
                 sent++;
             }
             catch (WebPushException e) when (e.StatusCode is System.Net.HttpStatusCode.Gone or System.Net.HttpStatusCode.NotFound)
             {
                 // The device unsubscribed or the app was removed: stop sending there.
-                db.PushSubscriptions.Remove(sub);
+                device.Forget();
             }
             catch (Exception e) when (!ct.IsCancellationRequested)
             {
@@ -300,7 +338,8 @@ public sealed class PushSender(IHttpClientFactory http, IConfiguration config, I
 
 /// <summary>
 /// Every 30 seconds: sends the class reminders that have come due, alerts for classes that changed, and "a new semester is
-/// out" after one was published. Each part fails on its own, so one problem never repeats or stops the others.
+/// out" after one was published; then teachers' reminders and the notices about teachers' class changes. Each part
+/// fails on its own, so one problem never repeats or stops the others.
 /// </summary>
 public sealed class NotificationWorker(IServiceScopeFactory scopes, PushSender push, TimeProvider clock, ILogger<NotificationWorker> log) : BackgroundService
 {
@@ -342,6 +381,8 @@ public sealed class NotificationWorker(IServiceScopeFactory scopes, PushSender p
     /// <summary>One round: reminders due in (last, now], then change alerts, then a semester announcement. Returns where the next round's reminders start.</summary>
     public async Task<DateTimeOffset> RoundAsync(DateTimeOffset last, DateTimeOffset now, CancellationToken stop)
     {
+        // Teachers' reminders cover the same window; the students' part below moves `last` on once theirs are out.
+        var window = last;
         try
         {
             using var scope = scopes.CreateScope();
@@ -406,6 +447,33 @@ public sealed class NotificationWorker(IServiceScopeFactory scopes, PushSender p
         catch (Exception e) when (!stop.IsCancellationRequested)
         {
             log.LogError(e, "Semester announcement failed");
+        }
+
+        // Teachers' reminders, apart from the students': whatever goes wrong here, a student's reminder is neither held
+        // back nor sent again. They keep their own mark, so they go out once however the parts above went.
+        try
+        {
+            using var scope = scopes.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+            var planner = await Planner.PlannerEngine.Enabled(db, scope.ServiceProvider.GetRequiredService<IConfiguration>(), stop);
+            await TeachReminders.RoundAsync(db, push, window, now, planner, stop);
+        }
+        catch (Exception e) when (!stop.IsCancellationRequested)
+        {
+            log.LogError(e, "Teacher reminders failed");
+        }
+
+        // What teachers did to a class (cancelled, moved, another room, an extra one): to its students, the other
+        // teachers and staff. Each notice is claimed before it is sent.
+        try
+        {
+            using var scope = scopes.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDb>();
+            await TeachNotices.RoundAsync(db, push, now, stop);
+        }
+        catch (Exception e) when (!stop.IsCancellationRequested)
+        {
+            log.LogError(e, "Teacher change notices failed");
         }
         return last;
     }

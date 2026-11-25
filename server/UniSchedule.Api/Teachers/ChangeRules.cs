@@ -542,6 +542,39 @@ public static class ChangeRules
         return semester is null ? (null, Errors.Conflict("No semester has been published yet.")) : (semester, null);
     }
 
+    /// <summary>Staff are alerted when a teacher makes more changes than this in one day. Nobody is stopped.</summary>
+    public const int BusyAfter = 5;
+    public const string ManyChanges = "many-changes";
+
+    /// <summary>
+    /// The daily alert, after a teacher's create or replace (never for an owner looking in): once the account has
+    /// made more than <see cref="BusyAfter"/> changes since midnight in Oman, staff get one notice for that day.
+    /// The day is claimed with one conditional update, so two changes at once still write one notice.
+    /// </summary>
+    static async Task BusyAlertAsync(AppDb db, TeachActor actor, DateTimeOffset now, CancellationToken ct)
+    {
+        if (actor.ViewAs || actor.Profile is not { } p) return;
+        var oman = now.ToOffset(Oman);
+        var today = DateOnly.FromDateTime(oman.DateTime);
+        if (p.BusyAlertOn == today) return;
+        // Midnight in Oman as a UTC instant: stored times are UTC, and the database compares them as stored.
+        var midnight = new DateTimeOffset(oman.Date, oman.Offset).ToUniversalTime();
+        var made = await db.ClassChanges.Where(c => c.TeacherId == p.Id && c.OnBehalfOf == null && c.CreatedAt >= midnight)
+            .Select(c => c.GroupId).Distinct().CountAsync(ct);
+        if (made <= BusyAfter) return;
+        if (await db.Teachers.Where(t => t.Id == p.Id && (t.BusyAlertOn == null || t.BusyAlertOn != today))
+                .ExecuteUpdateAsync(u => u.SetProperty(t => t.BusyAlertOn, today), ct) != 1)
+            return;
+        db.TeachNotices.Add(new TeachNotice
+        {
+            Audience = TeachNotice.Staff, TeacherId = p.Id, Kind = ManyChanges, CreatedAt = now, ExpiresAt = midnight.AddDays(1),
+            Title = $"{actor.ByName} has made {made.ToString(CultureInfo.InvariantCulture)} class changes today",
+            Body = $"More than {BusyAfter.ToString(CultureInfo.InvariantCulture)} in one day. Nobody was stopped; the change log shows them.",
+            Url = "/admin/teacher-changes", Tag = string.Create(CultureInfo.InvariantCulture, $"busy-{p.Id}-{today:yyyyMMdd}"),
+        });
+        await db.SaveChangesAsync(ct);
+    }
+
     /// <summary>
     /// Makes a change: one row per ticked section, sharing a group, and their notices. With <c>alsoOther</c>, one more
     /// group for each other session of the section that day. The answer lists every change made.
@@ -627,6 +660,7 @@ public static class ChangeRules
             await db.Database.RollbackTransactionAsync(ct);
             return Errors.Conflict(AlreadyChanged);
         }
+        await BusyAlertAsync(db, actor, now, ct);
         return await AnswerAsync(db, w, actor, groups.Select(g => g[0].GroupId).ToList(), now, ct);
     }
 
@@ -685,6 +719,7 @@ public static class ChangeRules
             await db.Database.RollbackTransactionAsync(ct);
             return Errors.Conflict(AlreadyChanged);
         }
+        await BusyAlertAsync(db, actor, now, ct);
         return await AnswerAsync(db, w, actor, [group], now, ct);
     }
 

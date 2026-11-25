@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using UniSchedule.Api.Data;
 using UniSchedule.Api.Planner;
 using UniSchedule.Api.Schedule;
+using UniSchedule.Api.Students;
 
 namespace UniSchedule.Api.Teachers;
 
@@ -10,6 +11,7 @@ namespace UniSchedule.Api.Teachers;
 /// The notices written with each class change: the texts, and the rows put in the outbox (<see cref="TeachNotice"/>)
 /// in the same transaction as the change. Students get one row per section; a teacher gets one row per action,
 /// naming every code of the class. Only shown names ever go into a notice, never an email, username or university ID.
+/// <see cref="RoundAsync"/> then sends them: writing a row is all it takes to tell someone.
 /// </summary>
 public static class TeachNotices
 {
@@ -164,5 +166,83 @@ public static class TeachNotices
                     Url = TeacherUrl(lead.SectionId!.Value, on, at), Tag = lead.Tag, ExpiresAt = ChangeRules.LastStartUtc(lead),
                 });
         }
+    }
+
+    /// <summary>How many notices one round sends at most; the rest wait for the next round, 30 seconds later.</summary>
+    public const int RoundSize = 200;
+    /// <summary>How long a claim holds. A notice claimed longer ago and still not sent was dropped mid-send (a crash): it is sent again.</summary>
+    public static readonly TimeSpan ClaimFor = TimeSpan.FromMinutes(2);
+    const int LongestTtl = 3 * 86_400;
+
+    /// <summary>
+    /// Sends the notices that are waiting, oldest first. Each is claimed before it is sent, with one conditional
+    /// update, so two rounds at once (or an old and a new process) never both send it, and an undo that lands
+    /// mid-send knows students were told. Without a crash each notice is pushed once; one whose sender died between
+    /// claiming and sending goes out again after <see cref="ClaimFor"/> (the tag replaces it on the phone).
+    /// A notice past its <c>ExpiresAt</c> (the class has started) is marked sent without a push; a teacher's still
+    /// shows in their inbox. Returns how many notices were pushed.
+    /// </summary>
+    public static async Task<int> RoundAsync(AppDb db, PushSender push, DateTimeOffset now, CancellationToken ct)
+    {
+        // Stored times are UTC, and the database compares them as stored.
+        now = now.ToUniversalTime();
+        var stale = now - ClaimFor;
+        var waiting = await db.TeachNotices.AsNoTracking().Where(n => n.SentAt == null).OrderBy(n => n.Id).Take(RoundSize).ToListAsync(ct);
+        var pushed = 0;
+        foreach (var n in waiting)
+        {
+            // Nobody left to tell: the class has started, or the section (and so its students) is gone.
+            if (n.ExpiresAt <= now || (n.Audience == TeachNotice.Students && n.SectionId is null) || (n.Audience == TeachNotice.ToTeacher && n.TeacherId is null))
+            {
+                await db.TeachNotices.Where(x => x.Id == n.Id && x.SentAt == null).ExecuteUpdateAsync(u => u.SetProperty(x => x.SentAt, now), ct);
+                continue;
+            }
+            if (n.Audience == TeachNotice.Students)
+            {
+                // The states of one session reach phones in the order they happened. An earlier one that another
+                // round is still sending goes first: this one waits for the next round.
+                if (await db.TeachNotices.AnyAsync(x => x.Audience == TeachNotice.Students && x.SectionId == n.SectionId && x.Tag == n.Tag
+                        && x.Id < n.Id && x.SentAt == null && x.ClaimedAt != null && x.ClaimedAt >= stale, ct))
+                    continue;
+                // A later state is waiting too (this one's sender died after claiming it): only the later one is
+                // sent, so "cancelled" never arrives on top of "back on". Left alone while someone holds the claim.
+                if (await db.TeachNotices.AnyAsync(x => x.Audience == TeachNotice.Students && x.SectionId == n.SectionId && x.Tag == n.Tag && x.Id > n.Id, ct))
+                {
+                    await db.TeachNotices.Where(x => x.Id == n.Id && x.SentAt == null && (x.ClaimedAt == null || x.ClaimedAt < stale))
+                        .ExecuteUpdateAsync(u => u.SetProperty(x => x.SentAt, now), ct);
+                    continue;
+                }
+            }
+
+            // The claim: one statement, so of two rounds only one gets the row. A row an undo or an edit deleted
+            // meanwhile is claimed by nobody and never sent.
+            if (await db.TeachNotices.Where(x => x.Id == n.Id && x.SentAt == null && (x.ClaimedAt == null || x.ClaimedAt < stale))
+                    .ExecuteUpdateAsync(u => u.SetProperty(x => x.ClaimedAt, now), ct) != 1)
+                continue;
+
+            var ttl = n.ExpiresAt is DateTimeOffset until ? (int)Math.Clamp((until - now).TotalSeconds, 60, LongestTtl) : LongestTtl;
+            var note = new Note(n.Title, n.Body, n.Url, n.Tag, ttl);
+            switch (n.Audience)
+            {
+                case TeachNotice.Students:
+                    // Everyone who picked the section, has a device and didn't mute changes: who a timetable change is told to.
+                    var students = await db.Picks.Where(p => p.SectionId == n.SectionId && !p.Student.MuteChanges && db.PushSubscriptions.Any(x => x.StudentId == p.StudentId))
+                        .Select(p => p.StudentId).Distinct().ToListAsync(ct);
+                    if (students.Count > 0) await push.SendAsync(db, students, note, ct);
+                    break;
+                case TeachNotice.ToTeacher:
+                    if (await db.Teachers.AsNoTracking().FirstOrDefaultAsync(t => t.Id == n.TeacherId, ct) is { } teacher)
+                        await push.SendToTeacherAsync(db, teacher, note, ct);
+                    break;
+                case TeachNotice.Staff:
+                    // Owners who are students have devices. RSA and dashboard owners are told on the dashboard.
+                    var owners = await db.Students.Where(s => s.IsOwner && db.PushSubscriptions.Any(x => x.StudentId == s.Id)).Select(s => s.Id).ToListAsync(ct);
+                    if (owners.Count > 0) await push.SendAsync(db, owners, note, ct);
+                    break;
+            }
+            await db.TeachNotices.Where(x => x.Id == n.Id && x.SentAt == null).ExecuteUpdateAsync(u => u.SetProperty(x => x.SentAt, now), ct);
+            pushed++;
+        }
+        return pushed;
     }
 }
