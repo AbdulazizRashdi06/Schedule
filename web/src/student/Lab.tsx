@@ -1149,7 +1149,7 @@ function WeekPage({
                         {s.span > 1 && `–${s.meeting.end}`}
                       </span>
                       {s.off ? (
-                        <span className="label mt-auto text-[8px] tracking-normal">{cell.length > 1 ? 'Off' : tag}</span>
+                        <span className="label mt-auto text-[8px] tracking-normal">{cell.length > 1 || (days.length > 5 && s.off === 'cancelled') ? 'Off' : tag}</span>
                       ) : (
                         cell.length === 1 && <span className="mt-auto truncate text-[11px] font-semibold">{s.meeting.room}</span>
                       )}

@@ -109,7 +109,7 @@ function FreshStep({ kind, name, onBack, onDone }: { kind: 'teacher' | 'student'
           {kind === 'teacher' ? (
             <>
               Your last sign-in code is more than a week old. We’ll email a new one to{' '}
-              <span className="rounded-lg bg-ice px-2 py-0.5 font-mono text-[14px] break-all">{masked(name)}</span>
+              <span className="rounded-lg bg-ice px-2 py-0.5 font-mono text-[14px] whitespace-nowrap">{masked(name)}</span>
             </>
           ) : (
             'Before you change a class, we’ll email a new sign-in code to your university address.'
