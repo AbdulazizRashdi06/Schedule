@@ -593,6 +593,7 @@ public static class ChangeRules
                         {
                             var (from, to) = (session.Start.ToTimeSpan() + shift, session.End.ToTimeSpan() + shift);
                             if (from < TimeSpan.Zero || to >= TimeSpan.FromDays(1)) return Errors.BadRequest("The other session that day can't be moved the same way: it would run past midnight.");
+                            if (StartUtc(date.AddDays(days), TimeOnly.FromTimeSpan(from)) <= now) return Errors.BadRequest("The other session that day can't be moved the same way: its new time has passed.");
                             // It keeps its own room, shifted by the same number of days and minutes.
                             rows.Add(Row(w, actor, d, other, t, session, date, date.AddDays(days), TimeOnly.FromTimeSpan(from), TimeOnly.FromTimeSpan(to), session.Room, now));
                         }
@@ -616,7 +617,8 @@ public static class ChangeRules
         }
         catch (DbUpdateException)
         {
-            // The index that allows one live change per session said no.
+            // The index that allows one live change per session said no. Nothing of this request stays.
+            await db.Database.RollbackTransactionAsync(ct);
             return Errors.Conflict(AlreadyChanged);
         }
         return await AnswerAsync(db, w, actor, groups.Select(g => g[0].GroupId).ToList(), now, ct);
@@ -661,7 +663,7 @@ public static class ChangeRules
                 _ => Row(w, actor, d, group, t.Class, t.Session, old.OrigDate, d.NewDate, d.NewStart, d.NewEnd, d.Room, now),
             };
             // Still the same session on students' phones, and still the kind of class it was.
-            (row.Tag, row.SessionType) = (old.Tag, d.SessionType);
+            (row.Tag, row.SessionType) = (old.Tag, d.Kind == ClassChanges.Extra ? d.SessionType : old.SessionType);
             rows.Add(row);
             previous[t.Class.Section.Id] = old;
         }
@@ -673,6 +675,8 @@ public static class ChangeRules
         }
         catch (DbUpdateException)
         {
+            // Nothing of this request stays: the old rows are live again.
+            await db.Database.RollbackTransactionAsync(ct);
             return Errors.Conflict(AlreadyChanged);
         }
         return await AnswerAsync(db, w, actor, [group], now, ct);

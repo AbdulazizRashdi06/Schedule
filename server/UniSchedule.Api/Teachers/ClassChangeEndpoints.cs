@@ -16,6 +16,19 @@ public static class ClassChangeEndpoints
     /// <summary>A group id is 32 hex characters; anything else can't name a change.</summary>
     static bool IsGroup(string? id) => id is { Length: 32 } && id.All(char.IsAsciiHexDigitLower);
 
+    /// <summary>
+    /// One write, in one transaction that is opened before anything is read: it takes the database's write lock, so
+    /// two changes to one session, or a change and a timetable upload, never interleave. The time is read after the
+    /// lock is held. A refusal has written nothing; one that came after a first save rolled the transaction back itself.
+    /// </summary>
+    static async Task<IResult> WriteAsync(AppDb db, TimeProvider clock, Func<DateTimeOffset, Task<IResult>> write, CancellationToken ct)
+    {
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        var result = await write(clock.GetUtcNow());
+        if (db.Database.CurrentTransaction is not null) await tx.CommitAsync(ct);
+        return result;
+    }
+
     public static void MapClassChanges(this RouteGroupBuilder teach)
     {
         // Numbers and warnings for a change. Saves nothing, and needs no fresh code.
@@ -25,15 +38,10 @@ public static class ClassChangeEndpoints
             return await ChangeRules.PreviewAsync(db, http.Teach(), body, now, TeachActor.CodeFresh(http, now), config, ct);
         });
 
-        // Each write opens its transaction first (it takes the database's write lock), then reads the time, then
-        // checks and writes. So two changes to one session, or a change and a timetable upload, never interleave.
         teach.MapPost("/changes", async (ChangeRules.Body body, HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) =>
         {
             if (TeachActor.CodeNeeded(http, clock) is { } needsCode) return needsCode;
-            await using var tx = await db.Database.BeginTransactionAsync(ct);
-            var result = await ChangeRules.CreateAsync(db, http.Teach(), body, clock.GetUtcNow(), ct);
-            await tx.CommitAsync(ct);
-            return result;
+            return await WriteAsync(db, clock, now => ChangeRules.CreateAsync(db, http.Teach(), body, now, ct), ct);
         });
 
         // Edits a change without undoing it first.
@@ -41,10 +49,7 @@ public static class ClassChangeEndpoints
         {
             if (TeachActor.CodeNeeded(http, clock) is { } needsCode) return needsCode;
             if (!IsGroup(groupId)) return Errors.Conflict(ChangeRules.Gone);
-            await using var tx = await db.Database.BeginTransactionAsync(ct);
-            var result = await ChangeRules.ReplaceAsync(db, http.Teach(), groupId, body, clock.GetUtcNow(), ct);
-            await tx.CommitAsync(ct);
-            return result;
+            return await WriteAsync(db, clock, now => ChangeRules.ReplaceAsync(db, http.Teach(), groupId, body, now, ct), ct);
         });
 
         // Undo also notifies a whole class, so it asks for a fresh code too.
@@ -52,10 +57,7 @@ public static class ClassChangeEndpoints
         {
             if (TeachActor.CodeNeeded(http, clock) is { } needsCode) return needsCode;
             if (!IsGroup(groupId)) return Errors.Conflict(ChangeRules.Gone);
-            await using var tx = await db.Database.BeginTransactionAsync(ct);
-            var result = await ChangeRules.UndoAsync(db, http.Teach(), groupId, clock.GetUtcNow(), ct);
-            await tx.CommitAsync(ct);
-            return result;
+            return await WriteAsync(db, clock, now => ChangeRules.UndoAsync(db, http.Teach(), groupId, now, ct), ct);
         });
 
         teach.MapGet("/changes", async (HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) =>

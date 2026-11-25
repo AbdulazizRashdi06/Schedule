@@ -20,6 +20,8 @@ public sealed class TeacherCodeLimiter(TimeProvider clock, IConfiguration config
     readonly Dictionary<string, List<DateTimeOffset>> byIp = [];
     readonly Dictionary<string, List<DateTimeOffset>> byEmail = [];
     readonly List<DateTimeOffset> newAddresses = [];
+    /// <summary>Tries for new addresses that were let through and whose code is still being checked.</summary>
+    int checkingNew;
     DateTimeOffset? lastAlert;
 
     /// <summary>This address has used up its wrong teacher codes for the hour (browsers the email signed in on aren't held to it).</summary>
@@ -85,7 +87,11 @@ public sealed class TeacherCodeLimiter(TimeProvider clock, IConfiguration config
             var slot = new Slot { Trusted = trusted, At = now, New = !hasAccount };
             if (trusted) slot.Email = Add(byEmail, email, now, now - LoginCodes.Day) ? email : null;
             else slot.Ip = Add(byIp, ip, now, now - Hour) ? ip : null;
-            if (slot.New) newAddresses.Add(now);
+            if (slot.New)
+            {
+                newAddresses.Add(now);
+                checkingNew++;
+            }
             return (slot, Refusal.None);
         }
     }
@@ -99,7 +105,11 @@ public sealed class TeacherCodeLimiter(TimeProvider clock, IConfiguration config
             slot.Settled = true;
             if (slot.Email is not null && byEmail.TryGetValue(slot.Email, out var forEmail)) forEmail.Remove(slot.At);
             if (slot.Ip is not null && byIp.TryGetValue(slot.Ip, out var forIp)) forIp.Remove(slot.At);
-            if (slot.New) newAddresses.Remove(slot.At);
+            if (slot.New)
+            {
+                newAddresses.Remove(slot.At);
+                checkingNew = Math.Max(0, checkingNew - 1);
+            }
         }
     }
 
@@ -115,8 +125,10 @@ public sealed class TeacherCodeLimiter(TimeProvider clock, IConfiguration config
             if (slot.Settled) return false;
             slot.Settled = true;
             if (!slot.New) return false;
+            checkingNew = Math.Max(0, checkingNew - 1);
             Trim(newAddresses, now - Hour);
-            if (newAddresses.Count < forNew) return false;
+            // Only wrong codes make a pause worth telling staff about: tries still being checked may yet give their place back.
+            if (newAddresses.Count - checkingNew < forNew) return false;
             if (lastAlert is DateTimeOffset told && now - told < Hour) return false;
             lastAlert = now;
             return true;

@@ -41,8 +41,8 @@ public static class Absences
             // class in that very slot (two sessions swapped with each other).
             if (list.Count > 0)
             {
-                var sections = await db.Picks.Where(p => p.StudentId == id && p.Course.SemesterId == current!.Id && p.Section != null)
-                    .Select(p => p.Section!).Include(s => s.Meetings).ToListAsync(ct);
+                var sections = await db.Sections.Where(s => s.Course.SemesterId == current!.Id && db.Picks.Any(p => p.StudentId == id && p.SectionId == s.Id))
+                    .Include(s => s.Meetings).ToListAsync(ct);
                 var changes = await ClassChanges.LoadAsync(db, current!.Id, sections, ct);
                 if (!changes.Empty)
                     list = list.Where(a => !sections.Any(s => s.CourseId == a.CourseId
