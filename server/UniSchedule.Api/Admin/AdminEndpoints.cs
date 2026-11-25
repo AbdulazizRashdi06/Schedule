@@ -5,6 +5,7 @@ using UniSchedule.Api.Data;
 using UniSchedule.Api.Planner;
 using UniSchedule.Api.Schedule;
 using UniSchedule.Api.Students;
+using UniSchedule.Api.Teachers;
 
 namespace UniSchedule.Api.Admin;
 
@@ -86,8 +87,12 @@ public static class AdminEndpoints
             return semester is null ? Errors.NotFound("That semester doesn't exist.") : Results.Ok(await SemesterWeeks.ForAsync(db, semester, ct));
         });
 
-        admin.MapPut("/semesters/{id:int}/weeks", async (int id, WeeksBody body, AppDb db, CancellationToken ct) =>
+        admin.MapPut("/semesters/{id:int}/weeks", async (int id, WeeksBody body, AppDb db, TimeProvider clock, CancellationToken ct) =>
         {
+            // The write lock first, as a teacher's class change takes it: a change checked against the old weeks
+            // can't slip in behind this edit.
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            var now = clock.GetUtcNow();
             var semester = await db.Semesters.FindAsync([id], ct);
             if (semester is null) return Errors.NotFound("That semester doesn't exist.");
             DateOnly? start = null;
@@ -103,6 +108,9 @@ public static class AdminEndpoints
             semester.Week1Start = start;
             semester.LastWeek = body.LastWeek;
             await db.SaveChangesAsync(ct);
+            // A weekly class can stop existing in a week that is no longer taught: teachers' changes to it end.
+            await ClassChanges.EndWithoutBaseAsync(db, semester, ClassChanges.DroppedMoved, now, ct);
+            await tx.CommitAsync(ct);
             return Results.Ok(await SemesterWeeks.ForAsync(db, semester, ct));
         });
 
@@ -238,12 +246,12 @@ public static class AdminEndpoints
 
         // ---- Upload: the same file is sent to preview, then again to apply ----
 
-        admin.MapPost("/semesters/{id:int}/upload/preview", async (int id, HttpRequest req, AppDb db, CancellationToken ct) =>
+        admin.MapPost("/semesters/{id:int}/upload/preview", async (int id, HttpRequest req, AppDb db, TimeProvider clock, CancellationToken ct) =>
         {
             if (!await db.Semesters.AnyAsync(s => s.Id == id, ct)) return Errors.NotFound("That semester doesn't exist.");
             var (parsed, error) = await ReadUpload(req, db, ct);
             if (error is not null) return error;
-            return Results.Ok(await ScheduleImport.PreviewAsync(db, id, parsed!, ct));
+            return Results.Ok(await ScheduleImport.PreviewAsync(db, id, parsed!, ct, clock.GetUtcNow()));
         });
 
         admin.MapPost("/semesters/{id:int}/upload/apply", async (int id, HttpRequest req, HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) =>
@@ -254,8 +262,8 @@ public static class AdminEndpoints
             if (error is not null) return error;
             if (parsed!.Errors.Count > 0) return Errors.BadRequest($"Fix the {parsed.Errors.Count} problem row{(parsed.Errors.Count == 1 ? "" : "s")} first.");
             if (parsed.Courses.Count == 0) return Errors.BadRequest("The file has no courses.");
-            var preview = await ScheduleImport.PreviewAsync(db, id, parsed, ct);
             var now = clock.GetUtcNow();
+            var preview = await ScheduleImport.PreviewAsync(db, id, parsed, ct, now);
             await ScheduleImport.ApplyAsync(db, semester, parsed, clock, ct);
             await Labs.AlignAsync(db, semester.Id, ct);
             var fileName = Path.GetFileName(req.Form.Files.GetFile("file")?.FileName ?? "");
@@ -270,7 +278,12 @@ public static class AdminEndpoints
                 Removed = preview.Removed.Count,
             });
             await db.SaveChangesAsync(ct);
-            return Results.Ok(new { added = preview.Added.Count, updated = preview.Updated.Count, removed = preview.Removed.Count, preview.StudentsAffected });
+            return Results.Ok(new
+            {
+                added = preview.Added.Count, updated = preview.Updated.Count, removed = preview.Removed.Count, preview.StudentsAffected,
+                // Counted from what the apply did, not from the preview: it decides again inside its own transaction.
+                teacherChangesDropped = await ClassChanges.DroppedSinceAsync(db, id, now, ct),
+            });
         });
 
         // ---- Courses and sections (enrollment counts only) ----
@@ -299,7 +312,7 @@ public static class AdminEndpoints
             return Results.Ok(courses);
         });
 
-        admin.MapGet("/courses/{id:int}", async (int id, AppDb db, CancellationToken ct) =>
+        admin.MapGet("/courses/{id:int}", async (int id, AppDb db, TimeProvider clock, CancellationToken ct) =>
         {
             var course = await db.Courses.Where(c => c.Id == id)
                 .Include(c => c.Semester)
@@ -311,9 +324,20 @@ public static class AdminEndpoints
                 .GroupBy(p => p.SectionId!.Value).Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count, ct);
             var noSection = await db.Picks.CountAsync(p => p.CourseId == id && p.SectionId == null, ct);
             var dto = Dto.Of(course);
+            // Teachers' live changes on its sections that aren't over: saving another day or time drops them.
+            var sectionIds = course.Sections.Select(s => s.Id).ToList();
+            var today = DateOnly.FromDateTime(clock.GetUtcNow().ToOffset(TimeSpan.FromHours(4)).DateTime);
+            var teacherChanges = (await db.ClassChanges.AsNoTracking().Where(c => c.EndedAt == null && c.SectionId != null && sectionIds.Contains(c.SectionId.Value)).ToListAsync(ct))
+                .Where(c => ClassChanges.Latest(c) >= today).OrderBy(c => c.OrigDate ?? c.NewDate).ThenBy(c => c.OrigStart ?? c.NewStart).ThenBy(c => c.Id)
+                .Select(c => new
+                {
+                    sectionId = c.SectionId, kind = c.Kind, date = PlannerEngine.Iso((c.OrigDate ?? c.NewDate)!.Value), start = Timeslots.Format((c.OrigStart ?? c.NewStart)!.Value),
+                    what = ClassChanges.What(c), by = c.ByName,
+                }).ToList();
             return Results.Ok(new
             {
                 course = dto,
+                teacherChanges,
                 semester = Dto.Of(course.Semester),
                 weeks = await SemesterWeeks.ForAsync(db, course.Semester, ct),
                 enrollment = dto.Sections.ToDictionary(s => s.Id.ToString(CultureInfo.InvariantCulture), s => counts.GetValueOrDefault(s.Id)),
@@ -321,8 +345,14 @@ public static class AdminEndpoints
             });
         });
 
+        // A hand edit follows the same rules as a sync: teachers' changes on the section are kept, merged or dropped by
+        // ClassChanges.ReconcileAsync, inside this transaction.
         admin.MapPut("/sections/{id:int}", async (int id, SectionBody body, AppDb db, TimeProvider clock, CancellationToken ct) =>
         {
+            // The write lock first, so a teacher's change and this edit never interleave. Times are read once it is
+            // held, so change times follow commit order, as the notification worker needs (ScheduleImport.ApplyAsync).
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            var now = clock.GetUtcNow();
             var section = await db.Sections.Include(s => s.Meetings).Include(s => s.Course).ThenInclude(c => c.Semester)
                 .FirstOrDefaultAsync(s => s.Id == id, ct);
             if (section is null) return Errors.NotFound("That section doesn't exist.");
@@ -331,13 +361,17 @@ public static class AdminEndpoints
             var instructor = body.Instructor?.Trim() ?? "";
             var change = ScheduleImport.DescribeChange(section.Instructor, section.Meetings, instructor, meetings!.Select(ParsedMeeting.Of));
             if (change is null) return Results.Ok(Dto.Of(section));
+            var semester = section.Course.Semester;
+            var tell = await ClassChanges.StartAsync(db, semester, now, ct);
+            var quiet = tell is not null && await ClassChanges.ReconcileAsync(db, semester, section.Course, section, section.Instructor, instructor,
+                section.Meetings.Select(ParsedMeeting.Of).ToList(), meetings!.Select(ParsedMeeting.Of).ToList(), change, tell, now, ct);
             section.Instructor = instructor;
             db.Meetings.RemoveRange(section.Meetings);
             section.Meetings = meetings!;
-            // Students only get the "Changed" badge for a published semester. Stamped once the write lock is held, so
-            // change times follow commit order, as the notification worker needs (ScheduleImport.ApplyAsync).
-            await using var tx = await db.Database.BeginTransactionAsync(ct);
-            if (section.Course.Semester.IsCurrent) { section.ChangedAt = clock.GetUtcNow(); section.ChangeSummary = change; }
+            // Students only get the "Changed" badge for a published semester, and not when they see the same sessions
+            // as before (the edit only caught up with a teacher's change).
+            if (semester.IsCurrent && !quiet) { section.ChangedAt = now; section.ChangeSummary = change; }
+            if (tell is not null) await ClassChanges.TellTeachersAsync(db, tell, now, ct);
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             return Results.Ok(Dto.Of(section));
@@ -466,7 +500,7 @@ public static class AdminEndpoints
 
         // ---- Stats (counts only) ----
 
-        admin.MapGet("/stats", async (int? semesterId, HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) =>
+        admin.MapGet("/stats", async (int? semesterId, HttpContext http, AppDb db, TimeProvider clock, TeacherCodeLimiter teacherCodes, CancellationToken ct) =>
         {
             var isOwner = http.User.IsOwner();
             var current = await db.Semesters.Where(s => s.IsCurrent).FirstOrDefaultAsync(ct);
@@ -490,6 +524,12 @@ public static class AdminEndpoints
             var topSections = sid is null ? [] : await db.Sections.Where(s => s.Course.SemesterId == sid)
                 .Select(s => new { s.Id, courseId = s.CourseId, s.Course.Code, s.Number, students = db.Picks.Count(p => p.SectionId == s.Id) })
                 .OrderByDescending(x => x.students).ThenBy(x => x.Code).Take(8).ToListAsync(ct);
+            // Teachers who made more than 5 class changes today: the dashboard is how RSA and dashboard owners are alerted.
+            var busy = (await db.ClassChanges.Where(c => c.TeacherId != null && c.OnBehalfOf == null && c.CreatedAt >= todayStart)
+                    .Select(c => new { TeacherId = c.TeacherId!.Value, c.GroupId }).Distinct().ToListAsync(ct))
+                .GroupBy(c => c.TeacherId).Where(g => g.Count() > ChangeRules.BusyAfter).ToDictionary(g => g.Key, g => g.Count());
+            var busyAccounts = busy.Count == 0 ? [] : await db.Teachers.AsNoTracking().Where(t => busy.Keys.Contains(t.Id)).ToListAsync(ct);
+            var busyNames = await TeacherPages.ShownAsync(db, busyAccounts, ct);
             return Results.Ok(new
             {
                 semester = current is null ? null : Dto.Of(current),
@@ -513,6 +553,11 @@ public static class AdminEndpoints
                     reportedNotes = sid is null ? [] : await db.ClassNotes.Where(n => n.IsPublic && n.ReportCount > 0 && n.HiddenAt == null && n.Course.SemesterId == sid)
                         .GroupBy(n => new { n.CourseId, n.Course.Code })
                         .Select(g => new { courseId = g.Key.CourseId, code = g.Key.Code, notes = g.Count() }).ToListAsync(ct),
+                    // Teachers who picked a name and wait for staff to approve it.
+                    teachersWaiting = await db.TeacherNames.CountAsync(n => n.State == TeacherName.Pending, ct),
+                    busyTeachers = busyAccounts.OrderByDescending(t => busy[t.Id]).ThenBy(t => t.Id).Select(t => new { id = t.Id, name = busyNames[t.Id], changes = busy[t.Id] }),
+                    // When the pause on first-time teacher sign-ins ends (many wrong codes for addresses with no account), or null.
+                    teacherSignInPaused = teacherCodes.NewPausedUntil(),
                 },
                 recentUploads = uploads.Select(u => new { at = u.At, u.FileName, by = OwnerEndpoints.ShownActor(u.By, isOwner), u.Added, u.Updated, u.Removed }),
             });

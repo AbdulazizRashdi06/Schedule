@@ -24,7 +24,12 @@ public static class DaysOff
         // One day off, or a run of them: with "to", every day from date to to (inclusive) is off.
         admin.MapPost("", async (int id, DayOffBody body, HttpContext http, AppDb db, TimeProvider clock, CancellationToken ct) =>
         {
-            if (!await db.Semesters.AnyAsync(s => s.Id == id, ct)) return Errors.NotFound("That semester doesn't exist.");
+            // The write lock first, as a teacher's class change takes it: a change checked just before this day
+            // became off can't slip in behind it.
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            var now = clock.GetUtcNow();
+            var semester = await db.Semesters.FindAsync([id], ct);
+            if (semester is null) return Errors.NotFound("That semester doesn't exist.");
             var from = body.Date is null ? null : ScheduleImport.ParseDate(body.Date);
             if (from is null) return Errors.BadRequest("Pick the day off's date.");
             var until = string.IsNullOrWhiteSpace(body.To) ? from : ScheduleImport.ParseDate(body.To);
@@ -38,9 +43,12 @@ public static class DaysOff
             {
                 // Adding a day that's already off renames it.
                 if (existing.FirstOrDefault(x => x.Date == d) is { } same) same.Name = name;
-                else db.DaysOff.Add(new DayOff { SemesterId = id, Date = d, Name = name, CreatedBy = by, CreatedAt = clock.GetUtcNow() });
+                else db.DaysOff.Add(new DayOff { SemesterId = id, Date = d, Name = name, CreatedBy = by, CreatedAt = now });
             }
             await db.SaveChangesAsync(ct);
+            // A weekly class doesn't meet on a day off: teachers' changes to its session that day end, and they are told.
+            await ClassChanges.EndWithoutBaseAsync(db, semester, ClassChanges.DroppedDayOff, now, ct);
+            await tx.CommitAsync(ct);
             return Results.Ok(await db.DaysOff.Where(d => d.SemesterId == id).OrderBy(d => d.Date)
                 .Select(d => new { d.Id, date = d.Date.ToString("yyyy-MM-dd"), d.Name }).ToListAsync(ct));
         });

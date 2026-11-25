@@ -457,7 +457,7 @@ public static class ClassChanges
     /// when every section that carried it now carries one single other name ("Raed Bolbol → Raed Bolbul. Same
     /// person?"). The hint is never taken by itself: staff accept it with one tap. Saves.
     /// </summary>
-    public static async Task AfterApplyAsync(AppDb db, Semester semester, ChangeTell tell, DateTimeOffset now, CancellationToken ct)
+    public static async Task AfterApplyAsync(AppDb db, Semester semester, ChangeTell tell, CancellationToken ct)
     {
         var sections = await db.Sections.Where(s => s.Course.SemesterId == semester.Id).Select(s => new { s.Id, s.Course.Code, s.Number, s.Instructor }).ToListAsync(ct);
         static (string, string) Text(string code, string number) => (code.ToUpperInvariant(), number.ToUpperInvariant());

@@ -218,6 +218,12 @@ public static partial class OwnerEndpoints
             await db.UsageHours.ExecuteDeleteAsync(ct);
             // Sign-in codes name the IDs that asked for them (codes still in flight stop working).
             await db.LoginCodes.ExecuteDeleteAsync(ct);
+            // Teacher accounts and their class changes, before the semesters they point at. Names, added sections,
+            // own slots, devices and office hours go with each account. Blocked emails stay blocked.
+            await db.TeachNotices.ExecuteDeleteAsync(ct);
+            await db.ClassChanges.ExecuteDeleteAsync(ct);
+            var teachers = await db.Teachers.ExecuteDeleteAsync(ct);
+            await db.AppSettings.Where(x => x.Key == Teachers.TeachReminders.Since).ExecuteDeleteAsync(ct);
             var semesters = await db.Semesters.ExecuteDeleteAsync(ct);
             var students = await db.Students.Where(s => !s.IsOwner).ExecuteDeleteAsync(ct);
             // Their memberships went with them; a group nobody is left in goes too (its name is student data).
@@ -228,7 +234,7 @@ public static partial class OwnerEndpoints
                 .SetProperty(s => s.SetupCompletedAt, (DateTimeOffset?)null), ct);
             var majors = await db.Majors.ExecuteDeleteAsync(ct);
             await tx.CommitAsync(ct);
-            return Results.Ok(new { semesters, students, majors });
+            return Results.Ok(new { semesters, students, majors, teachers });
         }).RequireAuthorization(Session.OwnerPolicy);
 
         students.MapDelete("/{id:int}", async (int id, HttpContext http, AppDb db, CancellationToken ct) =>

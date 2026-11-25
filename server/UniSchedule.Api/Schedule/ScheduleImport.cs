@@ -467,7 +467,7 @@ public static class ScheduleImport
         }
         if (tell is not null) await ClassChanges.TellTeachersAsync(db, tell, now, ct);
         await db.SaveChangesAsync(ct);
-        if (tell is not null) await ClassChanges.AfterApplyAsync(db, semester, tell, now, ct);
+        if (tell is not null) await ClassChanges.AfterApplyAsync(db, semester, tell, ct);
         await tx.CommitAsync(ct);
     }
 }

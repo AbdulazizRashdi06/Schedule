@@ -69,4 +69,64 @@ public class DeleteAllDataTests(ApiFactory factory) : IClassFixture<ApiFactory>
         // Accounts survive: both can still use the dashboard.
         Assert.Equal(HttpStatusCode.OK, (await rsa.GetAsync("/api/admin/semesters")).StatusCode);
     }
+
+    [Fact]
+    public async Task Delete_all_data_removes_teacher_accounts_and_their_changes_and_keeps_blocked_emails()
+    {
+        var owner = await Staff("owner-wipe-teachers", AdminRole.Owner);
+        var id = (await Json(await owner.PostAsJsonAsync("/api/admin/semesters", new { term = "Fall", year = 2052 }))).GetProperty("id").GetInt32();
+        using var file = new MultipartFormDataContent { { new ByteArrayContent("code,name,major,type,year,section,instructor,days,time,room\nT101,Teach,TP,Core,1,1,Salim Al Harthy,Sun,08:00-09:30,R1\n"u8.ToArray()), "file", "t.csv" } };
+        Assert.Equal(HttpStatusCode.OK, (await owner.PostAsync($"/api/admin/semesters/{id}/upload/apply", file)).StatusCode);
+
+        // A staff account with everything a teacher can have, an owner (a student) with teaching rights, and a blocked email.
+        var studentOwner = await TeacherTestKit.SignInStudent(factory, ApiFactory.OwnerId);
+        var teacher = await factory.Services.AddTeacher("wipe.me@gutech.edu.om", "Salim Al Harthy");
+        await factory.Services.Db(async db =>
+        {
+            var now = DateTimeOffset.UtcNow;
+            var section = await db.Sections.SingleAsync(s => s.Course.SemesterId == id);
+            var ownerRow = await db.Students.SingleAsync(s => s.UniversityId == ApiFactory.OwnerId);
+            db.Teachers.Add(new UniSchedule.Api.Teachers.Teacher { StudentId = ownerRow.Id, DisplayName = "Owner TA", CreatedAt = now });
+            db.TeacherSections.Add(new() { TeacherId = teacher.Id, SemesterId = id, SectionId = section.Id, CourseCode = "T101", SectionNumber = "1", Mode = "hidden", CreatedAt = now });
+            db.TeacherSeens.Add(new() { TeacherId = teacher.Id, SectionId = section.Id, SeenAt = now });
+            db.TeacherSlots.Add(new() { TeacherId = teacher.Id, SemesterId = id, Title = "Meeting", Day = 1, Start = new(10, 0), End = new(11, 0), CreatedAt = now });
+            db.TeacherPushSubscriptions.Add(new() { TeacherId = teacher.Id, Endpoint = "https://push.example/wipe", P256dh = "k", Auth = "a", CreatedAt = now });
+            db.OfficeHours.Add(new() { TeacherId = teacher.Id, Day = 2, Start = new(12, 0), End = new(13, 0), Room = "C1" });
+            db.ClassChanges.Add(new()
+            {
+                SemesterId = id, SectionId = section.Id, CourseCode = "T101", CourseName = "Teach", SectionNumber = "1", GroupId = Guid.NewGuid().ToString("N"), Kind = "extra",
+                SessionType = "lecture", NewDate = new(2052, 10, 1), NewStart = new(10, 0), NewEnd = new(11, 0), NewRoom = "R1", Tag = "t", TeacherId = teacher.Id,
+                ByKind = "teacher", ById = teacher.Id, ByLabel = teacher.Email!, ByName = "Salim Al Harthy", CreatedAt = now,
+            });
+            db.TeachNotices.Add(new() { Audience = "students", SectionId = section.Id, Kind = "change", Title = "x", Tag = "t", CreatedAt = now });
+            db.TeachNotices.Add(new() { Audience = "teacher", TeacherId = teacher.Id, Kind = "undone", Title = "x", Tag = "t", CreatedAt = now });
+            db.TeachNotices.Add(new() { Audience = "staff", Kind = "many-changes", Title = "x", Tag = "t", CreatedAt = now });
+            db.BlockedEmails.Add(new() { Email = "blocked.before@gutech.edu.om", BlockedAt = now, BlockedBy = "owner-wipe-teachers" });
+            db.AppSettings.Add(new AppSetting { Key = UniSchedule.Api.Teachers.TeachReminders.Since, Value = now.ToString("O"), UpdatedBy = "system" });
+            await db.SaveChangesAsync();
+        });
+        Assert.Equal(HttpStatusCode.OK, (await studentOwner.GetAsync("/api/teach/me")).StatusCode);
+
+        var wiped = await Json(await owner.PostAsJsonAsync("/api/admin/delete-all-data", new { confirm = "DELETE ALL DATA" }));
+        Assert.True(wiped.GetProperty("teachers").GetInt32() >= 2);
+        await factory.Services.Db(async db =>
+        {
+            Assert.Equal(0, await db.Teachers.CountAsync());
+            Assert.Equal(0, await db.TeacherNames.CountAsync());
+            Assert.Equal(0, await db.TeacherSections.CountAsync());
+            Assert.Equal(0, await db.TeacherSeens.CountAsync());
+            Assert.Equal(0, await db.TeacherSlots.CountAsync());
+            Assert.Equal(0, await db.TeacherPushSubscriptions.CountAsync());
+            Assert.Equal(0, await db.OfficeHours.CountAsync());
+            Assert.Equal(0, await db.ClassChanges.CountAsync());
+            Assert.Equal(0, await db.TeachNotices.CountAsync());
+            Assert.False(await db.AppSettings.AnyAsync(x => x.Key == UniSchedule.Api.Teachers.TeachReminders.Since));
+            // Blocked emails stay blocked.
+            Assert.True(await db.BlockedEmails.AnyAsync(b => b.Email == "blocked.before@gutech.edu.om"));
+            // The owner is still a student account, without the teaching profile.
+            Assert.True(await db.Students.AnyAsync(s => s.UniversityId == ApiFactory.OwnerId));
+        });
+        Assert.Equal(HttpStatusCode.Forbidden, (await studentOwner.GetAsync("/api/teach/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await studentOwner.GetAsync("/api/auth/session")).StatusCode);
+    }
 }

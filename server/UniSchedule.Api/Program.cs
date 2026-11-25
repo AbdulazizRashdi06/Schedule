@@ -164,6 +164,7 @@ api.MapPersonal();
 api.MapAdmin();
 api.MapOwner();
 api.MapFeedback();
+api.MapTeacherAdmin();
 api.MapSync();
 api.MapConnections();
 api.MapGroups();

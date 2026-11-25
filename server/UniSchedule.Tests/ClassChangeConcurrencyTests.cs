@@ -110,4 +110,46 @@ public class ClassChangeConcurrencyTests
         }
         await w.AssertNoOrphans();
     }
+
+    [Fact]
+    public async Task A_change_posted_while_a_timetable_apply_runs_is_either_reconciled_or_refused()
+    {
+        using var w = await TeachWorld.Create();
+        var cs = await w.Section("CS2201", "1");
+        var timetable = await (await w.Owner.GetAsync($"/api/admin/semesters/{w.Semester}/export.csv")).Content.ReadAsStringAsync();
+        foreach (var date in new[] { w.Date(0, 1), w.Date(1, 1) })
+        {
+            // The upload moves the very session the teacher is cancelling.
+            var line = timetable.Split('\n').Single(l => l.StartsWith("CS2201,") && l.Contains(Iso(date)));
+            timetable = timetable.Replace(line, line.Replace("08:00-09:30", "10:00-11:30"));
+            var upload = System.Text.Encoding.UTF8.GetBytes(timetable);
+            var statuses = await Together(
+                () => w.Teacher2.Change(new { kind = "cancel", sectionId = cs, date = Iso(date), start = "08:00" }),
+                async () =>
+                {
+                    using var file = new MultipartFormDataContent { { new ByteArrayContent(upload), "file", "t.csv" } };
+                    return await w.Owner.PostAsync($"/api/admin/semesters/{w.Semester}/upload/apply", file);
+                });
+            Assert.Equal(HttpStatusCode.OK, statuses[1]);
+            var rows = (await w.Rows()).Where(c => c.OrigDate == date).ToList();
+            if (statuses[0] == HttpStatusCode.OK)
+            {
+                // The change committed first: the apply found it and dropped it, and told the teacher.
+                var row = Assert.Single(rows);
+                Assert.Equal(("dropped-moved", "system"), (row.EndReason, row.EndedBy));
+                Assert.Single(await w.Notices(TeachNotice.ToTeacher), n => n.Kind == "dropped" && n.GroupId == row.GroupId);
+            }
+            else
+            {
+                // The apply committed first: the change was checked against the new timetable, which has no session then.
+                Assert.Equal(HttpStatusCode.BadRequest, statuses[0]);
+                Assert.Empty(rows);
+            }
+            // Either way no change is left on a session that is gone, and students see the class at its new time.
+            Assert.Empty(await w.Live());
+            var seen = Sessions(await Json(await w.Students[0].GetAsync("/api/me/timetable")), date, date);
+            Assert.Equal("10:00", Assert.Single(seen, s => s.Code == "CS2201").Start);
+        }
+        await w.AssertNoOrphans();
+    }
 }

@@ -225,14 +225,14 @@ public static partial class SyncEndpoints
         // ---- Staff: check the latest sync and apply it ----
         var admin = api.MapGroup("/admin/semesters/{id:int}/sync").RequireAuthorization(Session.StaffPolicy);
 
-        admin.MapGet("", async (int id, AppDb db, CancellationToken ct) =>
+        admin.MapGet("", async (int id, AppDb db, TimeProvider clock, CancellationToken ct) =>
         {
             var last = await db.PendingSyncs.Where(p => p.SemesterId == id).OrderByDescending(p => p.Id).FirstOrDefaultAsync(ct);
             if (last is null) return Results.Ok(new { pending = (object?)null, lastApplied = (DateTimeOffset?)null });
             var lastApplied = await db.PendingSyncs.Where(p => p.SemesterId == id && p.AppliedAt != null).MaxAsync(p => p.AppliedAt, ct);
             if (last.AppliedAt is not null) return Results.Ok(new { pending = (object?)null, lastApplied });
             var parsed = ScheduleImport.Parse(JsonSerializer.Deserialize<List<ScheduleRow>>(last.RowsJson) ?? [], await ScheduleImport.FamilyCodesAsync(db, ct));
-            var preview = await ScheduleImport.PreviewAsync(db, id, parsed, ct);
+            var preview = await ScheduleImport.PreviewAsync(db, id, parsed, ct, clock.GetUtcNow());
             return Results.Ok(new
             {
                 pending = new { last.Id, last.ReceivedAt, last.Source, last.Courses, last.Classes, failed = last.Failed, preview },
@@ -250,8 +250,8 @@ public static partial class SyncEndpoints
             var parsed = ScheduleImport.Parse(JsonSerializer.Deserialize<List<ScheduleRow>>(pending.RowsJson) ?? [], await ScheduleImport.FamilyCodesAsync(db, ct));
             if (parsed.Errors.Count > 0) return Errors.BadRequest($"{parsed.Errors.Count} rows have problems, so it can't be applied.");
             if (parsed.Courses.Count == 0) return Errors.BadRequest("The sync has no courses.");
-            var preview = await ScheduleImport.PreviewAsync(db, id, parsed, ct);
             var now = clock.GetUtcNow();
+            var preview = await ScheduleImport.PreviewAsync(db, id, parsed, ct, now);
             await ScheduleImport.ApplyAsync(db, semester, parsed, clock, ct);
             await Labs.AlignAsync(db, semester.Id, ct);
             var by = await OwnerEndpoints.ActorName(http, db, ct);
@@ -263,7 +263,12 @@ public static partial class SyncEndpoints
                 Added = preview.Added.Count, Updated = preview.Updated.Count, Removed = preview.Removed.Count,
             });
             await db.SaveChangesAsync(ct);
-            return Results.Ok(new { added = preview.Added.Count, updated = preview.Updated.Count, removed = preview.Removed.Count, preview.StudentsAffected });
+            return Results.Ok(new
+            {
+                added = preview.Added.Count, updated = preview.Updated.Count, removed = preview.Removed.Count, preview.StudentsAffected,
+                // Counted from what the apply did: it decides again inside its own transaction.
+                teacherChangesDropped = await ClassChanges.DroppedSinceAsync(db, id, now, ct),
+            });
         });
     }
 }
