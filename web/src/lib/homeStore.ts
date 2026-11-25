@@ -36,7 +36,6 @@ type Saved = Data & { who?: string; savedAt: string }
 const FRESH_MS = 5_000
 /** Coming back to the tab after this long asks again, so a class cancelled meanwhile shows without a reload. */
 const STALE_MS = 60_000
-const NO_GHOSTS: Session[] = []
 
 /**
  * The signed-in person, as lib/session wrote it after the server's last answer ("student:24-0161"). Null before the
@@ -56,6 +55,8 @@ export function createHomeStore(cfg: {
   /** Where "I've seen this class's change" is posted. */
   seenUrl: string
   build: (tt: Timetable) => Session[]
+  /** The cancelled classes and the old slots of moved ones, drawn greyed and never counted. */
+  ghosts: (tt: Timetable) => Session[]
   /** false when nothing may be kept on the device (an owner viewing as a teacher). */
   canSave: () => boolean
 }) {
@@ -166,6 +167,7 @@ export function createHomeStore(cfg: {
     }, [fetchNow])
 
     const sessions = useMemo<Session[]>(() => (data?.tt ? cfg.build(data.tt) : []), [data])
+    const ghosts = useMemo<Session[]>(() => (data?.tt?.changes?.length ? cfg.ghosts(data.tt) : []), [data])
 
     const markSeen = useCallback((sectionId: number) => {
       api.post(cfg.seenUrl, { sectionId }).catch(() => {})
@@ -179,7 +181,7 @@ export function createHomeStore(cfg: {
       weeks: data?.me?.semester?.weeks ?? data?.teach?.semester?.weeks,
       tt: data?.tt ?? null,
       sessions,
-      ghosts: NO_GHOSTS,
+      ghosts,
       error,
       markSeen,
       offline,

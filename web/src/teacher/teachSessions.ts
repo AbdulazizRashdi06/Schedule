@@ -1,6 +1,6 @@
 import type { Meeting, OfficeHour, Timetable, TimetableClass } from '../lib/types'
 import { minutes } from '../lib/time'
-import { blockOn, buildSessions, markClashes, slotSpan, sortSessions, type Session } from '../lib/slots'
+import { blockOn, buildGhosts, buildSessions, markClashes, slotSpan, sortSessions, type Session } from '../lib/slots'
 
 /** Office hours dressed as a class so every view can show them: ids far below any own slot's, so nothing mistakes one for a class. */
 const OFFICE_ID = -1_000_000_000
@@ -52,7 +52,7 @@ export function buildTeachSessions(tt: Timetable): Session[] {
   const blocks: Session[] = []
   for (const [key, group] of byKey) {
     // The lead is the first by course code, as the server picks it for reminders.
-    const sorted = [...group].sort((a, b) => (a.cls.code < b.cls.code ? -1 : a.cls.code > b.cls.code ? 1 : a.cls.section.id - b.cls.section.id))
+    const sorted = [...group].sort(byCode)
     const lead = sorted[0]
     const members = sorted.filter((s, i) => i === 0 || sorted.slice(0, i).every((m) => joins(key, m, s)))
     if (members.length < 2) continue
@@ -73,6 +73,24 @@ export function buildTeachSessions(tt: Timetable): Session[] {
   // A teacher can't clash with themselves in one section, nor with their office hours. What is left after the
   // collapse with the same key is two sections of one course at one time, which is a clash.
   markClashes(out, (a, b) => !!a.office || !!b.office || a.cls.section.id === b.cls.section.id)
+  return sortSessions(out)
+}
+
+/** First by course code, then by section: the lead of a block, as the server picks it. */
+const byCode = (a: Session, b: Session) => (a.cls.code < b.cls.code ? -1 : a.cls.code > b.cls.code ? 1 : a.cls.section.id - b.cls.section.id)
+
+/**
+ * A teacher's cancelled classes and the old slots of moved ones. One real class under several codes that was changed
+ * in one go (one group) is one greyed block.
+ */
+export function buildTeachGhosts(tt: Timetable): Session[] {
+  const byGroup = new Map<string, Session[]>()
+  for (const g of buildGhosts(tt)) byGroup.set(g.change!.group, [...(byGroup.get(g.change!.group) ?? []), g])
+  const out: Session[] = []
+  for (const group of byGroup.values()) {
+    const members = [...group].sort(byCode)
+    out.push(members.length > 1 ? { ...members[0], merged: members } : members[0])
+  }
   return sortSessions(out)
 }
 

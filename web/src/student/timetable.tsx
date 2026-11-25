@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../lib/api'
 import type { Me, Timetable } from '../lib/types'
-import { buildSessions, campusNow } from '../lib/slots'
+import { buildGhosts, buildSessions, campusNow } from '../lib/slots'
 import { createHomeStore } from '../lib/homeStore'
 import { Icon, cx } from '../components/ui'
 
@@ -19,6 +19,7 @@ const home = createHomeStore({
   },
   seenUrl: '/me/seen',
   build: (tt) => buildSessions(tt),
+  ghosts: buildGhosts,
   canSave: () => true,
 })
 

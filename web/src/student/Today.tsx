@@ -1,7 +1,7 @@
 import { useContext, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { DAY_LONG, DAY_SHORT } from '../lib/time'
-import { TYPE_NAME, addDays, clashOn, clock, fmtDate, fmtDuration, isoDate, nowMinutes, onDate, sessionCode, sessionHref, type Session } from '../lib/slots'
+import { TYPE_NAME, addDays, changeLine, changeTag, clashOn, clock, fmtDate, fmtDuration, isoDate, nowMinutes, onDate, sessionCode, sessionHref, type Session } from '../lib/slots'
 import { Button, ErrorText, Sk, cx } from '../components/ui'
 import { useHome, useViewer } from '../lib/viewer'
 import TeachBanner from '../teacher/TeachBanner'
@@ -37,13 +37,14 @@ function DayActions({ date }: { date: Date }) {
   const lab = useContext(LabNav)
   const viewer = useViewer()
   const { teach } = useHome()
-  // Own slots belong to the person: an owner viewing as a teacher has none to add.
-  const canAdd = viewer.mode === 'student' || !!teach?.personal
+  // A student adds their own slot. A teacher chooses between that and an extra class; an owner viewing as a teacher
+  // has no own slots, so theirs is the extra class.
+  const label = viewer.mode === 'student' ? '+ Add a slot' : teach?.personal ? '+ Add a slot or class' : '+ Add an extra class'
   return (
     <div className="flex items-center justify-between gap-4 px-6 pt-4">
-      {lab && canAdd && (
+      {lab && (viewer.mode === 'student' || teach) && (
         <button type="button" onClick={() => lab.add(date)} className="label flex min-h-11 items-center text-[12px] link-hover">
-          + Add a slot
+          {label}
         </button>
       )}
       <WeekLink />
@@ -54,7 +55,7 @@ function DayActions({ date }: { date: Date }) {
 export default function Today() {
   const viewer = useViewer()
   const student = viewer.mode === 'student'
-  const { me, teach, tt, sessions, error, offline, retry } = useHome()
+  const { me, teach, tt, sessions, ghosts, error, offline, retry } = useHome()
   const now = useNow()
   const [menu, setMenu] = useState(false)
   const lab = useContext(LabNav)
@@ -73,6 +74,8 @@ export default function Today() {
   const upcoming = today.filter((s) => s.start > nowMin)
   const next = live ? undefined : upcoming[0]
   const rest = [...liveAll.slice(1), ...upcoming.filter((s) => s !== next)]
+  // Cancelled classes and the old slots of moved ones: listed greyed, never counted above.
+  const off = ghosts.filter((s) => onDate(s, now))
 
   // The next day with classes, for when today is over or free.
   const nextDate = Array.from({ length: 21 }, (_, i) => addDays(now, i + 1)).find((d) => sessions.some((s) => onDate(s, d)))
@@ -115,18 +118,19 @@ export default function Today() {
               ) : live ? (
                 <>
                   <LiveCard s={live} nowMin={nowMin} date={now} />
-                  {rest.length > 0 ? <List title="Up next" sessions={rest} date={now} /> : <LastOne>Last class today</LastOne>}
+                  {rest.length + off.length > 0 ? <List title={rest.length > 0 ? 'Up next' : 'Not on today'} sessions={rest} ghosts={off} date={now} /> : <LastOne>Last class today</LastOne>}
                 </>
               ) : next ? (
                 <>
                   <NextCard s={next} nowMin={nowMin} date={now} />
-                  {rest.length > 0 ? <List title="Later today" sessions={rest} date={now} /> : <LastOne>Nothing after this today</LastOne>}
+                  {rest.length + off.length > 0 ? <List title={rest.length > 0 ? 'Later today' : 'Not on today'} sessions={rest} ghosts={off} date={now} /> : <LastOne>Nothing after this today</LastOne>}
                 </>
               ) : today.length > 0 ? (
                 <>
                   <Card tone="navy" title="That’s it." size={72}>
                     Your last class ended at {today[today.length - 1].meeting.end}. Nothing else on today.
                   </Card>
+                  {off.length > 0 && <List title="Not on today" sessions={[]} ghosts={off} date={now} />}
                   {nextDate && (
                     <List title={tomorrow ? 'Tomorrow' : DAY_LONG[nextDate.getDay()]} sessions={nextDay} date={nextDate}>
                       <MoreLink to="/" onLab={() => lab?.day(nextDate)}>
@@ -137,7 +141,7 @@ export default function Today() {
                 </>
               ) : (
                 <>
-                  <FreeDay date={now} dayOff={tt.daysOff?.find((d) => d.date === isoDate(now))?.name} />
+                  {off.length > 0 ? <NothingOn ghosts={off} date={now} /> : <FreeDay date={now} dayOff={tt.daysOff?.find((d) => d.date === isoDate(now))?.name} />}
                   {nextDate && (
                     <List title={`Back on ${DAY_LONG[nextDate.getDay()]}`} sessions={nextDay} date={nextDate} />
                   )}
@@ -157,10 +161,11 @@ export default function Today() {
  * Any other day in the home screen's design: swiping sideways on Today lands here. The day's first class is the big
  * card and the rest are listed under it, the way Today shows what's next.
  */
-export function DayHome({ date, offset, sessions, dayOff }: { date: Date; offset: number; sessions: Session[]; dayOff?: string }) {
+export function DayHome({ date, offset, sessions, ghosts, dayOff }: { date: Date; offset: number; sessions: Session[]; ghosts: Session[]; dayOff?: string }) {
   const lab = useContext(LabNav)
   const list = sessions.filter((s) => onDate(s, date))
   const [first, ...rest] = list
+  const off = ghosts.filter((s) => onDate(s, date))
   const title = offset === 1 ? 'Tomorrow.' : offset === -1 ? 'Yesterday.' : `${DAY_LONG[date.getDay()]}.`
   return (
     <div className="min-h-[calc(100dvh-var(--week-cue,0px))] bg-cream text-navy">
@@ -185,8 +190,10 @@ export function DayHome({ date, offset, sessions, dayOff }: { date: Date; offset
         {first ? (
           <>
             <DayCard s={first} count={list.length} end={list[list.length - 1].meeting.end} date={date} />
-            {rest.length > 0 ? <List title="Later" sessions={rest} date={date} /> : <LastOne>Only class that day</LastOne>}
+            {rest.length + off.length > 0 ? <List title={rest.length > 0 ? 'Later' : 'Not on'} sessions={rest} ghosts={off} date={date} /> : <LastOne>Only class that day</LastOne>}
           </>
+        ) : off.length > 0 ? (
+          <NothingOn ghosts={off} date={date} />
         ) : (
           <FreeDay date={date} dayOff={dayOff} />
         )}
@@ -206,6 +213,21 @@ function FreeDay({ date, dayOff }: { date: Date; dayOff?: string }) {
     <Card tone="sky" title="Free day." size={80}>
       No classes on {DAY_LONG[date.getDay()]}. Sleep in, catch up, or don’t.
     </Card>
+  )
+}
+
+/** A day whose classes were all cancelled or moved away: it says so, over the greyed rows. */
+function NothingOn({ ghosts, date }: { ghosts: Session[]; date: Date }) {
+  const cancelled = ghosts.filter((s) => s.off === 'cancelled').length
+  const moved = ghosts.length - cancelled
+  const count = (n: number, what: string) => `${n} ${n === 1 ? 'class' : 'classes'} ${what}`
+  return (
+    <>
+      <Card tone="sky" title="Nothing on." size={72}>
+        {[cancelled > 0 && count(cancelled, 'cancelled'), moved > 0 && count(moved, 'moved')].filter(Boolean).join(', ')}.
+      </Card>
+      <List title={`Not on ${DAY_LONG[date.getDay()]}`} sessions={[]} ghosts={ghosts} date={date} />
+    </>
   )
 }
 
@@ -257,6 +279,8 @@ function Tags({ s, date, dark }: { s: Session; date: Date; dark?: boolean }) {
   return (
     <>
       {s.cls.changed && <span className={cx('label rounded-full px-2 py-0.5 text-[9px]', dark ? 'bg-cream text-navy' : 'bg-navy text-cream')}>Changed</span>}
+      {/* A teacher's change to this one session: moved here, another room, or an extra class. */}
+      {changeTag(s) && <span className={cx('label rounded-full px-2 py-0.5 text-[9px]', dark ? 'bg-sky text-navy' : 'bg-ice text-navy shadow-[inset_0_0_0_1.5px_var(--color-navy)]')}>{changeTag(s)}</span>}
       {clashOn(s, date) && <span className="label rounded-full bg-alert-ink px-2 py-0.5 text-[9px] text-cream">Clash</span>}
     </>
   )
@@ -405,31 +429,40 @@ function MoreLink({ to, onLab, children }: { to: string; onLab: () => void; chil
   )
 }
 
-function List({ title, sessions, date, children }: { title: string; sessions: Session[]; date: Date; children?: ReactNode }) {
+function List({ title, sessions, ghosts = [], date, children }: { title: string; sessions: Session[]; ghosts?: Session[]; date: Date; children?: ReactNode }) {
   const link = useClassLink()
   // A teacher can have two sections of one course in a day, and one class under several codes: the row says which.
   const teacher = useViewer().mode === 'teacher'
+  // Cancelled and moved-away classes keep their place in the day, by time.
+  const rows = [...sessions, ...ghosts].sort((a, b) => a.start - b.start)
   return (
     <section className="flex flex-col px-6 pt-[22px]">
       <div className="mb-2 flex items-baseline justify-between">
         <h2 className="display text-[22px] tracking-[-0.02em]">{title}</h2>
       </div>
       <ul>
-        {sessions.map((s, i) => (
+        {rows.map((s, i) => (
           <li key={i}>
             <Link {...link(s, date)} className="grid grid-cols-[84px_minmax(0,1fr)_24px] items-center gap-3 border-t-[2.5px] border-navy py-3.5">
-              <span className="display text-[34px] leading-none tracking-[-0.05em] tabular-nums">{s.meeting.start}</span>
+              <span className={cx('display text-[34px] leading-none tracking-[-0.05em] tabular-nums', s.off && 'text-navy/45 line-through decoration-[3px]')}>{s.meeting.start}</span>
               <span className="flex min-w-0 flex-col gap-0.5">
                 <span className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[18px] leading-[1.1] font-extrabold">{s.cls.name}</span>
-                  <Tags s={s} date={date} />
+                  <span className={cx('text-[18px] leading-[1.1] font-extrabold', s.off && 'text-navy/55')}>{s.cls.name}</span>
+                  {!s.off && <Tags s={s} date={date} />}
                 </span>
-                <span className="truncate font-mono text-[12px] uppercase">
-                  {TYPE_NAME[s.type]}, {s.meeting.room || 'Room TBA'}
-                  {teacher && !s.mine && !s.office && ` · ${sessionCode(s, date)}${!s.merged && s.cls.section.number ? ` sec ${s.cls.section.number}` : ''}`}
-                </span>
+                {s.off ? (
+                  <span className="truncate font-mono text-[12px] font-bold uppercase">
+                    {changeLine(s)}
+                    {teacher && ` · ${sessionCode(s, date)}`}
+                  </span>
+                ) : (
+                  <span className="truncate font-mono text-[12px] uppercase">
+                    {TYPE_NAME[s.type]}, {s.meeting.room || 'Room TBA'}
+                    {teacher && !s.mine && !s.office && ` · ${sessionCode(s, date)}${!s.merged && s.cls.section.number ? ` sec ${s.cls.section.number}` : ''}`}
+                  </span>
+                )}
               </span>
-              <Icon name="out" className="size-6" />
+              <Icon name="out" className={cx('size-6', s.off && 'text-navy/45')} />
             </Link>
           </li>
         ))}

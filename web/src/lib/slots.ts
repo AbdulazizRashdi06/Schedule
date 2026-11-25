@@ -1,5 +1,5 @@
 import type { ClassChange, CustomSlot, Meeting, OfficeHour, Timetable, TimetableClass, Weeks } from './types'
-import { meetingsOverlap, minutes } from './time'
+import { DAY_SHORT, meetingsOverlap, minutes } from './time'
 
 /** Class slots: every class is 1h30 with 15-minute breaks. The week grid is laid out by slot, not by hour. */
 export const SLOTS = [
@@ -139,6 +139,61 @@ export function buildSessions(tt: Timetable, opts?: { clashes?: boolean }): Sess
       }
   if (opts?.clashes !== false) markClashes(out)
   return sortSessions(out)
+}
+
+/**
+ * The sessions a teacher's change took off, kept to be drawn greyed in their place: one per cancelled class and one
+ * for the old slot of a moved one. They are not in buildSessions' list on purpose: everything that asks what is really
+ * on (the next class, counts, attendance, clashes, the share picture) never sees them.
+ */
+export function buildGhosts(tt: Timetable): Session[] {
+  const out: Session[] = []
+  for (const change of tt.changes ?? []) {
+    const from = change.from
+    if (!from || (change.kind !== 'cancel' && change.kind !== 'move')) continue
+    const cls = tt.classes.find((c) => c.section.id === change.sectionId)
+    if (!cls) continue
+    const meeting: Meeting = { day: new Date(`${from.date}T12:00`).getDay(), start: from.start, end: from.end, room: from.room, date: from.date }
+    const start = minutes(from.start)
+    const end = minutes(from.end)
+    out.push({ cls, meeting, type: change.type, ...slotSpan(start, end), start, end, clash: false, clashDates: [], notes: 0, noteDates: {}, change, off: change.kind === 'cancel' ? 'cancelled' : 'moved' })
+  }
+  return sortSessions(out)
+}
+
+/** A date as a change names it: "Wed 2 Dec". */
+export const fmtDay = (iso: string) => {
+  const d = new Date(`${iso}T12:00`)
+  return `${DAY_SHORT[d.getDay()]} ${fmtDate(d)}`
+}
+
+/** A time another day, as short as stays clear: "11:30" the same day, "Wed 11:30" within a week, else "Wed 9 Dec 11:30". */
+function whenFrom(here: string, there: { date: string; start: string }) {
+  if (here === there.date) return there.start
+  const days = Math.abs(new Date(`${there.date}T12:00`).getTime() - new Date(`${here}T12:00`).getTime()) / 86_400_000
+  return days < 7 ? `${DAY_SHORT[new Date(`${there.date}T12:00`).getDay()]} ${there.start}` : `${fmtDay(there.date)} ${there.start}`
+}
+
+/** The short name of what a change did to a session: "Cancelled", "Moved", "Room changed", "Extra class". */
+export function changeTag(s: Session): string | null {
+  if (s.off) return s.off === 'cancelled' ? 'Cancelled' : 'Moved'
+  if (!s.change) return null
+  return s.change.kind === 'move' ? 'Moved' : s.change.kind === 'room' ? 'Room changed' : s.change.kind === 'extra' ? 'Extra class' : null
+}
+
+/**
+ * What a teacher's change did to a session, in a line: "Cancelled by Raed Bolbol", "Moved to Wed 11:30",
+ * "Moved from Tue 10:00 by Raed Bolbol", "Room changed: A101 → B202", "Extra class". Null for an unchanged session.
+ */
+export function changeLine(s: Session): string | null {
+  const c = s.change
+  if (!c) return null
+  if (s.off === 'cancelled') return `Cancelled by ${c.by}`
+  if (s.off === 'moved') return c.to && c.from ? `Moved to ${whenFrom(c.from.date, c.to)}` : 'Moved'
+  if (c.kind === 'move') return c.from && c.to ? `Moved from ${whenFrom(c.to.date, c.from)} by ${c.by}` : `Moved by ${c.by}`
+  if (c.kind === 'room') return `Room changed: ${c.from?.room || 'no room'} → ${c.to?.room || 'to be announced'}`
+  if (c.kind === 'extra') return 'Extra class'
+  return null
 }
 
 /** By weekday, then start time: the order every list of sessions is kept in. */

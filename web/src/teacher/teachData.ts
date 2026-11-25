@@ -2,7 +2,7 @@ import { api } from '../lib/api'
 import { createHomeStore } from '../lib/homeStore'
 import type { TeachMe, Timetable } from '../lib/types'
 import { viewAs } from '../lib/viewAs'
-import { buildTeachSessions } from './teachSessions'
+import { buildTeachGhosts, buildTeachSessions } from './teachSessions'
 
 // The teacher side's timetable: a second instance of the home store, sharing nothing with the student's
 // (student/timetable), so a teaching assistant who uses both homes never sees one in the other.
@@ -15,6 +15,7 @@ const home = createHomeStore({
   },
   seenUrl: '/teach/seen',
   build: buildTeachSessions,
+  ghosts: buildTeachGhosts,
   // An owner viewing as a teacher keeps nothing on the device.
   canSave: () => !viewAs.get(),
 })

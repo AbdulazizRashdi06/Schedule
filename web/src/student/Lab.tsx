@@ -4,18 +4,20 @@ import { AnimatePresence, animate, motion, useReducedMotion, useScroll, useTrans
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import SessionPage from './Session'
 import { DAY_LONG, DAY_SHORT, minutes } from '../lib/time'
-import { SLOTS, TYPE_NAME, addDays, blockOn, clashOn, fmtWeekRange, inWeek, isoDate, notesOn, nowMinutes, onDate, weekDays, weekStart, weekTitle, type ClassType, type Session } from '../lib/slots'
+import { SLOTS, TYPE_NAME, addDays, blockOn, changeLine, changeTag, clashOn, fmtWeekRange, inWeek, isoDate, notesOn, nowMinutes, onDate, weekDays, weekStart, weekTitle, type ClassType, type Session } from '../lib/slots'
 import { tick } from '../lib/native'
-import { Icon, cx } from '../components/ui'
+import { Icon, Sheet, cx } from '../components/ui'
 import { store } from '../lib/api'
 import Today, { DayHome, FitTitle } from './Today'
 import { LabNav } from './labNav'
 import { MenuSheet } from './StudentShell'
 import SlotSheet, { type SlotPreset } from './SlotSheet'
 import ShareSheet from './ShareSheet'
-import type { CustomSlot } from '../lib/types'
+import type { ClassChange, CustomSlot } from '../lib/types'
 import { useHome, useViewer } from '../lib/viewer'
 import TeachMenu from '../teacher/TeachMenu'
+import ChangeSheet, { undoChanges, type ChangeDone, type ChangeRequest } from '../teacher/ChangeSheet'
+import { useFreshCode } from '../teacher/FreshCode'
 import { useNow } from './timetable'
 
 /** The weeks the page reaches when the semester's teaching weeks aren't set: last week to the week after next. */
@@ -339,7 +341,7 @@ function onSettle(fn: () => void) {
 export default function Lab() {
   const viewer = useViewer()
   const teacher = viewer.mode === 'teacher'
-  const { me, teach, tt, sessions: all, weeks, offline, retry, markSeen } = useHome()
+  const { me, teach, tt, sessions: all, ghosts, weeks, offline, retry, markSeen } = useHome()
   // Own slots belong to the person: an owner viewing as a teacher has none to add or edit.
   const ownSlots = !teacher || !!teach?.personal
   const [params, setParams] = useSearchParams()
@@ -349,6 +351,14 @@ export default function Lab() {
   const [menu, setMenu] = useState(false)
   const [editing, setEditing] = useState<CustomSlot | null>(null)
   const [adding, setAdding] = useState<SlotPreset | null>(null)
+  // Teacher side: "+" asks which of the two to add; an extra class is a change like any other.
+  const [choosing, setChoosing] = useState<SlotPreset | null>(null)
+  const [changing, setChanging] = useState<ChangeRequest | null>(null)
+  const [changed, setChanged] = useState<{ text: string; undo: ClassChange[] } | null>(null)
+  const [changedShown, setChangedShown] = useState(false)
+  // While a change is being loaded back, the session page stays on what it showed.
+  const [holding, setHolding] = useState(false)
+  const fresh = useFreshCode()
   const [sharing, setSharing] = useState(false)
   const page = useRef<HTMLDivElement>(null)
   const daysStrip = useRef<HTMLDivElement>(null)
@@ -369,20 +379,28 @@ export default function Lab() {
     const first = weekOf(new Date(`${sem.week1Start}T00:00`))
     const out = Array.from({ length: sem.lastWeek }, (_, i) => first + i)
     if (!out.includes(0)) out.push(0)
+    // A class on a date outside the teaching weeks (a make-up class moved past the last week) gets its week too,
+    // and so does the greyed slot of one cancelled or moved away.
+    for (const x of [...all, ...ghosts]) {
+      if (!x.meeting.date) continue
+      const date = new Date(`${x.meeting.date}T00:00`)
+      if (onDate(x, date) && !out.includes(weekOf(date))) out.push(weekOf(date))
+    }
     return out.sort((a, b) => a - b)
-  }, [sem?.week1Start, sem?.lastWeek, weekOf])
+  }, [sem?.week1Start, sem?.lastWeek, weekOf, all, ghosts])
 
   // Every teaching day in reach, plus today even when it's a weekend.
   const dates = useMemo(() => {
     const out: Date[] = []
     for (const o of WEEKS) {
       const start = weekStart(now, o)
-      for (const d of weekDays(inWeek(all, start))) out.push(addDays(start, d))
+      // Ghosts count for the days shown: a cancelled Friday class still has its day, to be greyed on.
+      for (const d of weekDays([...inWeek(all, start), ...inWeek(ghosts, start)])) out.push(addDays(start, d))
     }
     if (!out.some((d) => isoDate(d) === todayIso)) out.push(new Date(now.getFullYear(), now.getMonth(), now.getDate()))
     return out.sort((a, b) => a.getTime() - b.getTime())
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [all, todayIso, WEEKS])
+  }, [all, ghosts, todayIso, WEEKS])
   const todayIndex = Math.max(0, dates.findIndex((d) => isoDate(d) === todayIso))
 
   const [dayIndex, setDayIndex] = useState(todayIndex)
@@ -590,14 +608,26 @@ export default function Lab() {
   )
 
   /** "+ Add a slot" on a day: starts at that day's first free slot. */
+  /**
+   * What "+" opens with a day and time: a student's own slot; for a teacher the choice between an own slot and an
+   * extra class; and for an owner viewing as a teacher (who has no own slots) the extra class straight away.
+   */
+  const startAdding = useCallback(
+    (preset: SlotPreset) => {
+      if (!teacher) setAdding(preset)
+      else if (ownSlots) setChoosing(preset)
+      else setChanging({ kind: 'extra', date: preset.date ?? undefined, start: preset.start, end: preset.end })
+    },
+    [teacher, ownSlots],
+  )
   const addOn = useCallback(
     (date: Date) => {
       const taken = all.filter((s) => onDate(s, date))
       const free = SLOTS.findIndex((_, i) => !taken.some((s) => s.slot <= i && i < s.slot + s.span))
       const [start, end] = SLOTS[Math.max(0, free)]
-      setAdding({ day: date.getDay(), date: isoDate(date), start, end })
+      startAdding({ day: date.getDay(), date: isoDate(date), start, end })
     },
-    [all],
+    [all, startAdding],
   )
 
   /** A class on a date opens its own session page over the lab, kept in the address so Back closes it. */
@@ -607,9 +637,10 @@ export default function Lab() {
       const pin = params.get('now')
       if (pin) p.set('now', pin)
       // A student has one section of a course, so the course names the class. A teacher can teach two sections of
-      // one course, so the teacher side names the section.
-      const id = s.plannerEventId ? `p${s.plannerEventId}` : teacher ? `s${s.cls.section.id}` : s.cls.courseId
-      p.set('session', `${id}.${isoDate(date)}.${s.meeting.start}`)
+      // one course, so the teacher side names the section. A greyed (cancelled or moved-away) session is named by
+      // its change, and is always on its own date.
+      const id = s.plannerEventId ? `p${s.plannerEventId}` : s.off && s.change ? `g${s.change.id}` : teacher ? `s${s.cls.section.id}` : s.cls.courseId
+      p.set('session', `${id}.${s.off && s.meeting.date ? s.meeting.date : isoDate(date)}.${s.meeting.start}`)
       return `${viewer.home}?${p}`
     },
     [now, params, teacher, viewer.home],
@@ -626,7 +657,12 @@ export default function Lab() {
     if (!id || !iso) return null
     const [y, m, d] = iso.split('-').map(Number)
     const date = new Date(y, m - 1, d)
-    const n = Number(/^[ps]/.test(id) ? id.slice(1) : id)
+    const n = Number(/^[psg]/.test(id) ? id.slice(1) : id)
+    // "g": a greyed session, by the change that took it off (any of its changes, for one class under several codes).
+    if (id.startsWith('g')) {
+      const ghost = ghosts.find((s) => (s.merged ?? [s]).some((m) => m.change?.id === n) && onDate(s, date))
+      return ghost ? { s: ghost, date } : null
+    }
     // "s": a section, on the teacher side. One real class under several codes answers to any of its sections, so a
     // notice about IBSM1101 opens the block led by BE1101.
     const is = (s: Session) =>
@@ -634,9 +670,16 @@ export default function Lab() {
         ? s.plannerEventId === n
         : !s.plannerEventId && !s.mine && !s.office && (id.startsWith('s') ? (s.merged ?? [s]).some((m) => m.cls.section.id === n) : s.cls.courseId === n)
     const onDay = all.filter((s) => is(s) && onDate(s, date))
-    const s = onDay.find((x) => x.meeting.start === at) ?? onDay[0]
+    // The session at exactly that time first; then a greyed one there (an old reminder or "cancelled" link opens the
+    // greyed lecture, not the lab of the same course that is still on); only then the day's first.
+    const s = onDay.find((x) => x.meeting.start === at) ?? ghosts.find((x) => is(x) && onDate(x, date) && x.meeting.start === at) ?? onDay[0]
     return s ? { s, date } : null
-  }, [params, all])
+  }, [params, all, ghosts])
+
+  // What the session page shows: while a change is loading back in, what it showed before.
+  const lastOpen = useRef(open)
+  if (open) lastOpen.current = open
+  const shown = open ?? (holding ? lastOpen.current : null)
 
   // Opening a class that changed counts as having seen the change (every code of it, for one class under several).
   const seenIds = open?.s.cls.changed ? (open.s.merged ?? [open.s]).filter((m) => m.cls.changed).map((m) => m.cls.section.id).join(',') : ''
@@ -651,6 +694,56 @@ export default function Lab() {
       p.delete('session')
       setParams(p, { replace: true })
     }
+  }
+
+  // The toast after a change leaves by itself; its Undo is there for a few seconds.
+  useEffect(() => {
+    if (!changedShown) return
+    const t = setTimeout(() => setChangedShown(false), 7000)
+    return () => clearTimeout(t)
+  }, [changedShown, changed])
+
+  /**
+   * After a teacher made, edited or undid a change: load the timetable again, move the open session page to where
+   * that class is now (its new time; its place on the timetable again after an undo), and say what happened.
+   */
+  const afterChange = async (done: ChangeDone) => {
+    setHolding(true)
+    await retry()
+    const page = lastOpen.current
+    if (params.get('session') && page) {
+      const made = done.changes[0]
+      const undone = done.undone
+      // An extra class added from another class's page leaves that page where it is.
+      const at = made ? (made.kind === 'extra' && page.s.change?.kind !== 'extra' ? undefined : (made.to ?? made.from)) : undone ? (undone.kind === 'extra' ? null : undone.from) : undefined
+      const sectionId = (made ?? undone)?.sectionId
+      if (at === null) closeSession()
+      else if (at && sectionId) {
+        const p = new URLSearchParams(params)
+        p.set('session', `s${sectionId}.${at.date}.${at.start}`)
+        setParams(p, { replace: true })
+      }
+    }
+    setHolding(false)
+    setChanged({ text: done.text, undo: done.changes.filter((c) => c.canUndo !== false) })
+    setChangedShown(true)
+  }
+
+  const undoChanged = () => {
+    const undo = changed?.undo ?? []
+    if (undo.length === 0) return
+    setChangedShown(false)
+    fresh
+      .run(() => undoChanges(undo))
+      .then(
+        () => void afterChange({ text: 'Undone. The class is as it was.', changes: [], undone: undo[0] }),
+        (e) => {
+          if (!fresh.cancelled(e)) {
+            setChanged({ text: e instanceof Error ? e.message : 'That didn’t work. Try again.', undo: [] })
+            setChangedShown(true)
+          }
+        },
+      )
   }
 
   return (
@@ -682,7 +775,7 @@ export default function Lab() {
                     <Far key={isoDate(d)} />
                   ) : (
                     <Slide key={isoDate(d)} strip={daysStrip} active={i === dayIndex}>
-                      {i === todayIndex ? <Today /> : <DayHome date={d} offset={Math.round((d.getTime() - midnight.getTime()) / DAY_MS)} sessions={all} dayOff={daysOff[isoDate(d)]} />}
+                      {i === todayIndex ? <Today /> : <DayHome date={d} offset={Math.round((d.getTime() - midnight.getTime()) / DAY_MS)} sessions={all} ghosts={ghosts} dayOff={daysOff[isoDate(d)]} />}
                     </Slide>
                   ),
                 )}
@@ -720,11 +813,13 @@ export default function Lab() {
                     offset={o}
                     now={now}
                     all={all}
+                    ghosts={ghosts}
                     title={weekTitle(o, weekStart(now, o), sem)}
                     selected={dates[dayIndex]}
                     onDay={toDay}
                     onOpen={(s, d) => navigate(s.office ? '/teach/office' : sessionLink(s, d))}
-                    onAdd={ownSlots ? setAdding : undefined}
+                    onAdd={startAdding}
+                    addLabel={teacher && !ownSlots ? 'Add an extra class' : 'Add a slot'}
                     onEdit={setEditing}
                     onShare={() => setSharing(true)}
                     arriving={arriving}
@@ -739,7 +834,7 @@ export default function Lab() {
       </div>
       {ready && (
         <BackPill
-          show={!open && (onWeek ? week !== 0 : dayIndex !== todayIndex)}
+          show={!shown && (onWeek ? week !== 0 : dayIndex !== todayIndex)}
           label={onWeek ? 'Back to this week' : 'Back to today'}
           dir={onWeek ? Math.sign(WEEKS.indexOf(0) - WEEKS.indexOf(week)) : Math.sign(todayIndex - dayIndex)}
           onBack={() => goBack(onWeek ? 'week' : 'day')}
@@ -749,7 +844,7 @@ export default function Lab() {
       )}
       {/* A session slides in from the side over the page, and back out, so where you were on the page is kept. */}
       <AnimatePresence>
-        {open && (
+        {shown && (
           <motion.div
             key="session"
             initial={{ x: '100%' }}
@@ -758,7 +853,7 @@ export default function Lab() {
             transition={{ type: 'spring', visualDuration: 0.35, bounce: 0 }}
             className="fixed inset-0 z-40 overflow-y-auto overscroll-contain bg-sky shadow-[-24px_0_48px_-24px_rgb(11_25_87/0.5)]"
           >
-            <SessionPage s={open.s} date={open.date} now={now} all={all} me={me?.universityId ?? ''} link={sessionLink} onBack={closeSession} onChanged={() => void retry()} weeks={weeks} viewer={viewer} teach={teach} offline={offline} />
+            <SessionPage s={shown.s} date={shown.date} now={now} all={all} ghosts={ghosts} tt={tt} me={me?.universityId ?? ''} link={sessionLink} onBack={closeSession} onChanged={() => void retry()} afterChange={afterChange} weeks={weeks} viewer={viewer} teach={teach} offline={offline} />
           </motion.div>
         )}
       </AnimatePresence>
@@ -772,6 +867,46 @@ export default function Lab() {
         }}
         onSaved={() => void retry()}
       />
+      {teacher && (
+        <>
+          <Sheet open={!!choosing} onClose={() => setChoosing(null)} label="Add">
+            <h2 className="pt-1 text-[30px] leading-none font-extrabold tracking-[-0.03em]">Add</h2>
+            <nav aria-label="Add" className="flex flex-col">
+              {[
+                { name: 'My own slot', hint: 'Only you see it: a meeting, research time…', go: () => setAdding(choosing) },
+                { name: 'Extra class', hint: 'A class on one date. Your students see it and are told.', go: () => choosing && setChanging({ kind: 'extra', date: choosing.date ?? undefined, start: choosing.start, end: choosing.end }) },
+              ].map((o) => (
+                <button
+                  key={o.name}
+                  type="button"
+                  onClick={() => {
+                    o.go()
+                    setChoosing(null)
+                  }}
+                  className="tint flex min-h-[68px] items-center justify-between gap-3 rounded-[12px] text-left"
+                >
+                  <span className="flex min-w-0 flex-col gap-0.5">
+                    <span className="text-[22px] leading-tight font-extrabold">{o.name}</span>
+                    <span className="text-[14px] font-semibold text-muted">{o.hint}</span>
+                  </span>
+                  <span aria-hidden="true" className="text-[18px]">→</span>
+                </button>
+              ))}
+            </nav>
+          </Sheet>
+          <ChangeSheet request={changing} onClose={() => setChanging(null)} onDone={(d) => void afterChange(d)} />
+          {/* What a change did, with a few seconds to take it back. */}
+          <div role="status" aria-live="polite" data-shown={changedShown} className="toast fixed inset-x-4 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-[45] mx-auto flex max-w-[448px] items-center gap-3 rounded-[20px] bg-ice py-3 pr-3 pl-[18px] text-navy shadow-[0_12px_24px_-14px_rgb(11_25_87/0.5)]">
+            <span className="min-w-0 flex-1 py-1 text-[15px] leading-snug font-extrabold">{changed?.text}</span>
+            {changed && changed.undo.length > 0 && (
+              <button type="button" onClick={undoChanged} className="press label flex h-11 shrink-0 items-center rounded-full bg-navy px-4 text-[12px] text-cream">
+                Undo
+              </button>
+            )}
+          </div>
+          {fresh.step}
+        </>
+      )}
       {ready && (
         <ShareSheet
           open={sharing}
@@ -813,11 +948,13 @@ function WeekPage({
   offset,
   now,
   all,
+  ghosts,
   title,
   selected,
   onDay,
   onOpen,
   onAdd,
+  addLabel,
   onEdit,
   onShare,
   arriving,
@@ -826,12 +963,15 @@ function WeekPage({
   offset: number
   now: Date
   all: Session[]
+  /** Cancelled classes and the old slots of moved ones: drawn greyed in their place. */
+  ghosts: Session[]
   title: string
   selected?: Date
   onDay: (d: Date) => void
   onOpen: (s: Session, date: Date) => void
-  /** Missing when there is nothing to add here (an owner viewing as a teacher has no own slots). */
-  onAdd?: (preset: SlotPreset) => void
+  onAdd: (preset: SlotPreset) => void
+  /** What "+" adds: a slot, or for an owner viewing as a teacher an extra class. */
+  addLabel: string
   onEdit: (slot: CustomSlot) => void
   onShare: () => void
   arriving: MotionValue<number>
@@ -852,7 +992,9 @@ function WeekPage({
   const weekSessions = inWeek(all, start)
   const sessions = weekSessions.filter(s => s.type !== 'exam')
   const exams = weekSessions.filter(s => s.type === 'exam')
-  const days = weekDays(weekSessions)
+  const off = inWeek(ghosts, start)
+  // A cancelled Friday class still has its column, to be greyed in.
+  const days = weekDays([...weekSessions, ...off])
   const today = offset === 0 ? now.getDay() : -1
   const nowMin = nowMinutes(now)
   const cols = `38px repeat(${days.length}, minmax(0, 1fr))`
@@ -937,13 +1079,14 @@ function WeekPage({
           </div>
         )}
         {/* Empty spots: tap to add your own slot there. */}
-        {onAdd && days.map((d, c) =>
+        {days.map((d, c) =>
           SLOTS.map(([from, to], slot) =>
-            sessions.some((s) => s.meeting.day === d && s.slot <= slot && slot < s.slot + s.span) ? null : (
+            // A greyed block fills its spot, so there is nothing to tap under it.
+            [...sessions, ...off].some((s) => s.meeting.day === d && s.slot <= slot && slot < s.slot + s.span) ? null : (
               <motion.button
                 key={`add-${d}-${slot}`}
                 type="button"
-                aria-label={`Add a slot on ${DAY_LONG[d]} at ${from}`}
+                aria-label={`${addLabel} on ${DAY_LONG[d]} at ${from}`}
                 onClick={() => onAdd({ day: d, date: isoDate(addDays(start, d)), start: from, end: to })}
                 className="press tint group relative z-10 grid place-items-center rounded-[12px] active:bg-navy/[0.07]"
                 style={{ gridColumn: c + 2, gridRow: slot + 1, y: rise[c] }}
@@ -965,12 +1108,14 @@ function WeekPage({
         )}
         {days.map((d, c) =>
           SLOTS.map((_, slot) => {
-            const cell = sessions.filter((s) => s.meeting.day === d && s.slot === slot)
+            const cell = [...sessions, ...off].filter((s) => s.meeting.day === d && s.slot === slot)
             if (cell.length === 0) return null
             return (
               <motion.div key={`${d}-${slot}`} className="relative z-20 flex min-w-0 gap-0.5" style={{ gridColumn: c + 2, gridRow: `${slot + 1} / span ${Math.max(...cell.map((s) => s.span))}`, y: rise[c] }}>
                 {cell.map((s, i) => {
-                  const live = d === today && s.start <= nowMin && nowMin < s.end
+                  const live = !s.off && d === today && s.start <= nowMin && nowMin < s.end
+                  // What a teacher's change did to this one session: "Cancelled", "Moved", "Room changed", "Extra class".
+                  const tag = changeTag(s)
                   // One real class under several course codes (teacher side): the codes that meet this day.
                   const codes = s.merged ? blockOn(s, addDays(start, d)).map((m) => m.cls.code) : null
                   return (
@@ -978,16 +1123,17 @@ function WeekPage({
                       key={i}
                       type="button"
                       onClick={() => (s.mine ? onEdit(s.mine) : onOpen(s, addDays(start, d)))}
-                      aria-label={`${codes ? `${codes.join(', ')}, ` : ''}${s.cls.name}, ${TYPE_NAME[s.type].toLowerCase()}, ${DAY_LONG[d]} ${s.meeting.start} to ${s.meeting.end}${s.meeting.room ? `, room ${s.meeting.room}` : ''}${clashOn(s, addDays(start, d)) ? ', clashes with another class' : ''}${s.cls.changed ? ', changed' : ''}`}
+                      aria-label={`${codes ? `${codes.join(', ')}, ` : ''}${s.cls.name}, ${TYPE_NAME[s.type].toLowerCase()}, ${DAY_LONG[d]} ${s.meeting.start} to ${s.meeting.end}${s.meeting.room ? `, room ${s.meeting.room}` : ''}${tag ? `, ${(changeLine(s) ?? tag).toLowerCase()}` : ''}${clashOn(s, addDays(start, d)) ? ', clashes with another class' : ''}${s.cls.changed ? ', changed' : ''}`}
                       className={cx(
                         'press relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[12px] p-1.5 text-left',
-                        BLOCK[s.type],
+                        // Not happening: the day-off hatch, faded, with the code struck through.
+                        s.off ? 'bg-[repeating-linear-gradient(135deg,rgb(11_25_87/0.16)_0_6px,rgb(11_25_87/0.05)_6px_12px)] text-navy opacity-55' : BLOCK[s.type],
                         live && 'ring-[2.5px] ring-navy ring-offset-2 ring-offset-cream',
-                        clashOn(s, addDays(start, d)) && 'outline-2 -outline-offset-2 outline-alert',
+                        !s.off && clashOn(s, addDays(start, d)) && 'outline-2 -outline-offset-2 outline-alert',
                       )}
                     >
                       {codes ? (
-                        <span className="display flex flex-col text-[11px] leading-[1.08] tracking-[-0.03em]">
+                        <span className={cx('display flex flex-col text-[11px] leading-[1.08] tracking-[-0.03em]', s.off && 'line-through')}>
                           {codes.slice(0, codes.length > 3 ? 2 : 3).map((code) => (
                             <span key={code} className="truncate">
                               {code}
@@ -996,15 +1142,24 @@ function WeekPage({
                           {codes.length > 3 && <span>+{codes.length - 2}</span>}
                         </span>
                       ) : (
-                        <span className={cx('display leading-none tracking-[-0.03em]', s.office ? 'text-[13px]' : cell.length > 1 ? 'text-[12px] break-all' : 'truncate text-[16px]', s.office && cell.length > 1 && 'text-[11px] break-all')}>{s.office ? (cell.length > 1 ? 'Office' : 'Office hours') : s.cls.code}</span>
+                        <span className={cx('display leading-none tracking-[-0.03em]', s.office ? 'text-[13px]' : cell.length > 1 ? 'text-[12px] break-all' : 'truncate text-[16px]', s.office && cell.length > 1 && 'text-[11px] break-all', s.off && 'line-through')}>{s.office ? (cell.length > 1 ? 'Office' : 'Office hours') : s.cls.code}</span>
                       )}
                       <span className="label mt-1 text-[9px] tracking-[0.04em]">
                         {s.meeting.start}
                         {s.span > 1 && `–${s.meeting.end}`}
                       </span>
-                      {cell.length === 1 && <span className="mt-auto truncate text-[11px] font-semibold">{s.meeting.room}</span>}
-                      {/* Changed since you last looked (dot), and has notes (square), in the block's own text colour. */}
-                      {s.cls.changed && <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-current" />}
+                      {s.off ? (
+                        <span className="label mt-auto truncate text-[9px] tracking-[0.02em]">{tag}</span>
+                      ) : (
+                        cell.length === 1 && <span className="mt-auto truncate text-[11px] font-semibold">{s.meeting.room}</span>
+                      )}
+                      {/* Changed since you last looked (dot), and has notes (square), in the block's own text colour. A
+                          class a teacher moved here, re-roomed or added has a ring where the dot sits. */}
+                      {!s.off && tag ? (
+                        <span aria-hidden="true" className={cx('absolute top-1 right-1 size-2.5 rounded-full border-[1.5px] border-current', s.cls.changed && 'bg-current bg-clip-content p-px')} />
+                      ) : (
+                        !s.off && s.cls.changed && <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-current" />
+                      )}
                       {notesOn(s, addDays(start, d)) > 0 && <span aria-hidden="true" className="absolute right-1.5 bottom-1.5 size-1.5 rounded-[2px] bg-current opacity-60" />}
                     </button>
                   )
