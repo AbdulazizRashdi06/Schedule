@@ -30,7 +30,7 @@ public static class Absences
     {
         var me = api.MapGroup("/me/absences").RequireAuthorization(Session.StudentPolicy);
 
-        me.MapGet("", async (HttpContext http, AppDb db, CancellationToken ct) =>
+        me.MapGet("", async (HttpContext http, AppDb db, IConfiguration config, CancellationToken ct) =>
         {
             var current = await StudentEndpoints.CurrentSemester(db, ct);
             var id = http.User.Id();
@@ -48,6 +48,22 @@ public static class Absences
                     list = list.Where(a => !sections.Any(s => s.CourseId == a.CourseId
                         && changes.OffIn(s).Any(o => o.Date == a.Date && o.Start == a.Start)
                         && !changes.AddedTo(s).Any(x => x.Date == a.Date && x.Start == a.Start))).ToList();
+
+                // Nor is a session a change put on and then took away again (an extra class that was removed, a
+                // moved class that was put back or moved once more), when nothing is on at that time any more.
+                // Only such slots are looked at: every other row is kept as it always was.
+                var picked = sections.Select(s => (int?)s.Id).ToList();
+                var gone = (await db.ClassChanges.Where(c => c.SemesterId == current.Id && c.EndedAt != null && c.NewDate != null && c.NewStart != null
+                        && (c.Kind == ClassChanges.Move || c.Kind == ClassChanges.Extra) && picked.Contains(c.SectionId))
+                    .Select(c => new { c.SectionId, c.NewDate, c.NewStart }).ToListAsync(ct))
+                    .Select(c => (CourseId: sections.First(s => s.Id == c.SectionId).CourseId, Date: c.NewDate!.Value, Start: c.NewStart!.Value)).ToHashSet();
+                if (list.Any(a => gone.Contains((a.CourseId, a.Date, a.Start))))
+                {
+                    var span = await SemesterSpan.ForAsync(db, current, ct);
+                    var items = await StudentSchedule.ForAsync(db, current.Id, [id], slots: false, await Planner.PlannerEngine.Enabled(db, config, ct), ct);
+                    list = list.Where(a => !gone.Contains((a.CourseId, a.Date, a.Start))
+                        || items.Any(i => i.CourseId == a.CourseId && i.Start == a.Start && span.Happens(i, a.Date))).ToList();
+                }
             }
             return Results.Ok(new
             {

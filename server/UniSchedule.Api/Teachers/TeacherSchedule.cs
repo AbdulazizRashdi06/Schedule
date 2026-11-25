@@ -185,6 +185,8 @@ public static class TeacherSchedule
     /// that have a session on that date with the same merge key as this section's session at <paramref name="start"/>
     /// and no live change on it. For a session that has a live change, or that a change put on: the sections of that
     /// change's group. So a code that already has its own change is reached through that change, never as a sibling.
+    /// A section the teacher hid ("not mine") is on no block of their timetable, so it is never a sibling by the
+    /// timetable alone; it still belongs to a change it is already part of.
     /// </summary>
     public static List<Taught> Siblings(IReadOnlyList<Taught> taught, SemesterSpan span, ChangeSet changes, int sectionId, DateOnly date, TimeOnly start)
     {
@@ -194,7 +196,8 @@ public static class TeacherSchedule
         if (changed is not null)
             return taught.Where(t => t.Section.Id != sectionId && changes.All.Any(c => c.GroupId == changed.GroupId && c.SectionId == t.Section.Id))
                 .DistinctBy(t => t.Section.Id).ToList();
-        return Blocks(taught)
+        if (taught.Any(t => t.Section.Id == sectionId && t.Hidden)) return [];
+        return Blocks(taught.Where(t => !t.Hidden))
             .Where(b => b.Members.Any(m => m.Class.Section.Id == sectionId && m.Meeting.Start == start && On(span, m.Meeting, date)))
             .SelectMany(b => b.Members).Select(m => m.Class)
             .Where(t => t.Section.Id != sectionId && changes.On(t.Section.Id, date, start) is null)

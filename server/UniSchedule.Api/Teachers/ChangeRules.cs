@@ -305,8 +305,10 @@ public static class ChangeRules
         (d.Main, d.Date, d.Start, d.Session) = (main, date, start, sessions[0]);
         d.SessionType = SessionKinds.Of(sessions[0].Room);
         d.HasStarted = StartUtc(date, start) <= now;
-        d.Others = OthersOf(w, main.Section, date, start, now);
         NewValues(d, body, sessions, date, start, now);
+        // Exactly the sessions "also the other sessions that day" would change: those of every ticked code.
+        d.Others = OtherSessions(w, d, date, start, now).Select(x => new Other(x.Session.Start, x.Session.End, x.Session.Room))
+            .DistinctBy(o => (o.Start, o.End, ClassChanges.RoomKey(o.Room))).OrderBy(o => o.Start).ThenBy(o => o.Room, StringComparer.Ordinal).ToList();
         return (d, null);
     }
 
@@ -314,6 +316,16 @@ public static class ChangeRules
     static List<Other> OthersOf(World w, Section s, DateOnly date, TimeOnly start, DateTimeOffset now) =>
         s.Meetings.Where(m => m.Start != start && ChangeSet.Happens(w.Span, m, date) && StartUtc(date, m.Start) > now && w.Changes.On(s.Id, date, m.Start) is null)
             .OrderBy(m => m.Start).ThenBy(m => m.Room, StringComparer.Ordinal).DistinctBy(m => m.Start).Select(m => new Other(m.Start, m.End, m.Room)).ToList();
+
+    /// <summary>
+    /// The sessions "also the other sessions that day" changes, for the preview and the write alike: the other
+    /// sessions of every ticked section, each with the section it belongs to. A room change leaves out a session
+    /// that is already in that room (the rule of check 13): there is nothing to change or to tell anyone.
+    /// </summary>
+    static List<(Taught Class, Meeting Session)> OtherSessions(World w, Draft d, DateOnly date, TimeOnly start, DateTimeOffset now) =>
+        d.Ticked.SelectMany(t => OthersOf(w, t.Class.Section, date, start, now).Select(o => (t.Class, Sessions: SessionsOf(w, t.Class.Section, date, o.Start))))
+            .Where(x => !(d.Kind == ClassChanges.Room && x.Sessions.Count == 1 && ClassChanges.RoomKey(d.Room) == ClassChanges.RoomKey(x.Sessions[0].Room)))
+            .Select(x => (x.Class, x.Sessions[0])).ToList();
 
     /// <summary>Checks 11 to 13 for a cancel, move or room change of the session at (<paramref name="date"/>, <paramref name="start"/>).</summary>
     static void NewValues(Draft d, Body body, List<Meeting> sessions, DateOnly date, TimeOnly start, DateTimeOffset now)
@@ -597,6 +609,13 @@ public static class ChangeRules
         {
             var id = NewGroup();
             Group(d.Ticked.Select(t => Row(w, actor, d, id, t.Class, null, null, d.NewDate, d.NewStart, d.NewEnd, d.Room, now)));
+            // An extra class is named on phones by its first time, and keeps that tag when it is edited to another
+            // time. A new extra at a time an earlier one (live or ended) was first put on is another class: it gets a
+            // tag of its own, so neither is ever told about, or silenced by, the other's notices.
+            var ticked = groups[0].Select(c => c.SectionId).ToList();
+            var used = (await db.ClassChanges.Where(c => c.SemesterId == semester.Id && c.Kind == ClassChanges.Extra && ticked.Contains(c.SectionId))
+                .Select(c => new { c.SectionId, c.Tag }).ToListAsync(ct)).Select(c => (c.SectionId, c.Tag)).ToHashSet();
+            foreach (var row in groups[0].Where(c => used.Contains((c.SectionId, c.Tag)))) row.Tag = $"{row.Tag}-{id[..8]}";
         }
         else
         {
@@ -615,7 +634,7 @@ public static class ChangeRules
                 // sections that share one of them (one real class) change it together, as one group.
                 var days = d.Kind == ClassChanges.Move ? d.NewDate!.Value.DayNumber - date.DayNumber : 0;
                 var shift = d.Kind == ClassChanges.Move ? d.NewStart!.Value.ToTimeSpan() - start.ToTimeSpan() : TimeSpan.Zero;
-                var pending = d.Ticked.SelectMany(t => OthersOf(w, t.Class.Section, date, start, now).Select(o => (t.Class, o.Start)))
+                var pending = OtherSessions(w, d, date, start, now).Select(x => (x.Class, x.Session.Start))
                     .OrderBy(x => x.Start).ThenBy(x => x.Class.Course.Code, StringComparer.Ordinal).ToList();
                 while (pending.Count > 0)
                 {

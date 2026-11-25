@@ -629,4 +629,64 @@ public class TeacherIdentityTests
         await student.PutAsJsonAsync($"/api/teach/sections/{cs}", new { on = true });
         await AssertNeedsCode(student.PostAsync($"/api/teach/changes/{made.GetProperty("changes")[0].GetProperty("group").GetString()}/undo", null));
     }
+
+    static object PushDevice(string name)
+    {
+        using var ec = System.Security.Cryptography.ECDiffieHellman.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+        var q = ec.ExportParameters(false).Q;
+        static string B64Url(byte[] b) => Convert.ToBase64String(b).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        return new { endpoint = $"https://fcm.googleapis.com/fcm/send/{name}", keys = new { p256dh = B64Url([0x04, .. q.X!, .. q.Y!]), auth = B64Url(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16)) } };
+    }
+
+    [Fact]
+    public async Task Devices_notification_settings_and_the_calendar_link_are_each_teachers_own()
+    {
+        using var w = await TeachWorld.Create();
+        Assert.Equal(HttpStatusCode.NoContent, (await w.Teacher1.PostAsJsonAsync("/api/teach/push", PushDevice("one"))).StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, (await w.Teacher2.PostAsJsonAsync("/api/teach/push", PushDevice("two"))).StatusCode);
+        // Student 1 has the same row id as teacher 1, and a device of their own.
+        Assert.Equal(HttpStatusCode.NoContent, (await w.Students[0].PostAsJsonAsync("/api/me/push", PushDevice("student"))).StatusCode);
+        Task<List<int>> Owners() => w.Db(db => db.TeacherPushSubscriptions.OrderBy(p => p.TeacherId).Select(p => p.TeacherId).ToListAsync());
+
+        // Removing names a device, but only the caller's own row goes: not another teacher's, not a student's.
+        foreach (var name in new[] { "one", "student" })
+            Assert.Equal(HttpStatusCode.NoContent, (await w.Teacher2.PostAsJsonAsync("/api/teach/push/remove", new { endpoint = $"https://fcm.googleapis.com/fcm/send/{name}" })).StatusCode);
+        Assert.Equal([w.Teacher1Id, w.Teacher2Id], await Owners());
+        Assert.Equal(1, await w.Db(db => db.PushSubscriptions.CountAsync()));
+        Assert.Equal(HttpStatusCode.NoContent, (await w.Teacher1.PostAsJsonAsync("/api/teach/push/remove", new { endpoint = "https://fcm.googleapis.com/fcm/send/one" })).StatusCode);
+        Assert.Equal([w.Teacher2Id], await Owners());
+
+        // A teacher's cookie can't use the student's doors for any of it.
+        Assert.Equal(HttpStatusCode.Forbidden, (await w.Teacher1.PostAsJsonAsync("/api/me/push", PushDevice("one"))).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await w.Teacher1.GetAsync("/api/me/calendar")).StatusCode);
+
+        // Settings and the calendar link are per account.
+        Assert.Equal(HttpStatusCode.NoContent, (await w.Teacher1.PutAsJsonAsync("/api/teach/notifications", new { remindMinutes = 10, changes = false })).StatusCode);
+        Assert.Equal(JsonValueKind.Null, (await Json(await w.Teacher2.GetAsync("/api/teach/notifications"))).GetProperty("remindMinutes").ValueKind);
+        var student = await w.Db(db => db.Students.AsNoTracking().SingleAsync(x => x.Id == w.StudentRowIds[0]));
+        Assert.Equal(((int?)null, false), (student.RemindMinutes, student.MuteChanges));
+        var link = (await Json(await w.Teacher1.GetAsync("/api/teach/calendar"))).GetProperty("url").GetString();
+        Assert.NotEqual(link, (await Json(await w.Teacher2.GetAsync("/api/teach/calendar"))).GetProperty("url").GetString());
+
+        // An owner looking in gets none of it, reads and writes alike, and changes nothing.
+        var viewing = TeachWorld.ViewAs(w.Owner, TeacherKeys.For(new Teacher { Id = w.Teacher1Id }));
+        foreach (var r in new[]
+        {
+            await viewing.GetAsync("/api/teach/notifications"),
+            await viewing.PutAsJsonAsync("/api/teach/notifications", new { remindMinutes = 5, changes = true }),
+            await viewing.PostAsJsonAsync("/api/teach/push", PushDevice("owner")),
+            await viewing.PostAsJsonAsync("/api/teach/push/remove", new { endpoint = "https://fcm.googleapis.com/fcm/send/two" }),
+            await viewing.PostAsync("/api/teach/push/test", null),
+            await viewing.GetAsync("/api/teach/calendar"),
+            await viewing.PostAsync("/api/teach/calendar/reset", null),
+        })
+        {
+            Assert.Equal(HttpStatusCode.Conflict, r.StatusCode);
+            Assert.Equal("Not available while viewing as a teacher.", await Error(r));
+        }
+        var teacher = await w.Db(db => db.Teachers.AsNoTracking().SingleAsync(t => t.Id == w.Teacher1Id));
+        Assert.Equal((10, true), (teacher.RemindMinutes, teacher.MuteChanges));
+        Assert.Equal(link, (await Json(await w.Teacher1.GetAsync("/api/teach/calendar"))).GetProperty("url").GetString());
+        Assert.Equal([w.Teacher2Id], await Owners());
+    }
 }
