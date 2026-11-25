@@ -320,7 +320,9 @@ public static class StudentEndpoints
                 .AsSplitQuery().ToListAsync(ct);
             var withSection = picks.Where(p => p.Section is not null).OrderBy(p => p.Course.Code).ToList();
             var planner = await UniSchedule.Api.Planner.PlannerEngine.Enabled(db, http.RequestServices.GetRequiredService<IConfiguration>(), ct)
-                ? await UniSchedule.Api.Planner.PlannerEngine.StudentView(db, current.Id, picks, ct)
+                // A rep's event on a session a teacher changed gives way to the teacher's change.
+                ? (await UniSchedule.Api.Planner.PlannerEngine.PublishedAsync(db, current.Id, ct)).For(picks,
+                    (await ClassChanges.LoadAsync(db, current.Id, withSection.Select(p => p.Section!).ToList(), ct)) is { Empty: false } changes ? changes.Shadows : null)
                 : (Events: new List<UniSchedule.Api.Planner.PlannerOccurrence>(), Excluded: new Dictionary<string, List<string>>());
             var slots = await db.CustomSlots.Where(s => s.StudentId == id && s.SemesterId == current.Id).ToListAsync(ct);
             // Note counts per course, so blocks can show a dot: whole-course notes, and per session date.

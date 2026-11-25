@@ -30,31 +30,41 @@ public static class TimetableView
     /// <summary>The timetable JSON the home draws: for a student's picks, or for a teacher's sections.</summary>
     /// <param name="planner">The batch reps' published events for these classes, and the dates each class is off because of one.</param>
     /// <param name="teacher">Who is looking, on the teacher side; null for a student.</param>
+    /// <param name="viewer">On the teacher side: what this teacher may do with each change (undo, edit).</param>
     public static async Task<Dictionary<string, object?>> BuildAsync(AppDb db, Semester semester, IReadOnlyList<ClassRow> classes,
         IEnumerable<object> slots, (List<PlannerOccurrence> Events, Dictionary<string, List<string>> Excluded) planner,
-        IEnumerable<object> needsSection, TeachActor? teacher, CancellationToken ct)
+        IEnumerable<object> needsSection, TeachActor? teacher, CancellationToken ct, ChangeViewer? viewer = null)
     {
         // Weekly classes skip the planner's cancellations and the semester's days off; dated ones keep their date.
         // The semester's first and last teaching day (its days off come with it).
         var span = await SemesterSpan.ForAsync(db, semester, ct);
         var daysOff = span.DaysOff;
+        var sections = classes.Select(c => c.Section).ToList();
+        // Teachers' changes. Old cached copies of the app know nothing about them and stay correct: the original
+        // session is in its meeting's excludedDates, and the class at its new time or room, or an extra class, is one
+        // more dated meeting. The newer app reads "changes" to draw the marks.
+        var changes = await ClassChanges.LoadAsync(db, semester.Id, sections, ct);
         List<string>? Skipped(Section section, Meeting m)
         {
             var skipped = (planner.Excluded.GetValueOrDefault(PlannerEngine.Fingerprint(section, m)) ?? [])
-                .Concat(m.Date is null ? DaysOff.Skipped(daysOff, m.Day) : []).Distinct().Order().ToList();
+                .Concat(m.Date is null ? DaysOff.Skipped(daysOff, m.Day) : [])
+                .Concat(changes.Skip(section, m).Select(PlannerEngine.Iso)).Distinct().Order().ToList();
             return skipped.Count == 0 ? null : skipped;
         }
         SectionDto EffectiveSection(Section section) => Dto.Of(section) with
         {
-            Meetings = section.Meetings.OrderBy(m => m.Date).ThenBy(m => m.Day).ThenBy(m => m.Start).Select(m => Dto.Of(m) with
-            {
-                ExcludedDates = Skipped(section, m),
-                // Only the teacher's timetable puts one real class under several codes together.
-                Merge = teacher is null ? null : TeacherSchedule.MergeKey(m.Date, m.Day, m.Start, m.End, m.Room),
-            }).ToList(),
+            Meetings = section.Meetings.Select(m => (m.Date, m.Day, m.Start, Dto: Dto.Of(m) with
+                {
+                    ExcludedDates = Skipped(section, m),
+                    // Only the teacher's timetable puts one real class under several codes together.
+                    Merge = teacher is null ? null : TeacherSchedule.MergeKey(m.Date, m.Day, m.Start, m.End, m.Room),
+                }))
+                .Concat(changes.AddedTo(section).Select(a => ((DateOnly?)a.Date, (int)a.Date.DayOfWeek, a.Start,
+                    new MeetingDto((int)a.Date.DayOfWeek, Timeslots.Format(a.Start), Timeslots.Format(a.End), a.Room, PlannerEngine.Iso(a.Date), null,
+                        a.Change.Id, a.Change.SessionType, teacher is null ? null : TeacherSchedule.GroupKey(a.Change)))))
+                .OrderBy(x => x.Item1).ThenBy(x => x.Item2).ThenBy(x => x.Item3).Select(x => x.Item4).ToList(),
         };
 
-        var sections = classes.Select(c => c.Section).ToList();
         var teachers = await TeacherPages.RefsAsync(db, sections, ct);
         // Each class is a dictionary, so a teacher's has no "notes" key at all and a student's none of the teacher's three.
         Dictionary<string, object?> Class(ClassRow c)
@@ -91,8 +101,8 @@ public static class TimetableView
             ["needsSection"] = needsSection.ToList(),
             // The app works clashes out from the sessions it draws; a teacher's merged classes are no clash.
             ["clashes"] = teacher is null ? Clashes.Find(sections) : [],
-            // Teachers' class changes. There are none yet.
-            ["changes"] = Array.Empty<object>(),
+            // Teachers' live changes to these classes, past ones too, so last week still shows Cancelled.
+            ["changes"] = changes.Shown(sections).Select(c => ChangeRules.View(c, changes, sections.First(s => s.Id == c.SectionId).CourseId, viewer)).ToList(),
         };
     }
 }

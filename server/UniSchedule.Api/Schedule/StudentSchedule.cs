@@ -44,11 +44,15 @@ public static class StudentSchedule
 
     /// <summary>
     /// One class, own slot or planner event: on <paramref name="Date"/>, or every week on <paramref name="Day"/>.
-    /// <paramref name="Skip"/>: dates it doesn't happen because a planner event cancelled or moved it.
+    /// <paramref name="Skip"/>: dates it doesn't happen because a planner event or a teacher cancelled or moved it.
+    /// The last ones are set on a session a teacher's change touched: the change's id, kind (cancel, move, room or
+    /// extra) and who made it; <paramref name="Uid"/>, the calendar id to reuse; <paramref name="Kind"/>, lecture, lab
+    /// or tutorial as stored on the change; and <paramref name="ChangeFrom"/>, when the class was before it moved.
     /// </summary>
     public sealed record Item(int StudentId, Source From, DateOnly? Date, int Day, TimeOnly Start, TimeOnly End, IReadOnlySet<DateOnly> Skip,
         int? CourseId, string Code, string Name, string Room, string? Section, string? Instructor, int? SectionId, int? MeetingId,
-        int? SlotId, string? Note, int? EventId, string? EventKind)
+        int? SlotId, string? Note, int? EventId, string? EventKind,
+        int? ChangeId = null, string? ChangeKind = null, string? ChangeBy = null, string? Uid = null, string? Kind = null, DateTime? ChangeFrom = null)
     {
         /// <summary>A class or a planner event; false for the student's own slot.</summary>
         public bool IsClass => From != Source.Slot;
@@ -56,33 +60,57 @@ public static class StudentSchedule
 
     static readonly IReadOnlySet<DateOnly> None = new HashSet<DateOnly>();
 
+    /// <summary>When a moved class was before, as the university lists it; null for every other kind of change.</summary>
+    public static DateTime? From(Teachers.ClassChange c) =>
+        c is { Kind: ClassChanges.Move, OrigDate: DateOnly date, OrigStart: TimeOnly start } ? date.ToDateTime(start) : null;
+
     /// <summary>Whether an item happens on a date.</summary>
     public static bool Happens(this SemesterSpan span, Item i, DateOnly date) =>
         !i.Skip.Contains(date) && (i.Date is DateOnly on ? on == date : span.Weekly(i.Day, date, i.From == Source.Class));
 
     /// <summary>
     /// Everything the given students have in the semester. <paramref name="slots"/>: include own slots.
-    /// <paramref name="planner"/>: apply the semester planner (when it's turned on).
+    /// <paramref name="planner"/>: apply the semester planner (when it's turned on). Teachers' changes always apply.
     /// </summary>
-    public static async Task<List<Item>> ForAsync(AppDb db, int semesterId, IReadOnlyCollection<int> studentIds, bool slots, bool planner, CancellationToken ct)
+    /// <param name="off">Filled with the sessions that stay visible though they aren't on (cancelled, or the old slot
+    /// of a moved class), dated on their original date. They are never in the returned list.</param>
+    public static async Task<List<Item>> ForAsync(AppDb db, int semesterId, IReadOnlyCollection<int> studentIds, bool slots, bool planner, CancellationToken ct,
+        List<Item>? off = null)
     {
         // Picks without a section too: they have no classes, but a whole-course planner event (an exam) still reaches them.
         var picks = await db.Picks.Where(p => studentIds.Contains(p.StudentId) && p.Course.SemesterId == semesterId)
             .Include(p => p.Course).Include(p => p.Section).ThenInclude(x => x!.Meetings)
             .AsSplitQuery().ToListAsync(ct);
         var plan = planner ? await PlannerEngine.PublishedAsync(db, semesterId, ct) : null;
+        // Teachers' changes, whatever the planner switch says.
+        var changes = await ClassChanges.LoadAsync(db, semesterId, picks.Where(p => p.Section is not null).Select(p => p.Section!).DistinctBy(s => s.Id).ToList(), ct);
         var items = new List<Item>();
         foreach (var mine in picks.GroupBy(p => p.StudentId))
         {
-            var (events, excluded) = plan?.For(mine.ToList()) ?? ([], []);
+            // A rep's event on a session a teacher changed gives way to the teacher's change.
+            var (events, excluded) = plan?.For(mine.ToList(), changes.Empty ? null : changes.Shadows) ?? ([], []);
             foreach (var p in mine.Where(p => p.Section is not null))
-            foreach (var m in p.Section!.Meetings)
             {
-                var skip = excluded.TryGetValue(PlannerEngine.Fingerprint(p.Section, m), out var dates)
-                    ? dates.Select(d => DateOnly.ParseExact(d, "yyyy-MM-dd", CultureInfo.InvariantCulture)).ToHashSet()
-                    : None;
-                items.Add(new(p.StudentId, Source.Class, m.Date, m.Day, m.Start, m.End, skip, p.CourseId, p.Course.Code, p.Course.Name, m.Room,
-                    p.Section.Number, p.Section.Instructor, p.Section.Id, m.Id, null, null, null, null));
+                foreach (var m in p.Section!.Meetings)
+                {
+                    var skip = excluded.TryGetValue(PlannerEngine.Fingerprint(p.Section, m), out var dates)
+                        ? dates.Select(d => DateOnly.ParseExact(d, "yyyy-MM-dd", CultureInfo.InvariantCulture)).ToHashSet()
+                        : None;
+                    if (changes.Skip(p.Section, m) is { Count: > 0 } changed) skip = skip.Count == 0 ? changed : skip.Union(changed).ToHashSet();
+                    items.Add(new(p.StudentId, Source.Class, m.Date, m.Day, m.Start, m.End, skip, p.CourseId, p.Course.Code, p.Course.Name, m.Room,
+                        p.Section.Number, p.Section.Instructor, p.Section.Id, m.Id, null, null, null, null));
+                }
+                if (changes.Empty) continue;
+                // The class at its new time or room, and extra classes.
+                foreach (var a in changes.AddedTo(p.Section))
+                    items.Add(new(p.StudentId, Source.Class, a.Date, (int)a.Date.DayOfWeek, a.Start, a.End, None, p.CourseId, p.Course.Code, p.Course.Name, a.Room,
+                        p.Section.Number, p.Section.Instructor, p.Section.Id, null, null, a.Change.Note, null, null,
+                        a.Change.Id, a.Change.Kind, a.Change.ByName, ClassChanges.Uid(a), a.Change.SessionType, From(a.Change)));
+                if (off is null) continue;
+                foreach (var o in changes.OffIn(p.Section))
+                    off.Add(new(p.StudentId, Source.Class, o.Date, (int)o.Date.DayOfWeek, o.Start, o.End, None, p.CourseId, p.Course.Code, p.Course.Name, o.Room,
+                        p.Section.Number, p.Section.Instructor, p.Section.Id, o.Base.Id, null, o.Change.Note, null, null,
+                        o.Change.Id, o.Change.Kind, o.Change.ByName, ClassChanges.Uid(p.Section.Id, o.Base, o.Date), o.Change.SessionType));
             }
             foreach (var e in events)
             {

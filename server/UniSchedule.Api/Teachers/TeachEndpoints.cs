@@ -114,8 +114,8 @@ public static class TeachEndpoints
                 status = p is null ? "linked" : TeacherNames.Status(p, names),
                 names = NamesOf(names),
                 frozen = p?.FrozenAt is not null,
-                // Class changes can't be switched off yet.
-                changesEnabled = true,
+                // Owners can switch all class changes off at once.
+                changesEnabled = await ClassChanges.EnabledAsync(db, ct),
                 codeFresh = TeachActor.CodeFresh(http, now),
                 notices = notices.Select(n => new { id = n.Id, kind = n.Kind, title = n.Title, body = n.Body, url = n.Url, at = n.CreatedAt }),
             });
@@ -181,7 +181,7 @@ public static class TeachEndpoints
 
         // The same shape as a student's timetable, for the sections on the teacher's timetable: under their names, plus
         // the ones they added, minus the ones they hid.
-        teach.MapGet("/timetable", async (HttpContext http, AppDb db, IConfiguration config, CancellationToken ct) =>
+        teach.MapGet("/timetable", async (HttpContext http, AppDb db, IConfiguration config, TimeProvider clock, CancellationToken ct) =>
         {
             var actor = http.Teach();
             var p = actor.Profile;
@@ -199,9 +199,10 @@ public static class TeachEndpoints
             var seen = p is null || actor.ViewAs ? [] : await db.TeacherSeens.Where(x => x.TeacherId == p.Id).ToDictionaryAsync(x => x.SectionId, x => x.SeenAt, ct);
             bool Changed(Section s) => p is not null && !actor.ViewAs && s.ChangedAt is DateTimeOffset at
                 && at > (seen.TryGetValue(s.Id, out var seenAt) ? seenAt : p.CreatedAt);
-            // The batch reps' published events for these sections, once the planner is on.
+            var changes = await ClassChanges.LoadAsync(db, current.Id, on.Select(t => t.Section).ToList(), ct);
+            // The batch reps' published events for these sections, once the planner is on. A teacher's change wins over one.
             var planner = await PlannerEngine.Enabled(db, config, ct)
-                ? (await PlannerEngine.PublishedAsync(db, current.Id, ct)).For(TeacherSchedule.AsPicks(on))
+                ? (await PlannerEngine.PublishedAsync(db, current.Id, ct)).For(TeacherSchedule.AsPicks(on), changes.Empty ? null : changes.Shadows)
                 : (Events: new List<PlannerOccurrence>(), Excluded: new Dictionary<string, List<string>>());
             // Own slots are private: an owner looking in gets none.
             var slots = p is null || actor.ViewAs ? [] : await db.TeacherSlots.Where(s => s.TeacherId == p.Id && s.SemesterId == current.Id).ToListAsync(ct);
@@ -213,7 +214,9 @@ public static class TeachEndpoints
             var timetable = await TimetableView.BuildAsync(db, current,
                 on.Select(t => new ClassRow(t.Course, t.Section, Changed(t.Section), null, sizes.GetValueOrDefault(t.Section.Id), t.Own, t.Added)).ToList(),
                 slots.OrderBy(s => s.Date).ThenBy(s => s.Day).ThenBy(s => s.Start).Select(Of),
-                planner, [], actor, ct);
+                planner, [], actor, ct,
+                // What this teacher may still do with each change: every section on the timetable is one they may change.
+                new ChangeViewer(actor, await ClassChanges.EnabledAsync(db, ct), clock.GetUtcNow(), on.Select(t => t.Section.Id).ToHashSet()));
             // Office hours are weekly and skip the days off; the app also keeps them inside the teaching weeks.
             var daysOff = await DaysOff.ForAsync(db, current.Id, ct);
             timetable["officeHours"] = hours.OrderBy(h => h.Day).ThenBy(h => h.Start).ThenBy(h => h.Id).Select(h => new
@@ -222,7 +225,7 @@ public static class TeachEndpoints
                 excludedDates = DaysOff.Skipped(daysOff, h.Day).ToList(),
             }).ToList();
             // One real class under several codes: how many Classy users it has in all, each counted once.
-            timetable["mergeSizes"] = await TeacherSchedule.MergeSizesAsync(db, on, ct);
+            timetable["mergeSizes"] = await TeacherSchedule.MergeSizesAsync(db, on, changes, ct);
             // Sections they added that the university has since removed.
             timetable["removed"] = removed;
             return Results.Ok(timetable);
@@ -496,6 +499,8 @@ public static class TeachEndpoints
             await Session.SignInTeacherAsync(http, teacher, http.User.CodeAt() ?? DateTimeOffset.UnixEpoch);
             return Results.NoContent();
         });
+
+        teach.MapClassChanges();
     }
 
     /// <summary>Picking a name is for staff accounts: owners attach names to a teaching assistant in the dashboard.</summary>

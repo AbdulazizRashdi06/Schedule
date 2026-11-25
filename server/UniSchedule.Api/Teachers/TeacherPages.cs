@@ -84,31 +84,52 @@ public static class TeacherPages
         return (sunday, sunday.AddDays(6));
     }
 
-    /// <summary>The sessions of these sections in a week, one row per real class.</summary>
-    static List<object> Classes(IReadOnlyList<Taught> on, SemesterSpan span, DateOnly from, DateOnly to)
+    /// <summary>
+    /// The sessions of these sections in a week, one row per real class, with teachers' changes applied: a cancelled
+    /// class stays in its place with status "cancelled"; a class at its new time or room, or an extra class, has
+    /// status "moved", "room" or "extra". The old slot of a moved class is not listed.
+    /// </summary>
+    static List<object> Classes(IReadOnlyList<Taught> on, SemesterSpan span, ChangeSet changes, DateOnly from, DateOnly to)
     {
         var rows = new List<(DateOnly Date, TimeOnly Start, string Code, object Row)>();
+        void Add(IReadOnlyList<Taught> members, DateOnly d, TimeOnly start, TimeOnly end, string room, string type, string? status, string? note) =>
+            rows.Add((d, start, members[0].Course.Code, new
+            {
+                codes = members.Select(x => x.Course.Code).ToList(),
+                name = members[0].Course.Name,
+                section = members[0].Section.Number,
+                date = PlannerEngine.Iso(d),
+                start = Timeslots.Format(start),
+                end = Timeslots.Format(end),
+                room,
+                type,
+                status,
+                note,
+            }));
         foreach (var block in TeacherSchedule.Blocks(on))
         {
-            var (lead, m) = block.Lead;
+            var m = block.Lead.Meeting;
             for (var d = from; d <= to; d = d.AddDays(1))
             {
                 if (!TeacherSchedule.On(span, m, d)) continue;
-                rows.Add((d, m.Start, lead.Course.Code, new
+                // The codes still on as the university lists them, and those a teacher cancelled.
+                var still = block.Members.Where(x => !changes.Skip(x.Class.Section, x.Meeting).Contains(d)).Select(x => x.Class).ToList();
+                if (still.Count > 0) Add(still, d, m.Start, m.End, m.Room, SessionKinds.Of(m.Room), null, null);
+                foreach (var cancelled in block.Members
+                    .Select(x => (x.Class, Off: changes.OffIn(x.Class.Section).FirstOrDefault(o => o.Change.Kind == ClassChanges.Cancel && o.Date == d && o.Start == m.Start)))
+                    .Where(x => x.Off is not null).GroupBy(x => x.Off!.Change.GroupId))
                 {
-                    codes = block.Members.Select(x => x.Class.Course.Code).ToList(),
-                    name = lead.Course.Name,
-                    section = lead.Section.Number,
-                    date = PlannerEngine.Iso(d),
-                    start = Timeslots.Format(m.Start),
-                    end = Timeslots.Format(m.End),
-                    room = m.Room,
-                    type = SessionKinds.Of(m.Room),
-                    // Set once teachers can change a class: cancelled, moved, room or extra.
-                    status = (string?)null,
-                    note = (string?)null,
-                }));
+                    var change = cancelled.First().Off!.Change;
+                    Add(cancelled.Select(x => x.Class).ToList(), d, m.Start, m.End, m.Room, change.SessionType, "cancelled", change.Note);
+                }
             }
+        }
+        foreach (var block in TeacherSchedule.PutOnBlocks(on, changes))
+        {
+            var a = block.Lead.Session;
+            if (a.Date < from || a.Date > to) continue;
+            Add(block.Members.Select(x => x.Class).ToList(), a.Date, a.Start, a.End, a.Room, a.Change.SessionType,
+                a.Change.Kind == ClassChanges.Move ? "moved" : a.Change.Kind, a.Change.Note);
         }
         return rows.OrderBy(r => r.Date).ThenBy(r => r.Start).ThenBy(r => r.Code, StringComparer.Ordinal).Select(r => r.Row).ToList();
     }
@@ -166,7 +187,8 @@ public static class TeacherPages
                 // An account: the sections on its timetable (its names, plus added, minus hidden). A bare name: the sections under it.
                 var keys = links.Where(n => n.Holds).Select(n => n.NameKey).Distinct().ToList();
                 var on = (await TeacherSchedule.SectionsAsync(db, semester.Id, account, keys, ct)).Where(t => !t.Hidden).ToList();
-                classes = Classes(on, await SemesterSpan.ForAsync(db, semester, ct), from, to);
+                var changes = await ClassChanges.LoadAsync(db, semester.Id, on.Select(t => t.Section).ToList(), ct);
+                classes = Classes(on, await SemesterSpan.ForAsync(db, semester, ct), changes, from, to);
             }
             var hours = account is null ? [] : await db.OfficeHours.Where(h => h.TeacherId == account.Id).ToListAsync(ct);
             return Results.Ok(new

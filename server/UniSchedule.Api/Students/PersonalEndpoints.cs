@@ -163,6 +163,9 @@ public static class PersonalEndpoints
                 if (date is null) return Errors.BadRequest("Pick a date.");
                 var day = (int)date.Value.DayOfWeek;
                 var classDay = pick.Section?.Meetings.Any(m => m.Date == date || (m.Date is null && m.Day == day)) == true;
+                // A class a teacher moved to that date, or an extra class on it, is a session too.
+                if (!classDay && pick.Section is not null)
+                    classDay = (await ClassChanges.LoadAsync(db, pick.Course.SemesterId, [pick.Section], ct)).AddedTo(pick.Section).Any(a => a.Date == date);
                 // A batch rep's exam, extra or moved class is a session too, even on a day the section doesn't meet.
                 if (!classDay && !await PlannerSession(db, config, pick, date.Value, ct))
                     return pick.Section is null

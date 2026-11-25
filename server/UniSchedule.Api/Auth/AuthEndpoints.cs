@@ -195,20 +195,32 @@ public static class AuthEndpoints
             var email = TeacherEmails.Normalize(body.Email);
             var code = body.Code?.Trim();
             if (email is null || !LoginCodes.IsWellFormed(code)) return Errors.BadRequest("Enter the 6-digit code from your email.");
-            // A browser this email signed in on isn't held to the per-address cap, until it has had 30 wrong codes in a
-            // day itself: a lecture-room PC that once signed a teacher in can't guess without limit.
-            var trusted = SignInCookies.IsTrustedDevice(http, email) && !limiter.TrustSpent(email);
-            if (!trusted && limiter.IsBlocked(http))
-                return Errors.TooMany("Too many wrong codes from this network. Try again in an hour, or sign in on a device you've used before.");
             // A made-up address is a new key every time, so wrong codes for addresses with no account are counted
             // together. Past the limit, first-time sign-ins wait; teachers who already have an account are not affected.
             var hasAccount = await db.Teachers.AnyAsync(t => t.Email == email, ct);
-            if (!hasAccount && limiter.NewPausedUntil() is not null)
-                return Errors.TooMany("New teacher sign-ins are paused for an hour. Try again later.");
+            // A browser this email signed in on isn't held to the per-address cap, until it has had 30 wrong codes in a
+            // day itself: a lecture-room PC that once signed a teacher in can't guess without limit. The try is
+            // counted before its code is checked, so tries sent together can't overshoot the caps.
+            var (slot, refused) = limiter.Reserve(http, email, SignInCookies.IsTrustedDevice(http, email), hasAccount);
+            if (slot is null)
+                return Errors.TooMany(refused == TeacherCodeLimiter.Refusal.Network
+                    ? "Too many wrong codes from this network. Try again in an hour, or sign in on a device you've used before."
+                    : "New teacher sign-ins are paused for an hour. Try again later.");
 
-            var (error, wrongCode) = await CodeSignIn.VerifyAsync(db, http, clock, email, code, "email", CodeSignIn.EmailMaxAttempts, trusted, ct);
+            IResult? error;
+            bool wrongCode;
+            try
+            {
+                (error, wrongCode) = await CodeSignIn.VerifyAsync(db, http, clock, email, code, "email", CodeSignIn.EmailMaxAttempts, slot.Trusted, ct);
+            }
+            catch
+            {
+                limiter.Release(slot);
+                throw;
+            }
             var now = clock.GetUtcNow();
-            if (wrongCode && limiter.Record(http, email, trusted, hasAccount))
+            if (!wrongCode) limiter.Release(slot);
+            else if (limiter.Confirm(slot))
             {
                 // Staff are told once when the pause starts (pushed to owners' devices, and shown on the dashboard).
                 db.TeachNotices.Add(new TeachNotice

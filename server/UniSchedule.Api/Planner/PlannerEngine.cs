@@ -93,7 +93,8 @@ public static class PlannerEngine
     public static bool SharedTargets(PlannerTarget[] a, PlannerTarget[] b) => a.Any(x => b.Any(y => x.CourseId == y.CourseId && (x.SectionIds.Length == 0 || y.SectionIds.Length == 0 || x.SectionIds.Intersect(y.SectionIds).Any())));
     public static string ExamIdentity(CalendarEntry entry) => entry.EventId is int id ? $"event:{id}" : entry.ProposalId is int proposal ? $"proposal:{proposal}" : entry.Key;
 
-    public static async Task<List<CalendarEntry>> Calendar(AppDb db, int semesterId, DateOnly from, DateOnly to, int? workspaceId, CancellationToken ct, int? excludeProposal = null, int? excludeEvent = null)
+    public static async Task<List<CalendarEntry>> Calendar(AppDb db, int semesterId, DateOnly from, DateOnly to, int? workspaceId, CancellationToken ct, int? excludeProposal = null, int? excludeEvent = null,
+        Func<int, DateOnly, TimeOnly, bool>? shadowed = null)
     {
         var semester = await db.Semesters.FirstAsync(s => s.Id == semesterId, ct);
         // The same weeks and days off students' timetables use.
@@ -128,6 +129,8 @@ public static class PlannerEngine
                 if (effective && !stale && spec.Source is { } original && Date(original.Date, out var originalDate))
                 {
                     var replacedDate = originalDate.AddDays(d.DayNumber - first.DayNumber);
+                    // A teacher changed that session: this week of the rep's event gives way to it.
+                    if (shadowed is not null && Time(original.Start, out var originalStart) && shadowed(original.SectionId, replacedDate, originalStart)) continue;
                     output.RemoveAll(x => x.Key == $"import:{original.Fingerprint}:{Iso(replacedDate)}");
                 }
                 // A published cancellation hides its class; once the class changed it no longer applies, so it's shown for review.
@@ -219,7 +222,10 @@ public sealed class PublishedPlan(List<(PlannerEvent Event, EventSpec Spec)> eve
     /// For one student's picks (with their courses loaded): the events they get, and the dates each university class
     /// (by fingerprint) doesn't happen because an event cancelled or moved it.
     /// </summary>
-    public (List<PlannerOccurrence> Events, Dictionary<string, List<string>> Excluded) For(IReadOnlyList<Pick> picks)
+    /// <param name="shadowed">Whether a teacher changed a session (section, its original date, its start): the rep's
+    /// event on it is then skipped for that week, with no exclusion and no replacement. The event is never edited, so
+    /// its other weeks are untouched and it comes back if the teacher undoes.</param>
+    public (List<PlannerOccurrence> Events, Dictionary<string, List<string>> Excluded) For(IReadOnlyList<Pick> picks, Func<int, DateOnly, TimeOnly, bool>? shadowed = null)
     {
         var output = new List<PlannerOccurrence>();
         var excluded = new Dictionary<string, List<string>>();
@@ -231,9 +237,11 @@ public sealed class PublishedPlan(List<(PlannerEvent Event, EventSpec Spec)> eve
             {
                 if (spec.Source is { } original)
                 {
+                    var originalDate = Day(original.Date).AddDays(d.DayNumber - Day(spec.Date).DayNumber);
+                    if (shadowed is not null && PlannerEngine.Time(original.Start, out var originalStart) && shadowed(original.SectionId, originalDate, originalStart)) continue;
                     var key = original.Fingerprint;
                     if (!excluded.ContainsKey(key)) excluded[key] = [];
-                    excluded[key].Add(PlannerEngine.Iso(Day(original.Date).AddDays(d.DayNumber - Day(spec.Date).DayNumber)));
+                    excluded[key].Add(PlannerEngine.Iso(originalDate));
                 }
                 if (!shown || spec.Action == "cancel") continue;
                 var pick = matching[0]; // One shared event, even when a student takes more than one target course.

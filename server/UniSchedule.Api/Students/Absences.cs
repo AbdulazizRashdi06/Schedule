@@ -37,6 +37,18 @@ public static class Absences
             var list = current is null ? [] : await db.Absences
                 .Where(a => a.StudentId == id && db.Courses.Any(c => c.Id == a.CourseId && c.SemesterId == current.Id))
                 .OrderBy(a => a.Date).ThenBy(a => a.Start).ToListAsync(ct);
+            // A session a teacher cancelled or moved away isn't one that can be missed, unless another change put a
+            // class in that very slot (two sessions swapped with each other).
+            if (list.Count > 0)
+            {
+                var sections = await db.Picks.Where(p => p.StudentId == id && p.Course.SemesterId == current!.Id && p.Section != null)
+                    .Select(p => p.Section!).Include(s => s.Meetings).ToListAsync(ct);
+                var changes = await ClassChanges.LoadAsync(db, current!.Id, sections, ct);
+                if (!changes.Empty)
+                    list = list.Where(a => !sections.Any(s => s.CourseId == a.CourseId
+                        && changes.OffIn(s).Any(o => o.Date == a.Date && o.Start == a.Start)
+                        && !changes.AddedTo(s).Any(x => x.Date == a.Date && x.Start == a.Start))).ToList();
+            }
             return Results.Ok(new
             {
                 limit = await Limit(db, ct),
