@@ -5,7 +5,7 @@ import { Button, ErrorText, Modal } from '../components/ui'
 const STEPS = [
   {
     title: 'Delete all data?',
-    body: 'This deletes every semester with its courses, sections, students’ picks and defaults, every major, and every student who isn’t an owner. Dashboard accounts and owners stay.',
+    body: 'This deletes every semester with its courses, sections, students’ picks and defaults, every major, every student who isn’t an owner, and teacher accounts and their class changes (blocked emails stay blocked). Dashboard accounts and owners stay.',
     label: 'Yes, continue',
   },
   { title: 'Are you sure?', body: 'Nothing can be brought back. Students will have to sign up and set up again.', label: 'Yes, I’m sure' },

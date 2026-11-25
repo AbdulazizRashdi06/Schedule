@@ -33,6 +33,8 @@ import Students from './admin/Students'
 import StudentDetail from './admin/StudentDetail'
 import Accounts from './admin/Accounts'
 import Feedback from './admin/Feedback'
+import Teachers from './admin/Teachers'
+import TeacherChanges from './admin/TeacherChanges'
 import Notes from './admin/Notes'
 import Connections from './admin/Connections'
 import Planner from './planner/Planner'
@@ -132,6 +134,8 @@ createRoot(document.getElementById('root')!).render(
             <Route path="students/:id" element={<StaffOnly ownerOnly><StudentDetail /></StaffOnly>} />
             <Route path="notes" element={<Notes />} />
             <Route path="feedback" element={<Feedback />} />
+            <Route path="teachers" element={<Teachers />} />
+            <Route path="teacher-changes" element={<TeacherChanges />} />
             <Route path="connections" element={<StaffOnly ownerOnly><Connections /></StaffOnly>} />
             <Route path="accounts" element={<Accounts />} />
           </Route>

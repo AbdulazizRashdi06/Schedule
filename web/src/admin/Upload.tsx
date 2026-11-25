@@ -33,10 +33,32 @@ export interface Preview {
   removed: Change[]
   studentsAffected: number
   canApply: boolean
+  /** What applying would do to teachers' live class changes; null when the semester has none. */
+  teacherChanges?: TeacherChangeEffect[] | null
+}
+export interface TeacherChangeEffect {
+  /** "dropped": the university moved or removed the class. "merged": the timetable now shows what the teacher did. "room-differs": it stays. */
+  effect: 'dropped' | 'merged' | 'room-differs'
+  code: string
+  section: string
+  /** "Cancelled Tue 2 Dec 10:00" */
+  what: string
+  by: string
+}
+
+const EFFECT: Record<TeacherChangeEffect['effect'], string> = {
+  dropped: 'will be dropped',
+  merged: 'is in this timetable now, so it merges quietly',
+  'room-differs': 'stays; the teacher is told the university lists another room',
+}
+/** "2 teacher changes will be dropped.", or '' when applying drops none. */
+export const droppedText = (p: Preview) => {
+  const n = p.teacherChanges?.filter((t) => t.effect === 'dropped').length ?? 0
+  return n ? `${n} teacher ${n === 1 ? 'change' : 'changes'} will be dropped.` : ''
 }
 
 const LABELS = ['Semester', 'File', 'Check', 'Publish']
-type Tab = 'added' | 'changed' | 'removed' | 'errors' | 'majors'
+type Tab = 'added' | 'changed' | 'removed' | 'errors' | 'majors' | 'teachers'
 
 export default function Upload() {
   const { semester, semesters, setSemesterId, reloadSemesters, isOwner } = useAdmin()
@@ -282,6 +304,7 @@ export default function Upload() {
                     : 'Students get the new times right away. Nobody’s picks are affected.'
                   : `Every student sets up ${target.name} again, starting from their major. Their last picks show as suggestions.`}
               </p>
+              {!publishOnly && preview && droppedText(preview) && <Notice tone="warn">{droppedText(preview)} Their classes go back to what this file says, and each teacher is told.</Notice>}
               <ErrorText>{error}</ErrorText>
               <div className="flex flex-wrap gap-2.5">
                 <Button
@@ -406,6 +429,7 @@ function DropZone({ file, onFile }: { file: File | null; onFile: (f: File) => vo
 
 export function CheckStep({ p, onBack, onNext, backLabel = 'Back' }: { p: Preview; onBack: () => void; onNext: () => void; backLabel?: string }) {
   const [tab, setTab] = useState<Tab>(p.errors.length ? 'errors' : p.updated.length ? 'changed' : 'added')
+  const teacherChanges = p.teacherChanges ?? []
   const changeRows = (list: Change[]) => list.map((c) => ({ a: `${c.code}${c.section ? ` ${c.section}` : ''}`, b: c.kind === 'course' ? 'Course' : 'Section', c: c.detail }))
   const DATA: Record<Tab, { n: number; label: string; rows: { a: string; b: string; c: string; bad?: boolean }[] }> = {
     added: { n: p.added.length, label: 'Added', rows: changeRows(p.added) },
@@ -417,9 +441,11 @@ export function CheckStep({ p, onBack, onNext, backLabel = 'Back' }: { p: Previe
       rows: [...p.errors.map((e) => ({ a: `Row ${e.line}`, b: 'Error', c: e.message, bad: true })), ...p.warnings.map((e) => ({ a: `Row ${e.line}`, b: 'Warning', c: e.message }))],
     },
     majors: { n: p.newMajors.length, label: 'New majors', rows: p.newMajors.map((m) => ({ a: 'New', b: m, c: 'Will be created. Set its name and electives in Majors.' })) },
+    teachers: { n: teacherChanges.length, label: 'Teacher changes', rows: teacherChanges.map((t) => ({ a: `${t.code} ${t.section}`, b: t.what, c: `by ${t.by} · ${EFFECT[t.effect] ?? t.effect}`, bad: t.effect === 'dropped' })) },
   }
   const nothing = p.added.length + p.updated.length + p.removed.length === 0
-  const keys = Object.keys(DATA) as Tab[]
+  // The teachers tab is only there when this file touches a teacher's change.
+  const keys = (Object.keys(DATA) as Tab[]).filter((k) => k !== 'teachers' || teacherChanges.length > 0)
   return (
     <section className="pane flex flex-col gap-[18px]">
       <div role="tablist" aria-label="Changes" className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-2">
@@ -457,6 +483,14 @@ export function CheckStep({ p, onBack, onNext, backLabel = 'Back' }: { p: Previe
         ))}
       </div>
       {nothing && p.errors.length === 0 && <Notice>Nothing changed: the semester already matches this file.</Notice>}
+      {droppedText(p) && tab !== 'teachers' && (
+        <Notice tone="warn">
+          {droppedText(p)} Their classes go back to what this timetable says, and each teacher is told.{' '}
+          <button type="button" className="underline underline-offset-2" onClick={() => setTab('teachers')}>
+            See which
+          </button>
+        </Notice>
+      )}
       <div className="flex flex-wrap items-center gap-2.5">
         <Button variant="secondary" onClick={onBack}>
           {backLabel}

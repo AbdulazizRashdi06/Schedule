@@ -20,6 +20,12 @@ interface Stats {
     noRoom: { courseId: number; code: string; number: string }[]
     stuckInSetup: number
     reportedNotes?: { courseId: number; code: string; notes: number }[]
+    /** Timetable names teachers picked that staff haven't approved or rejected. */
+    teachersWaiting?: number
+    /** Teachers with more than 5 class changes today. Nobody is stopped. */
+    busyTeachers?: { id: number; name: string; changes: number }[]
+    /** When the pause on first-time teacher sign-ins ends (many wrong codes), or null. */
+    teacherSignInPaused?: string | null
   }
   recentUploads: { at: string; fileName: string; by: string; added: number; updated: number; removed: number }[]
 }
@@ -78,8 +84,26 @@ export default function AdminHome() {
     { value: stats.courses, label: `courses, ${plural(stats.sections, 'section')}` },
     { value: stats.sectionEditsThisWeek, label: 'section edits this week' },
   ]
-  const { removed, noRoom, stuckInSetup, reportedNotes = [] } = stats.attention
+  const { removed, noRoom, stuckInSetup, reportedNotes = [], teachersWaiting = 0, busyTeachers = [], teacherSignInPaused } = stats.attention
   const attention: { to?: string; title: string; sub: string; action: string }[] = [
+    ...(teachersWaiting > 0
+      ? [{ to: '/admin/teachers', title: `${plural(teachersWaiting, 'teacher')} waiting for approval`, sub: 'They picked a timetable name their email didn’t match', action: 'Review' }]
+      : []),
+    ...busyTeachers.map((t) => ({
+      to: `/admin/teacher-changes?teacher=${t.id}`,
+      title: `${t.name} made ${plural(t.changes, 'class change')} today`,
+      sub: 'More than 5 in a day. Nobody is stopped; freeze them on the Teachers page if it looks wrong',
+      action: 'See',
+    })),
+    ...(teacherSignInPaused
+      ? [
+          {
+            title: `New teacher sign-ins are paused until ${new Date(teacherSignInPaused).toLocaleTimeString('en-GB', { timeZone: 'Asia/Muscat', hour: '2-digit', minute: '2-digit' })} (many wrong codes)`,
+            sub: 'Teachers who already have an account can still sign in',
+            action: '',
+          },
+        ]
+      : []),
     ...reportedNotes.map((r) => ({
       to: `/admin/courses/${r.courseId}`,
       title: `${plural(r.notes, 'public note')} reported on ${r.code}`,

@@ -26,6 +26,9 @@ const milliseconds = (n: number) => n < 1000 ? `${Math.round(n)} ms` : `${(n / 1
 const percent = (n: number, total: number) => total ? `${(n * 100 / total).toFixed(1)}%` : '—'
 
 function feature(route: string) {
+  // The teacher side, before the checks below would file its timetable and slots under the students' rows. Not
+  // "/api/teachers/…": that is the page students open.
+  if (route === '/api/teach' || route.startsWith('/api/teach/')) return 'Teacher tools'
   if (route.startsWith('/api/admin')) return 'Admin tools'
   if (route.includes('/auth')) return 'Sign-in & account'
   if (route.includes('/notes')) return 'Class notes'

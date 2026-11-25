@@ -13,6 +13,13 @@ export interface AdminCtx {
   setSemesterId: (id: number) => void
   reloadSemesters: () => Promise<Semester[]>
   isOwner: boolean
+  /** Counts the Teachers link's badge again (after approving a name, say). */
+  reloadTeacherBadge: () => void
+}
+
+/** The part of /admin/stats the sidebar reads. */
+interface TeacherAlerts {
+  attention?: { teachersWaiting?: number; busyTeachers?: unknown[] }
 }
 
 export const useAdmin = () => useOutletContext<AdminCtx>()
@@ -36,6 +43,22 @@ export default function AdminLayout() {
   useEffect(() => {
     reloadSemesters().catch(() => {})
   }, [reloadSemesters])
+
+  // What staff should look at on the Teachers page: names waiting for approval, plus teachers with more than 5 class
+  // changes today. RSA have no device to be alerted on, so this badge is their alert, on every dashboard page.
+  const [teacherBadge, setTeacherBadge] = useState(0)
+  const reloadTeacherBadge = useCallback(() => {
+    api.get<TeacherAlerts>('/admin/stats').then(
+      (s) => setTeacherBadge((s.attention?.teachersWaiting ?? 0) + (s.attention?.busyTeachers?.length ?? 0)),
+      () => {},
+    )
+  }, [])
+  useEffect(() => {
+    reloadTeacherBadge()
+    const onVisible = () => document.visibilityState === 'visible' && reloadTeacherBadge()
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [reloadTeacherBadge])
 
   const setSemesterId = (id: number) => {
     setId(id)
@@ -97,6 +120,17 @@ export default function AdminLayout() {
           <NavLink to="/admin/feedback" className={link}>
             Feedback
           </NavLink>
+          <NavLink to="/admin/teachers" className={(s) => cx(link(s), 'gap-2')}>
+            Teachers
+            {teacherBadge > 0 && (
+              <span aria-label={`${teacherBadge} to look at`} className="grid h-[22px] min-w-[22px] place-items-center rounded-full bg-alert px-1.5 font-mono text-[12px] leading-none font-bold text-cream">
+                {teacherBadge}
+              </span>
+            )}
+          </NavLink>
+          <NavLink to="/admin/teacher-changes" className={link}>
+            Teacher changes
+          </NavLink>
           {isOwner && <span className="label px-3 pt-[18px] pb-1.5 text-[10px] tracking-[0.14em] text-muted max-[799px]:hidden">Owners</span>}
           {isOwner && <NavLink to="/admin/analytics" className={link}>Analytics</NavLink>}
           {isOwner && (
@@ -145,7 +179,7 @@ export default function AdminLayout() {
         </div>
       </aside>
       <main className="flex min-w-0 flex-[999_1_560px] flex-col gap-7 px-5 py-8 sm:px-10 sm:py-9">
-        <Outlet context={{ semesters, semester, setSemesterId, reloadSemesters, isOwner } satisfies AdminCtx} />
+        <Outlet context={{ semesters, semester, setSemesterId, reloadSemesters, isOwner, reloadTeacherBadge } satisfies AdminCtx} />
       </main>
     </div>
   )

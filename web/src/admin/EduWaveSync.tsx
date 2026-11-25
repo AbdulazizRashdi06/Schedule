@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { api, errorText } from '../lib/api'
 import type { Semester } from '../lib/types'
-import { Button, Confirm, ErrorText } from '../components/ui'
-import { CheckStep, type Preview } from './Upload'
+import { Button, Confirm, ErrorText, Notice } from '../components/ui'
+import { CheckStep, droppedText, type Preview } from './Upload'
 
 interface Pending {
   id: number
@@ -56,6 +56,7 @@ export default function EduWaveSync({ semester }: { semester: Semester }) {
             Fetched {when(pending.receivedAt)} by {pending.source}: {pending.courses} courses, {pending.classes.toLocaleString()} classes.{' '}
             {changes === 0 ? 'Nothing changed.' : `${p.added.length} added, ${p.updated.length} changed, ${p.removed.length} removed.`}
           </p>
+          {droppedText(p) && !open && <Notice tone="warn">{droppedText(p)} Check changes lists them.</Notice>}
           {pending.failed && <p className="text-[14px] font-semibold text-muted">EduWave didn’t answer for {pending.failed}. Their classes stay as they are.</p>}
           {!open ? (
             <div className="flex flex-wrap gap-2.5">
@@ -72,12 +73,13 @@ export default function EduWaveSync({ semester }: { semester: Semester }) {
           <Confirm
             open={confirm}
             title={`Apply to ${semester.name}?`}
-            body={`${p.added.length} added, ${p.updated.length} changed, ${p.removed.length} removed.${p.studentsAffected ? ` ${p.studentsAffected} students will see the Changed badge.` : ''}`}
+            body={`${p.added.length} added, ${p.updated.length} changed, ${p.removed.length} removed.${p.studentsAffected ? ` ${p.studentsAffected} students will see the Changed badge.` : ''}${droppedText(p) ? ` ${droppedText(p)}` : ''}`}
             confirmLabel="Apply"
             onClose={() => setConfirm(false)}
             onConfirm={async () => {
-              await api.post(`/admin/semesters/${semester.id}/sync/apply`, { id: pending.id })
-              setDone('Applied. Students see the new timetable now.')
+              const r = await api.post<{ teacherChangesDropped?: number }>(`/admin/semesters/${semester.id}/sync/apply`, { id: pending.id })
+              const dropped = r?.teacherChangesDropped ?? 0
+              setDone(`Applied. Students see the new timetable now.${dropped ? ` ${dropped} teacher ${dropped === 1 ? 'change was' : 'changes were'} dropped; the teachers are told.` : ''}`)
               setOpen(false)
               await load()
             }}

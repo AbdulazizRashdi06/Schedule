@@ -15,6 +15,17 @@ interface Detail {
   enrollment: Record<string, number>
   noSection: number
   weeks: Weeks
+  /** Teachers' live changes on this course's sections that aren't over. For an extra class, date and start are its own. */
+  teacherChanges?: TeacherChange[]
+}
+interface TeacherChange {
+  sectionId: number
+  kind: 'cancel' | 'move' | 'room' | 'extra'
+  date: string
+  start: string
+  /** "Cancelled Tue 2 Dec 10:00" */
+  what: string
+  by: string
 }
 
 const meets = (s: Section) => meetsText(s, ', ')
@@ -38,6 +49,7 @@ export default function CourseDetail() {
   const c = d.course
   const total = Object.values(d.enrollment).reduce((a, b) => a + b, 0) + d.noSection
   const students = (s: Section) => d.enrollment[s.id] ?? 0
+  const changesOf = (detail: Detail, sectionId: number) => (detail.teacherChanges ?? []).filter((t) => t.sectionId === sectionId)
 
   return (
     <>
@@ -78,6 +90,11 @@ export default function CourseDetail() {
                 <td className="px-2 py-3.5 text-[22px] font-extrabold">{s.number}</td>
                 <td className="px-2 py-3.5 font-bold">
                   {meets(s)}
+                  {changesOf(d, s.id).map((t, i) => (
+                    <span key={i} className="block pt-1 text-[13px] font-semibold text-alert-ink">
+                      Teacher change: {t.what}, by {t.by}
+                    </span>
+                  ))}
                   {s.changedAt && s.changeSummary && (
                     <span className="block pt-1 text-[13px] font-semibold text-muted">
                       Changed {shortDate(s.changedAt)}: {s.changeSummary}
@@ -114,13 +131,21 @@ export default function CourseDetail() {
             students={students(editing)}
             live={d.semester.isCurrent}
             weeks={d.weeks}
+            teacherChanges={changesOf(d, editing.id)}
             onCancel={() => setEditing(null)}
             onSaved={async (changed) => {
               const n = students(editing)
+              const before = changesOf(d, editing.id).length
               setEditing(null)
               setSavedIds(new Set(savedIds).add(editing.id))
-              toast.show(changed && d.semester.isCurrent ? `Section ${editing.number} saved. ${n} ${n === 1 ? 'student' : 'students'} notified.` : `Section ${editing.number} saved.`)
-              await load()
+              const saved = changed && d.semester.isCurrent ? `Section ${editing.number} saved. ${n} ${n === 1 ? 'student' : 'students'} notified.` : `Section ${editing.number} saved.`
+              toast.show(saved)
+              // Read again: the save may have dropped or merged a teacher's change on this section.
+              const next = await api.get<Detail>(`/admin/courses/${id}`).catch(() => null)
+              if (!next) return void load()
+              setD(next)
+              const gone = before - changesOf(next, editing.id).length
+              if (gone > 0) toast.show(`${saved} ${gone} teacher ${gone === 1 ? 'change' : 'changes'} ended; the teacher is told.`)
             }}
           />
         )}
@@ -163,7 +188,7 @@ const order = (a: Meeting, b: Meeting) => (a.date ?? '').localeCompare(b.date ??
 const plain = (list: Meeting[]) => [...list].sort(order).map(({ day, start, end, room, date }) => ({ day, start, end, room, date }))
 
 /** Every class of a section: weekly ones first, then dated classes grouped by week, with past weeks folded away. */
-function SectionEditor({ code, section, students, live, weeks: teaching, onCancel, onSaved }: { code: string; section: Section; students: number; live: boolean; weeks: Weeks; onCancel: () => void; onSaved: (changed: boolean) => void }) {
+function SectionEditor({ code, section, students, live, weeks: teaching, teacherChanges, onCancel, onSaved }: { code: string; section: Section; students: number; live: boolean; weeks: Weeks; teacherChanges: TeacherChange[]; onCancel: () => void; onSaved: (changed: boolean) => void }) {
   const [instructor, setInstructor] = useState(section.instructor)
   const [rows, setRows] = useState<Row[]>(() => section.meetings.map(withKey).sort(order))
   const [showPast, setShowPast] = useState(false)
@@ -233,6 +258,19 @@ function SectionEditor({ code, section, students, live, weeks: teaching, onCance
         <span className="label text-[12px] tracking-normal">{code}</span>
       </div>
       <TextField label="Instructor" value={instructor} onChange={(e) => setInstructor(e.target.value)} />
+      {teacherChanges.length > 0 && (
+        <Notice tone="warn">
+          {teacherChanges.length === 1 ? 'A teacher changed a class of this section:' : 'Teachers changed classes of this section:'}
+          <ul className="list-disc py-1 pl-4 font-semibold">
+            {teacherChanges.map((t, i) => (
+              <li key={i}>
+                {t.what}, by {t.by}
+              </li>
+            ))}
+          </ul>
+          Saving another day or time for {teacherChanges.length === 1 ? 'that class drops the change' : 'those classes drops the changes'}, and the teacher is told. A new room alone keeps {teacherChanges.length === 1 ? 'it' : 'them'}.
+        </Notice>
+      )}
 
       {weekly.length > 0 && (
         <section className="flex flex-col gap-2">

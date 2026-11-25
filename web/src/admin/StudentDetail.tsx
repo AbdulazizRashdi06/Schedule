@@ -9,6 +9,7 @@ import { Button, Confirm, ErrorText, Loading, Tag, cx } from '../components/ui'
 import { shortDate, seen } from './AdminLayout'
 import { SetupTag } from './Students'
 import BatchRepAccess from './BatchRepAccess'
+import TeachingAccess from './TeachingAccess'
 
 interface Detail {
   id: number
@@ -114,7 +115,10 @@ export default function StudentDetail() {
         </Button>
       </div>
       <div className="flex flex-wrap items-start gap-10">
-        <BatchRepAccess studentId={d.id} currentMajorId={d.major?.id} />
+        <div className="flex max-w-xl min-w-0 flex-col gap-5">
+          <BatchRepAccess studentId={d.id} currentMajorId={d.major?.id} />
+          <TeachingAccess studentId={d.id} universityId={d.universityId} />
+        </div>
         <section className="flex flex-[1_1_300px] flex-col">
           <h2 className="mb-2.5 text-[24px] font-extrabold">Picks {d.semester && <span className="label text-[12px] text-muted">{d.semester.name}</span>}</h2>
           {d.picks.length === 0 && <p className="text-[15px] font-semibold text-muted">No courses picked{d.semester ? '' : ' (no semester published)'}.</p>}
