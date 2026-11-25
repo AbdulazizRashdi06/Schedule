@@ -95,7 +95,8 @@ public static class TeacherPages
         void Add(IReadOnlyList<Taught> members, DateOnly d, TimeOnly start, TimeOnly end, string room, string type, string? status, string? note) =>
             rows.Add((d, start, members[0].Course.Code, new
             {
-                codes = members.Select(x => x.Course.Code).ToList(),
+                // An extra class for two sections of one course is still one code.
+                codes = members.Select(x => x.Course.Code).Distinct().ToList(),
                 name = members[0].Course.Name,
                 section = members[0].Section.Number,
                 date = PlannerEngine.Iso(d),

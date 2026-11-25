@@ -827,4 +827,78 @@ public class ClassChangeTests
         await Json(await w.Teacher1.Replace(row.GroupId, new { kind = "cancel" }));
         Assert.Empty(Sessions(await Json(await w.Teacher1.GetAsync("/api/teach/timetable")), mon, mon));
     }
+
+    [Fact]
+    public async Task Someone_with_one_code_of_a_merged_class_undoes_or_edits_that_code_only()
+    {
+        using var w = await TeachWorld.Create();
+        var s = await Sections(w);
+        var sun = w.Date(0, 0);
+        // A second teacher has added one of the three codes.
+        var other = await w.SignInTeacher("co.teacher@gutech.edu.om");
+        await other.AddSection(s.Ibsm);
+        var group = await w.Teacher1.Made(Cancel(s.Be, sun));
+        // They see their code's change, and its numbers only.
+        Assert.Equal([s.Ibsm], (await List(other)).Select(c => c.GetProperty("sectionId").GetInt32()));
+        var preview = await Json(await other.Preview(Room(s.Ibsm, sun, "08:00", "B202")));
+        Assert.Equal([s.Ibsm], preview.GetProperty("codes").EnumerateArray().Select(c => c.GetProperty("sectionId").GetInt32()));
+        Assert.Equal(1, preview.GetProperty("size").GetInt32());
+        await Refused(other.Replace(group, new { kind = "room", room = "B202", sectionIds = new[] { s.Ibsm, s.Be } }), HttpStatusCode.BadRequest);
+
+        // Editing it gives their code a change of its own; the other two stay cancelled.
+        var edited = await Json(await other.Replace(group, new { kind = "room", room = "B202" }));
+        Assert.Equal(s.Ibsm, Assert.Single(edited.GetProperty("changes").EnumerateArray()).GetProperty("sectionId").GetInt32());
+        Assert.Equal([("cancel", s.Be, group), ("cancel", s.Log, group), ("room", s.Ibsm, Group(edited))], (await w.Live()).Select(r => (r.Kind, r.SectionId!.Value, r.GroupId)));
+        // Undoing it puts their class back, and nothing of the rest is theirs to undo.
+        await Json(await other.Undo(Group(edited)));
+        await Refused(other.Undo(group), HttpStatusCode.Forbidden, ChangeRules.NotYours);
+        Assert.Equal([s.Be, s.Log], (await w.Live()).Select(r => r.SectionId!.Value));
+
+        // The other way round: their change to all they have (one code) is undone by the named teacher.
+        var theirs = await other.Made(Cancel(s.Ibsm, w.Date(1, 0)));
+        await Json(await w.Teacher1.Undo(theirs));
+        // And an undo by them of a whole-class change touches their code alone.
+        var whole = await w.Teacher1.Made(Room(s.Be, w.Date(1, 0), "08:00", "B202"));
+        await Json(await other.Undo(whole));
+        Assert.Equal([s.Be, s.Log], (await w.Live()).Where(r => r.GroupId == whole).Select(r => r.SectionId!.Value));
+        Assert.Equal("undone", (await w.Rows()).Single(r => r.GroupId == whole && r.SectionId == s.Ibsm).EndReason);
+        // The preview of a change someone else made never gives numbers for a class that isn't on the asker's timetable.
+        await Refused(other.Preview(Cancel(s.Be, w.Date(1, 0))), HttpStatusCode.Forbidden, ChangeRules.NotYours);
+    }
+
+    [Fact]
+    public async Task A_weekly_class_under_three_codes_with_one_code_off_on_a_date_is_named_by_the_codes_still_on()
+    {
+        using var w = await TeachWorld.Create();
+        var s = await Sections(w);
+        foreach (var id in new[] { s.Be, s.Ibsm, s.Log }) await w.AddMeeting(id, null, 3, "10:00", "11:00", "A105");
+        var (first, second) = (w.Date(0, 3), w.Date(1, 3));
+        await w.Teacher1.Made(Cancel(s.Be, first, "10:00", sectionIds: [s.Be]));
+        await w.Teacher1.Made(Cancel(s.Be, second, "10:00"));
+
+        var cancelled = new List<(int TeacherId, UniSchedule.Api.Schedule.StudentSchedule.Item Item)>();
+        var items = await w.Db(async db =>
+        {
+            var teacher = await db.Teachers.SingleAsync(t => t.Id == w.Teacher1Id);
+            return (await TeacherSchedule.ItemsAsync(db, await db.Semesters.SingleAsync(x => x.Id == w.Semester), [teacher], slots: false, planner: false, default, cancelled))[teacher.Id];
+        });
+        // The weekly class is one item for the three codes, off on both dates.
+        var weekly = Assert.Single(items, i => i.Date is null);
+        Assert.Equal(("BE1101 · IBSM1101 · LOG1101", 3, new TimeOnly(10, 0), s.Be), (weekly.Code, weekly.Day, weekly.Start, weekly.SectionId!.Value));
+        Assert.True(weekly.Skip.Contains(first) && weekly.Skip.Contains(second));
+        // On the date two codes still meet, they have an item of their own, led by the first of them.
+        var still = Assert.Single(items, i => i.Date == first);
+        Assert.Equal(("IBSM1101 · LOG1101", new TimeOnly(10, 0), "A105", s.Ibsm), (still.Code, still.Start, still.Room, still.SectionId!.Value));
+        Assert.DoesNotContain(items, i => i.Date == second);
+        // The sessions that are off: one per teacher action, never among the items.
+        Assert.Equal([("BE1101", first), ("BE1101 · IBSM1101 · LOG1101", second)], cancelled.Select(c => (c.Item.Code, c.Item.Date!.Value)).OrderBy(c => c.Item2));
+        Assert.All(cancelled, c => Assert.Equal((w.Teacher1Id, "cancel", 0), (c.TeacherId, c.Item.ChangeKind, c.Item.StudentId)));
+        Assert.All(items, i => Assert.Equal(0, i.StudentId));
+
+        // The teacher's timetable gives every code the same weekly key, so the app can do the same.
+        var tt = await Json(await w.Teacher1.GetAsync("/api/teach/timetable"));
+        var keys = tt.GetProperty("classes").EnumerateArray().SelectMany(c => c.GetProperty("section").GetProperty("meetings").EnumerateArray())
+            .Where(m => m.GetProperty("date").ValueKind == JsonValueKind.Null).Select(m => m.GetProperty("merge").GetString()).ToList();
+        Assert.Equal(["w3|10:00|11:00|a105", "w3|10:00|11:00|a105", "w3|10:00|11:00|a105"], keys);
+    }
 }

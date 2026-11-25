@@ -610,4 +610,80 @@ public class PlannerTests
         Assert.Equal([w.Course, keep], kept.Select(t => t.CourseId));
         Assert.Equal([keepSection], kept[1].SectionIds);
     }
+
+    [Fact]
+    public async Task A_teachers_change_wins_over_a_reps_event_on_the_same_session_and_the_event_returns_after_undo() {
+        using var w = await TeachWorld.Create();
+        var section = await w.Section("CS2201", "1");
+        string Iso(DateOnly d) => d.ToString("yyyy-MM-dd");
+        var (wed, thu) = (w.Date(0, 3), w.Date(0, 4));
+        // A weekly class on Wednesdays at 14:00, which a batch rep moved to Thursdays for two weeks.
+        int course = 0, eventId = 0;
+        await w.Db(async db => {
+            var s = await db.Sections.Include(x => x.Meetings).SingleAsync(x => x.Id == section);
+            var meeting = new Meeting { Day = 3, Start = new(14, 0), End = new(15, 30), Room = "C7" };
+            s.Meetings.Add(meeting); await db.SaveChangesAsync();
+            course = s.CourseId;
+            var source = new PlannerSource(course, section, PlannerEngine.Fingerprint(s, meeting), Iso(wed), "14:00", "15:30");
+            var e = new PlannerEvent { SemesterId = w.Semester, UpdatedAt = w.Time.GetUtcNow(), PayloadJson = PlannerJson.Write(
+                new EventSpec("class", "replace", "Moved lecture", Iso(thu), "14:00", "15:30", "C9", [new(course, [section])], Iso(w.Date(1, 4)), source)) };
+            db.PlannerEvents.Add(e); await db.SaveChangesAsync(); eventId = e.Id;
+        });
+        await Json(await w.Owner.PutAsJsonAsync("/api/admin/planner/settings", new { enabled = true }));
+        var student = w.Students[0];
+        async Task<(List<string> Events, List<string> Off, int Changes)> Seen() {
+            var tt = await Json(await student.GetAsync("/api/me/timetable"));
+            var weekly = tt.GetProperty("classes").EnumerateArray().Single(c => c.GetProperty("code").GetString() == "CS2201").GetProperty("section").GetProperty("meetings")
+                .EnumerateArray().Single(m => m.GetProperty("date").ValueKind == JsonValueKind.Null);
+            return (tt.GetProperty("plannerEvents").EnumerateArray().Select(e => e.GetProperty("date").GetString()!).ToList(),
+                weekly.GetProperty("excludedDates").EnumerateArray().Select(d => d.GetString()!).ToList(), tt.GetProperty("changes").GetArrayLength());
+        }
+        async Task<List<(DateOnly Date, string Room)>> On() => await w.Db(async db => {
+            var semester = await db.Semesters.SingleAsync(x => x.Id == w.Semester);
+            var span = await UniSchedule.Api.Schedule.SemesterSpan.ForAsync(db, semester, default);
+            var items = await UniSchedule.Api.Schedule.StudentSchedule.ForAsync(db, semester.Id, [w.StudentRowIds[0]], slots: false, planner: true, default);
+            return new[] { wed, thu, w.Date(1, 3), w.Date(1, 4) }.SelectMany(d => items.Where(i => i.CourseId == course && UniSchedule.Api.Schedule.StudentSchedule.Happens(span, i, d)).Select(i => (d, i.Room))).ToList();
+        });
+        async Task<List<string>> Taken(DateOnly d) => await w.Db(async db =>
+            (await UniSchedule.Api.Students.FreeRooms.OccupiedAsync(db, await db.Semesters.SingleAsync(x => x.Id == w.Semester), d, w.Services.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>(), default))
+                .Occupied.Select(o => o.Room).Order().ToList());
+
+        // The rep's move alone: both Wednesdays are off, and both Thursdays are on.
+        var before = await Seen();
+        Assert.Equal([Iso(thu), Iso(w.Date(1, 4))], before.Events);
+        Assert.Contains(Iso(wed), before.Off); Assert.Contains(Iso(w.Date(1, 3)), before.Off);
+        Assert.Equal([(thu, "C9"), (w.Date(1, 4), "C9")], await On());
+        Assert.Contains("C9", await Taken(thu)); Assert.DoesNotContain("C7", await Taken(wed));
+
+        // The teacher cancels the first Wednesday's session: that week shows only the cancel. No replacement on Thursday.
+        var cancelled = await Json(await w.Teacher2.PostAsJsonAsync("/api/teach/changes", new { kind = "cancel", sectionId = section, date = Iso(wed), start = "14:00" }));
+        var after = await Seen();
+        Assert.Equal([Iso(w.Date(1, 4))], after.Events);
+        Assert.Equal(1, after.Changes);
+        Assert.Contains(Iso(wed), after.Off); Assert.Contains(Iso(w.Date(1, 3)), after.Off);
+        // The rep's other week is untouched.
+        Assert.Equal([(w.Date(1, 4), "C9")], await On());
+        Assert.DoesNotContain("C9", await Taken(thu)); Assert.DoesNotContain("C7", await Taken(wed));
+        Assert.Contains("C9", await Taken(w.Date(1, 4)));
+        // The teacher's own timetable agrees.
+        var teaching = await Json(await w.Teacher2.GetAsync("/api/teach/timetable"));
+        Assert.Equal([Iso(w.Date(1, 4))], teaching.GetProperty("plannerEvents").EnumerateArray().Select(e => e.GetProperty("date").GetString()));
+        // The rep's event itself was never edited.
+        Assert.Equal((1, false), await w.Db(async db => { var e = await db.PlannerEvents.SingleAsync(x => x.Id == eventId); return (e.Version, e.Withdrawn); }));
+
+        // A room change by the teacher wins the same way: the class is on, on its own day, in the teacher's room.
+        await Json(await w.Teacher2.PutAsJsonAsync($"/api/teach/changes/{cancelled.GetProperty("changes")[0].GetProperty("group").GetString()}", new { kind = "room", room = "C8" }));
+        Assert.Equal([(wed, "C8"), (w.Date(1, 4), "C9")], await On());
+        Assert.Contains("C8", await Taken(wed)); Assert.DoesNotContain("C7", await Taken(wed)); Assert.DoesNotContain("C9", await Taken(thu));
+
+        // Undo: the rep's event is back for that week.
+        var group = (await w.Db(db => db.Set<UniSchedule.Api.Teachers.ClassChange>().Where(c => c.EndedAt == null).Select(c => c.GroupId).SingleAsync()));
+        await Json(await w.Teacher2.PostAsync($"/api/teach/changes/{group}/undo", null));
+        var restored = await Seen();
+        Assert.Equal(before.Events, restored.Events);
+        Assert.Equal(before.Off, restored.Off);
+        Assert.Equal(0, restored.Changes);
+        Assert.Equal([(thu, "C9"), (w.Date(1, 4), "C9")], await On());
+        Assert.Contains("C9", await Taken(thu));
+    }
 }

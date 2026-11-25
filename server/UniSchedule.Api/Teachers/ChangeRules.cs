@@ -331,13 +331,16 @@ public static class ChangeRules
         }
     }
 
-    /// <summary>The draft of replacing a group: the session is the group's own, and codes may be unticked.</summary>
+    /// <summary>The draft of replacing a group (the rows of it the actor may touch): the session is the group's own, and codes may be unticked.</summary>
     static (Draft? Draft, IResult? Refusal) Replacement(World w, TeachActor actor, Body body, Draft d, string groupId, List<int>? asked, string? type, DateTimeOffset now)
     {
         // Check 15.
-        var rows = w.Changes.All.Where(c => c.GroupId == groupId).OrderBy(c => c.CourseCode, StringComparer.Ordinal).ThenBy(c => c.SectionId).ToList();
-        if (rows.Count == 0) return (null, Errors.Conflict(Gone));
-        if (!rows.Any(c => MayTouch(c, actor, w.MayChange))) return (null, Errors.Forbidden(NotYours));
+        var group = w.Changes.All.Where(c => c.GroupId == groupId).OrderBy(c => c.CourseCode, StringComparer.Ordinal).ThenBy(c => c.SectionId).ToList();
+        if (group.Count == 0) return (null, Errors.Conflict(Gone));
+        // Rights are per section: someone who may change only some of the group's classes edits those, and the rest
+        // of the change stays as it is.
+        var rows = group.Where(c => MayTouch(c, actor, w.MayChange)).ToList();
+        if (rows.Count == 0) return (null, Errors.Forbidden(NotYours));
         var was = rows[0];
         var extra = was.Kind == ClassChanges.Extra;
         if (extra != (d.Kind == ClassChanges.Extra))
@@ -427,8 +430,11 @@ public static class ChangeRules
         // The slot the class would take: a move's or an extra class's new time, a room change's own time.
         (DateOnly Date, TimeOnly Start, TimeOnly End)? slot = d.Problem is null && d.NewDate is DateOnly on ? (on, d.NewStart!.Value, d.NewEnd!.Value) : null;
         (DateOnly Date, TimeOnly Start)? original = d.Date is DateOnly date ? (date, d.Start!.Value) : null;
-        var (size, clash) = await NumbersAsync(db, semester.Id, ticked, moves ? slot : null, original, replacing, planner, ct);
-        var sizes = await TeacherSchedule.SizesAsync(db, d.Tickable.Select(t => t.Class.Section.Id).Concat(d.Elsewhere.Select(e => e.Class.Section.Id)).ToList(), ct);
+        // Numbers are only ever given for sections on the actor's own timetable (the maker of a change may have taken
+        // its class off their list since).
+        var counted = ticked.Where(w.MayChange.Contains).ToList();
+        var (size, clash) = await NumbersAsync(db, semester.Id, counted, moves ? slot : null, original, replacing, planner, ct);
+        var sizes = await TeacherSchedule.SizesAsync(db, d.Tickable.Select(t => t.Class.Section.Id).Concat(d.Elsewhere.Select(e => e.Class.Section.Id)).Where(w.MayChange.Contains).ToList(), ct);
 
         var warnings = new List<object>();
         void Warn(string code, string text) => warnings.Add(new { code, text });
@@ -683,19 +689,22 @@ public static class ChangeRules
     }
 
     /// <summary>
-    /// Undoes a change: every live row of the group ends, and the class is as the university lists it again. Works
-    /// while changes are switched off (it only restores the timetable), but not for a frozen account.
+    /// Undoes a change: every live row of the group (that the actor may touch) ends, and the class is as the
+    /// university lists it again. Works while changes are switched off (it only restores the timetable), but not for
+    /// a frozen account.
     /// </summary>
     public static async Task<IResult> UndoAsync(AppDb db, TeachActor actor, string groupId, DateTimeOffset now, CancellationToken ct)
     {
         if (actor.Profile?.FrozenAt is not null) return Errors.Forbidden(TeachActor.Frozen);
         var semester = await StudentEndpoints.CurrentSemester(db, ct);
         if (semester is null) return Errors.Conflict("No semester has been published yet.");
-        var live = await db.ClassChanges.Where(c => c.GroupId == groupId && c.SemesterId == semester.Id && c.EndedAt == null).ToListAsync(ct);
+        var group = await db.ClassChanges.Where(c => c.GroupId == groupId && c.SemesterId == semester.Id && c.EndedAt == null).ToListAsync(ct);
         // A second tap finds nothing left to undo, and tells nobody.
-        if (live.Count == 0) return Errors.Conflict(Gone);
+        if (group.Count == 0) return Errors.Conflict(Gone);
         var mayChange = (await TeacherSchedule.SectionsAsync(db, semester.Id, actor, ct)).Select(t => t.Section.Id).ToHashSet();
-        if (!live.Any(c => MayTouch(c, actor, mayChange))) return Errors.Forbidden(NotYours);
+        // Rights are per section: the classes of the group the actor may touch are put back; any others stay changed.
+        var live = group.Where(c => MayTouch(c, actor, mayChange)).ToList();
+        if (live.Count == 0) return Errors.Forbidden(NotYours);
         if (live.Any(c => !CanUndo(c, now))) return Errors.BadRequest(Started);
         await EndAsync(db, live, "undone", EndedBy(actor), now, ct, actor.ByName, Acting(actor));
         await db.SaveChangesAsync(ct);

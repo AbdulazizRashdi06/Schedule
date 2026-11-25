@@ -125,7 +125,7 @@ public static class TeacherSchedule
     }
 
     /// <summary>The codes of one real class as people read them: "BE1101 · IBSM1101 · LOG1101".</summary>
-    internal static string Codes(IEnumerable<Taught> members) => string.Join(" · ", members.Select(m => m.Course.Code));
+    internal static string Codes(IEnumerable<Taught> members) => string.Join(" · ", members.Select(m => m.Course.Code).Distinct());
 
     /// <summary>Every session of these sections, with those of one real class put together.</summary>
     internal static List<Block> Blocks(IEnumerable<Taught> taught)

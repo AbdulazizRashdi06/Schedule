@@ -115,4 +115,48 @@ public class TeacherCodeLimiterTests
         Assert.False(limiter.IsBlocked(http));
         Assert.True(limiter.Reserve(http, email, true, true).Slot is { Trusted: false });
     }
+
+    [Fact]
+    public void Staff_are_told_of_a_pause_only_by_wrong_codes_not_by_tries_still_being_checked()
+    {
+        var limiter = Limiter(new Clock());
+        // 39 wrong codes for made-up addresses, and one more try under way: the cap is reached, for the moment.
+        for (var i = 0; i < 39; i++) Assert.False(limiter.Confirm(limiter.Reserve(From($"198.51.101.{i + 1}"), $"made.up{i}@gutech.edu.om", false, false).Slot!));
+        var checking = limiter.Reserve(From("198.51.101.100"), "real.newcomer@gutech.edu.om", false, false).Slot!;
+        Assert.Equal(TeacherCodeLimiter.Refusal.NewPaused, limiter.Reserve(From("198.51.101.101"), "made.up@gutech.edu.om", false, false).Refused);
+        // Its code was right: the place is given back, nothing was paused, and nobody is told.
+        limiter.Release(checking);
+        Assert.Null(limiter.NewPausedUntil());
+        // The fortieth wrong code starts the pause, and tells staff once.
+        var last = limiter.Reserve(From("198.51.101.102"), "made.up@gutech.edu.om", false, false).Slot!;
+        var other = limiter.Reserve(From("198.51.101.103"), "made.up2@gutech.edu.om", false, false).Slot;
+        Assert.Null(other);
+        Assert.True(limiter.Confirm(last));
+        Assert.NotNull(limiter.NewPausedUntil());
+    }
+
+    [Fact]
+    public async Task Wrong_codes_sent_together_through_the_sign_in_stop_at_the_caps()
+    {
+        using var w = await TeachWorld.Create(seed: false);
+        // 36 made-up addresses, each with a code waiting, all guessed at the same moment from one network.
+        var browser = w.Browser("203.0.113.77");
+        var emails = Enumerable.Range(0, 36).Select(i => $"made.up{i}@gutech.edu.om").ToList();
+        foreach (var email in emails) await TeacherTestKit.RequestTeacherCode(browser, w.Emails, email);
+        using var go = new ManualResetEventSlim();
+        var tries = emails.Select(email => Task.Run(async () =>
+        {
+            go.Wait();
+            return await TeacherTestKit.VerifyTeacher(browser, email, TeacherTestKit.WrongFor(w.Emails.CodeFor(email)));
+        })).ToList();
+        go.Set();
+        var answers = await Task.WhenAll(tries);
+        // 30 an hour from one network: exactly that many codes were checked, however the requests fell.
+        Assert.Equal(30, answers.Count(r => r.StatusCode == HttpStatusCode.BadRequest));
+        Assert.Equal(6, answers.Count(r => r.StatusCode == HttpStatusCode.TooManyRequests));
+        Assert.Equal(30, await w.Db(db => Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.SumAsync(db.LoginCodes, c => c.Attempts)));
+        // The right code from that network is refused too, until the hour has passed.
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await TeacherTestKit.VerifyTeacher(browser, emails[0], w.Emails.CodeFor(emails[0]))).StatusCode);
+        Assert.Equal(0, await w.Db(db => Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.CountAsync(db.Teachers)));
+    }
 }

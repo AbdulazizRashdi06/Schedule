@@ -3,11 +3,13 @@ using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using UniSchedule.Api.Admin;
 using UniSchedule.Api.Auth;
 using UniSchedule.Api.Data;
@@ -514,5 +516,117 @@ public class TeacherIdentityTests
         Assert.True(With(grant).CodeIsFresh(now, grant));
         Assert.True(With(grant.AddMinutes(1)).CodeIsFresh(now, grant));
         Assert.False(With(now.AddDays(-8)).CodeIsFresh(now, now.AddDays(-9)));
+    }
+
+    // ---- The fresh-code rule: changing a class asks for a code from the last 7 days ----
+
+    static async Task AssertNeedsCode(Task<HttpResponseMessage> request)
+    {
+        var r = await request;
+        var text = await r.Content.ReadAsStringAsync();
+        Assert.True(r.StatusCode == HttpStatusCode.Forbidden, $"{(int)r.StatusCode}: {text}");
+        var answer = JsonDocument.Parse(text).RootElement;
+        Assert.True(answer.GetProperty("needsCode").GetBoolean());
+        Assert.Equal("Confirm it's you with a new code before changing a class.", answer.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task A_class_change_is_refused_after_seven_days_and_one_second_and_works_after_a_new_code()
+    {
+        using var w = await TeachWorld.Create();
+        var be = await w.Section("BE1101", "1");
+        var studentOwner = await w.SignInStudentOwner();
+        // Next week's class: still ahead when the code has gone stale.
+        var cancel = new { kind = "cancel", sectionId = be, date = w.Date(1, 0).ToString("yyyy-MM-dd"), start = "08:00" };
+        var room = new { kind = "room", room = "B202" };
+        async Task<string> Group(HttpResponseMessage r) => (await Json(r)).GetProperty("changes")[0].GetProperty("group").GetString()!;
+
+        // Seven days to the second: the code still counts.
+        var first = await Group(await w.Teacher1.PostAsJsonAsync("/api/teach/changes", cancel));
+        w.Time.Advance(TimeSpan.FromDays(7));
+        var second = await Group(await w.Teacher1.PutAsJsonAsync($"/api/teach/changes/{first}", room));
+        Assert.True((await Me(w.Teacher1)).GetProperty("codeFresh").GetBoolean());
+
+        // One second more: create, replace and undo all ask for a new code, and nothing is written.
+        w.Time.Advance(TimeSpan.FromSeconds(1));
+        Assert.False((await Me(w.Teacher1)).GetProperty("codeFresh").GetBoolean());
+        await AssertNeedsCode(w.Teacher1.PostAsJsonAsync("/api/teach/changes", new { kind = "extra", sectionIds = new[] { be }, newDate = w.Date(1, 2).ToString("yyyy-MM-dd"), newStart = "10:00", newEnd = "11:00", type = "lecture" }));
+        await AssertNeedsCode(w.Teacher1.PutAsJsonAsync($"/api/teach/changes/{second}", cancel));
+        await AssertNeedsCode(w.Teacher1.PostAsync($"/api/teach/changes/{second}/undo", null));
+        // Asked before anything else is looked at: even a change that doesn't exist says so.
+        await AssertNeedsCode(w.Teacher1.PostAsync($"/api/teach/changes/{new string('0', 32)}/undo", null));
+        Assert.Equal((6, 3), await w.Db(async db => (await db.ClassChanges.CountAsync(), await db.ClassChanges.CountAsync(c => c.EndedAt == null))));
+        // Looking needs none: the preview answers, and says a code will be asked for.
+        var preview = await Json(await w.Teacher1.PostAsJsonAsync("/api/teach/changes/preview", cancel));
+        Assert.True(preview.GetProperty("needsCode").GetBoolean());
+        Assert.Equal(HttpStatusCode.OK, (await w.Teacher1.GetAsync("/api/teach/changes")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await w.Teacher1.GetAsync("/api/teach/timetable")).StatusCode);
+
+        // A student owner looking in as a teacher signed in with a code too, so the same rule holds for them.
+        var viewing = TeachWorld.ViewAs(studentOwner, TeacherKeys.ForName(TeachWorld.Teacher1Name));
+        await AssertNeedsCode(viewing.PostAsync($"/api/teach/changes/{second}/undo", null));
+        // A dashboard owner has a password, not a code: exempt.
+        var dashboard = TeachWorld.ViewAs(w.Owner, TeacherKeys.ForName(TeachWorld.Teacher1Name));
+        var third = await Group(await dashboard.PutAsJsonAsync($"/api/teach/changes/{second}", new { kind = "room", room = "B203" }));
+
+        // A new code on the same browser, and it works again. It is per browser: another one of theirs is still stale.
+        var other = await w.SignInTeacher(TeachWorld.Teacher1Email);
+        await AssertNeedsCode(w.Teacher1.PostAsync($"/api/teach/changes/{third}/undo", null));
+        Assert.False((await Json(await other.PostAsJsonAsync("/api/teach/changes/preview", cancel))).GetProperty("needsCode").GetBoolean());
+        w.Time.Advance(TimeSpan.FromSeconds(61));
+        await SignInTeacher(w.Teacher1, w.Emails, TeachWorld.Teacher1Email);
+        Assert.True((await Me(w.Teacher1)).GetProperty("codeFresh").GetBoolean());
+        Assert.Equal(HttpStatusCode.OK, (await w.Teacher1.PostAsync($"/api/teach/changes/{third}/undo", null)).StatusCode);
+        w.Time.Advance(TimeSpan.FromSeconds(61));
+        await SignInStudent(studentOwner, w.Emails, ApiFactory.OwnerId);
+        Assert.Equal(HttpStatusCode.OK, (await viewing.PostAsJsonAsync("/api/teach/changes", cancel)).StatusCode);
+    }
+
+    [Fact]
+    public async Task A_cookie_from_before_codes_were_stamped_cannot_change_a_class()
+    {
+        using var w = await TeachWorld.Create();
+        var be = await w.Section("BE1101", "1");
+        // A sign-in cookie as they were made before the code's time was kept in it: who it is, and nothing else.
+        var options = w.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(CookieAuthenticationDefaults.AuthenticationScheme);
+        var identity = new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, w.Teacher1Id.ToString()), new Claim(Session.KindClaim, "teacher")], CookieAuthenticationDefaults.AuthenticationScheme);
+        var now = w.Time.GetUtcNow();
+        var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), new AuthenticationProperties { IsPersistent = true, IssuedUtc = now, ExpiresUtc = now.AddDays(60) }, CookieAuthenticationDefaults.AuthenticationScheme);
+        var old = w.App.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { HandleCookies = false });
+        old.DefaultRequestHeaders.Add("Cookie", $"{options.Cookie.Name}={options.TicketDataFormat.Protect(ticket)}");
+
+        // It is still that teacher, signed in.
+        var me = await Me(old);
+        Assert.Equal((w.Teacher1Id, false), (me.GetProperty("id").GetInt32(), me.GetProperty("codeFresh").GetBoolean()));
+        Assert.False((await Json(await old.GetAsync("/api/auth/session"))).GetProperty("codeFresh").GetBoolean());
+        await AssertNeedsCode(old.PostAsJsonAsync("/api/teach/changes", new { kind = "cancel", sectionId = be, date = w.Date(0, 0).ToString("yyyy-MM-dd"), start = "08:00" }));
+        Assert.Equal(0, await w.Db(db => db.ClassChanges.CountAsync()));
+    }
+
+    [Fact]
+    public async Task A_student_given_teaching_rights_needs_a_new_code_for_their_first_change()
+    {
+        using var w = await TeachWorld.Create();
+        var student = w.Students[0];
+        var cs = await w.Section("CS2201", "1");
+        w.Time.Advance(TimeSpan.FromMinutes(5));
+        await w.Services.AddTeachingStudent(w.StudentRowIds[0], "Lab Helper");
+        // Everything but changing a class works at once.
+        Assert.Equal(HttpStatusCode.OK, (await student.PutAsJsonAsync($"/api/teach/sections/{cs}", new { on = true })).StatusCode);
+        var cancel = new { kind = "cancel", sectionId = cs, date = w.Date(0, 1).ToString("yyyy-MM-dd"), start = "08:00" };
+        Assert.True((await Json(await student.PostAsJsonAsync("/api/teach/changes/preview", cancel))).GetProperty("needsCode").GetBoolean());
+        // The sign-in from five minutes before the grant is days fresh, and still doesn't count.
+        await AssertNeedsCode(student.PostAsJsonAsync("/api/teach/changes", cancel));
+        Assert.Equal(0, await w.Db(db => db.ClassChanges.CountAsync()));
+
+        await SignInStudent(student, w.Emails, TeachWorld.StudentIdsList[0]);
+        var made = await Json(await student.PostAsJsonAsync("/api/teach/changes", cancel));
+        Assert.Equal("Lab Helper", made.GetProperty("changes")[0].GetProperty("by").GetString());
+        // Taken away and given again is a new grant: the rule applies again.
+        await w.Db(db => db.Teachers.Where(t => t.StudentId == w.StudentRowIds[0]).ExecuteDeleteAsync());
+        w.Time.Advance(TimeSpan.FromMinutes(5));
+        await w.Services.AddTeachingStudent(w.StudentRowIds[0], "Lab Helper");
+        await student.PutAsJsonAsync($"/api/teach/sections/{cs}", new { on = true });
+        await AssertNeedsCode(student.PostAsync($"/api/teach/changes/{made.GetProperty("changes")[0].GetProperty("group").GetString()}/undo", null));
     }
 }
