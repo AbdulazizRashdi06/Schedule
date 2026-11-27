@@ -1149,8 +1149,10 @@ function WeekPage({
                       type="button"
                       onClick={() => (s.mine ? onEdit(s.mine) : onOpen(s, addDays(start, d)))}
                       aria-label={`${codes ? `${codes.join(', ')}, ` : ''}${s.cls.name}, ${TYPE_NAME[s.type].toLowerCase()}, ${DAY_LONG[d]} ${s.meeting.start} to ${s.meeting.end}${s.meeting.room ? `, room ${s.meeting.room}` : ''}${tag ? `, ${(changeLine(s) ?? tag).toLowerCase()}` : ''}${clashOn(s, addDays(start, d)) ? ', clashes with another class' : ''}${s.cls.changed ? ', changed' : ''}`}
+                      // Its own length: beside a longer class that starts with it, a short one ends when it ends.
+                      style={{ height: s.span * ROW + (s.span - 1) * GAP }}
                       className={cx(
-                        'press relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-[12px] p-1.5 text-left',
+                        'press relative flex min-w-0 flex-1 flex-col self-start overflow-hidden rounded-[12px] p-1.5 text-left',
                         // Not happening: the day-off hatch, faded, with the code struck through.
                         s.off ? 'bg-[repeating-linear-gradient(135deg,rgb(11_25_87/0.16)_0_6px,rgb(11_25_87/0.05)_6px_12px)] text-navy opacity-55' : BLOCK[s.type],
                         live && 'ring-[2.5px] ring-navy ring-offset-2 ring-offset-cream',
