@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import { flushSync } from 'react-dom'
 import { AnimatePresence, animate, motion, useReducedMotion, useScroll, useTransform, type MotionValue } from 'motion/react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
@@ -944,6 +944,7 @@ export default function Lab() {
 }
 
 /** On a cream page lectures are navy so they stand out; labs, tutorials and your own slots keep their colours. */
+/** A block's colours: its fill first, then its text colour, then any edge. fillOf and inkOf read them by that order. */
 const BLOCK: Record<ClassType, string> = {
   exam: 'bg-sky text-navy',
   lecture: 'bg-navy text-cream',
@@ -952,6 +953,9 @@ const BLOCK: Record<ClassType, string> = {
   mine: 'bg-paper text-navy outline-2 outline-dashed -outline-offset-2 outline-navy/50',
   office: 'bg-paper text-navy outline-2 -outline-offset-2 outline-navy',
 }
+
+const fillOf = (t: ClassType) => BLOCK[t].split(' ')[0]
+const inkOf = (t: ClassType) => BLOCK[t].split(' ')[1]
 
 const HEADLINE: Record<number, string> = { [-1]: 'Last week.', 0: 'This week.', 1: 'Next week.', 2: 'In two weeks.' }
 
@@ -1135,30 +1139,64 @@ function WeekPage({
           SLOTS.map((_, slot) => {
             const cell = [...sessions, ...off].filter((s) => s.meeting.day === d && s.slot === slot)
             if (cell.length === 0) return null
+            const longest = Math.max(...cell.map((s) => s.span))
+            // One class that runs on after the others beside it have ended fills the column from there down, in its own
+            // colour: an L around them, never under them. Not a greyed block (its hatch is see-through, and the L is
+            // drawn from overlapping pieces), nor when two run equally long.
+            const only = cell.filter((s) => s.span === longest)
+            const wide = cell.length > 1 && only.length === 1 && !only[0].off ? cell.indexOf(only[0]) : -1
+            // Where the wide block widens: just under the longest of the others.
+            const under = Math.max(0, ...cell.filter((_, i) => i !== wide).map((s) => s.span * ROW + (s.span - 1) * GAP)) + 2
             return (
-              <motion.div key={`${d}-${slot}`} className="relative z-20 flex min-w-0 gap-0.5" style={{ gridColumn: c + 2, gridRow: `${slot + 1} / span ${Math.max(...cell.map((s) => s.span))}`, y: rise[c] }}>
+              <motion.div key={`${d}-${slot}`} className="relative z-20 flex min-w-0 gap-0.5" style={{ gridColumn: c + 2, gridRow: `${slot + 1} / span ${longest}`, y: rise[c] }}>
                 {cell.map((s, i) => {
+                  const grows = i === wide
+                  // The wide block's words and dot keep to its own column, beside the shorter classes: the same column, with
+                  // the same 6px padding and 2px gaps, that it would have as one of the blocks side by side.
+                  const n = cell.length
+                  const column: CSSProperties | undefined = grows ? { width: `calc((100% + ${12 - 2 * (n - 1)}px) / ${n} - 12px)`, marginLeft: `calc(${i} * (100% + 14px) / ${n})` } : undefined
+                  const dot: CSSProperties | undefined = grows ? { right: `calc(${n - 1 - i} * (100% + 2px) / ${n} + 4px)` } : undefined
+                  // The L's upright (the block's own column, top to bottom) and its foot (the full width, from `under` down).
+                  const colLeft = `calc(${i} * (100% + 2px) / ${n})`
+                  const colWidth = `calc((100% - ${2 * (n - 1)}px) / ${n})`
                   const live = !s.off && d === today && s.start <= nowMin && nowMin < s.end
                   // What a teacher's change did to this one session: "Cancelled", "Moved", "Room changed", "Extra class".
                   const tag = changeTag(s)
                   // One real class under several course codes (teacher side): the codes that meet this day.
                   const codes = s.merged ? blockOn(s, addDays(start, d)).map((m) => m.cls.code) : null
+                  // On now (a ring), and clashing with another course (a red edge).
+                  const edge = cx(live && 'ring-[2.5px] ring-navy ring-offset-2 ring-offset-cream', !s.off && clashOn(s, addDays(start, d)) && 'outline-2 -outline-offset-2 outline-alert')
                   return (
+                    <Fragment key={i}>
+                    {/* Holds the wide block's column among the others (padded like them, so the columns come out equal). */}
+                    {grows && <span aria-hidden="true" className="flex-1 px-1.5" />}
                     <button
-                      key={i}
                       type="button"
                       onClick={() => (s.mine ? onEdit(s.mine) : onOpen(s, addDays(start, d)))}
                       aria-label={`${codes ? `${codes.join(', ')}, ` : ''}${s.cls.name}, ${TYPE_NAME[s.type].toLowerCase()}, ${DAY_LONG[d]} ${s.meeting.start} to ${s.meeting.end}${s.meeting.room ? `, room ${s.meeting.room}` : ''}${tag ? `, ${(changeLine(s) ?? tag).toLowerCase()}` : ''}${clashOn(s, addDays(start, d)) ? ', clashes with another class' : ''}${s.cls.changed ? ', changed' : ''}`}
                       // Its own length: beside a longer class that starts with it, a short one ends when it ends.
-                      style={{ height: s.span * ROW + (s.span - 1) * GAP }}
+                      style={grows ? undefined : { height: s.span * ROW + (s.span - 1) * GAP }}
                       className={cx(
-                        'press relative flex min-w-0 flex-1 flex-col self-start overflow-hidden rounded-[12px] p-1.5 text-left',
+                        'press flex min-w-0 flex-col rounded-[12px] p-1.5 text-left',
+                        // The others sit above the wide block's rectangle, so a tap on them is theirs.
+                        grows ? 'absolute inset-0' : 'relative flex-1 self-start overflow-hidden',
+                        wide >= 0 && !grows && 'z-10',
                         // Not happening: the day-off hatch, faded, with the code struck through.
-                        s.off ? 'bg-[repeating-linear-gradient(135deg,rgb(11_25_87/0.16)_0_6px,rgb(11_25_87/0.05)_6px_12px)] text-navy opacity-55' : BLOCK[s.type],
-                        live && 'ring-[2.5px] ring-navy ring-offset-2 ring-offset-cream',
-                        !s.off && clashOn(s, addDays(start, d)) && 'outline-2 -outline-offset-2 outline-alert',
+                        s.off ? 'bg-[repeating-linear-gradient(135deg,rgb(11_25_87/0.16)_0_6px,rgb(11_25_87/0.05)_6px_12px)] text-navy opacity-55' : grows ? inkOf(s.type) : BLOCK[s.type],
+                        !grows && edge,
                       )}
                     >
+                      {/* The L: upright and foot, each with the block's fill and edge; then the two fills again, just inside,
+                          to paint over the stretch of each one's edge that crosses the other. */}
+                      {grows && (
+                        <>
+                          <span aria-hidden="true" className={cx('absolute inset-y-0 rounded-[12px]', BLOCK[s.type], edge)} style={{ left: colLeft, width: colWidth }} />
+                          <span aria-hidden="true" className={cx('absolute inset-x-0 bottom-0 rounded-[12px]', BLOCK[s.type], edge)} style={{ top: under }} />
+                          <span aria-hidden="true" className={cx('absolute inset-y-0.5 rounded-[10px]', fillOf(s.type))} style={{ left: `calc(${colLeft} + 2px)`, width: `calc(${colWidth} - 4px)` }} />
+                          <span aria-hidden="true" className={cx('absolute inset-x-0.5 bottom-0.5 rounded-[10px]', fillOf(s.type))} style={{ top: under + 2 }} />
+                        </>
+                      )}
+                      <span className={cx('flex min-w-0 flex-col', grows && 'relative overflow-hidden')} style={column}>
                       {codes ? (
                         <span className={cx('display flex flex-col text-[11px] leading-[1.08] tracking-[-0.03em]', s.off && 'line-through')}>
                           {codes.slice(0, codes.length > 3 ? 2 : 3).map((code) => (
@@ -1175,6 +1213,7 @@ function WeekPage({
                         {s.meeting.start}
                         {s.span > 1 && `–${s.meeting.end}`}
                       </span>
+                      </span>
                       {s.off ? (
                         <span className="label mt-auto text-[8px] tracking-normal">{cell.length > 1 || (days.length > 5 && s.off === 'cancelled') ? 'Off' : tag}</span>
                       ) : (
@@ -1183,12 +1222,13 @@ function WeekPage({
                       {/* Changed since you last looked (dot), and has notes (square), in the block's own text colour. A
                           class a teacher moved here, re-roomed or added has a ring where the dot sits. */}
                       {!s.off && tag ? (
-                        <span aria-hidden="true" className={cx('absolute top-1 right-1 size-[7px] rounded-full border-[1.5px] border-current', s.cls.changed && 'bg-current bg-clip-content p-px')} />
+                        <span aria-hidden="true" style={dot} className={cx('absolute top-1 right-1 size-[7px] rounded-full border-[1.5px] border-current', s.cls.changed && 'bg-current bg-clip-content p-px')} />
                       ) : (
-                        !s.off && s.cls.changed && <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-current" />
+                        !s.off && s.cls.changed && <span style={dot} className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-current" />
                       )}
                       {notesOn(s, addDays(start, d)) > 0 && <span aria-hidden="true" className="absolute right-1.5 bottom-1.5 size-1.5 rounded-[2px] bg-current opacity-60" />}
                     </button>
+                    </Fragment>
                   )
                 })}
               </motion.div>
