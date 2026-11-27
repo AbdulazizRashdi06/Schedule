@@ -34,7 +34,14 @@ const throughLast = (days: number[]) => days[days.length - 1] + 1
  * One page's width in a strip, unrounded. clientWidth rounds to whole pixels, and on a 392.7px-wide phone that error
  * grows with every page (11px by day 42), enough to put a settled strip "between" pages.
  */
-const pageWidth = (el: HTMLElement) => el.scrollWidth / Math.max(1, el.childElementCount)
+function pageWidth(el: HTMLElement) {
+  const first = el.firstElementChild as HTMLElement | null
+  const last = el.lastElementChild as HTMLElement | null
+  // From where the pages sit, not from scrollWidth: the last page's content trails past the end of the strip while it
+  // waits off to the side (see Slide), which stretched scrollWidth and put every page near the end "between" pages.
+  if (!first || !last || first === last) return el.clientWidth
+  return (last.offsetLeft - first.offsetLeft) / (el.childElementCount - 1)
+}
 
 /** Hides a strip's own scrollbar: the page itself is the position indicator. */
 const noBar = '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
