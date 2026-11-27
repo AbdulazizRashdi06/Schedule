@@ -287,6 +287,19 @@ export function inWeek(sessions: Session[], start: Date) {
   )
 }
 
+/**
+ * Whether this week is over for the person at `now`: their last class of it has ended, so the week to look at is the
+ * next one. It's their own last class (Wednesday afternoon for someone free on Thursdays), and everything on their
+ * timetable counts, as on the Today card. A week with nothing on at all is only over at the weekend.
+ */
+export function weekOver(sessions: Session[], now: Date) {
+  const week = inWeek(sessions, weekStart(now))
+  const day = now.getDay()
+  const nowMin = nowMinutes(now)
+  if (week.some((s) => s.meeting.day > day || (s.meeting.day === day && s.end > nowMin))) return false
+  return week.length > 0 || day >= 5
+}
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 /** "11 Oct" */
 export const fmtDate = (d: Date) => `${d.getDate()} ${MONTHS[d.getMonth()]}`

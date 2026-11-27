@@ -4,7 +4,7 @@ import { AnimatePresence, animate, motion, useReducedMotion, useScroll, useTrans
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import SessionPage from './Session'
 import { DAY_LONG, DAY_SHORT, minutes } from '../lib/time'
-import { SLOTS, TYPE_NAME, addDays, blockOn, changeLine, changeTag, clashOn, fmtWeekRange, inWeek, isoDate, notesOn, nowMinutes, onDate, weekDays, weekStart, weekTitle, type ClassType, type Session } from '../lib/slots'
+import { SLOTS, TYPE_NAME, addDays, blockOn, changeLine, changeTag, clashOn, fmtWeekRange, inWeek, isoDate, notesOn, nowMinutes, onDate, weekDays, weekOver, weekStart, weekTitle, type ClassType, type Session } from '../lib/slots'
 import { tick } from '../lib/native'
 import { Icon, Sheet, cx } from '../components/ui'
 import { store } from '../lib/api'
@@ -403,6 +403,10 @@ export default function Lab() {
   }, [all, ghosts, todayIso, WEEKS])
   const todayIndex = Math.max(0, dates.findIndex((d) => isoDate(d) === todayIso))
 
+  // The week under today, and the one "back" returns to: this week until the person's last class of it has ended, then
+  // next week, which is where today's "Back on Sunday" is already looking.
+  const homeWeek = WEEKS.includes(1) && weekOver(all, now) ? 1 : 0
+
   const [dayIndex, setDayIndex] = useState(todayIndex)
   const [week, setWeek] = useState(0)
   // Whether the week fills most of the screen (scrolled down) rather than the days.
@@ -478,14 +482,14 @@ export default function Lab() {
       if (dayBehavior) showDay(i, dayBehavior)
       shownIso.current = isoDate(d)
       setDayIndex(i)
-      const o = weekOf(d)
+      const o = isoDate(d) === todayIso ? homeWeek : weekOf(d)
       if (o !== shownWeek.current || dayBehavior === 'instant') {
         shownWeek.current = o
         setWeek(o)
         if (WEEKS.includes(o)) showWeek(o, 'instant')
       }
     },
-    [dates, weekOf, showDay, showWeek, WEEKS],
+    [dates, weekOf, showDay, showWeek, WEEKS, todayIso, homeWeek],
   )
 
   // Open on today. When the days change later (adding a slot can add a Friday, the semester's weeks can arrive), stay
@@ -501,6 +505,20 @@ export default function Lab() {
     land(i >= 0 ? i : todayIndex, 'instant')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, dates, todayIso])
+
+  // When the last class of the week ends with the page open, the week under today moves on to next week. Only while
+  // it's resting there out of sight: a week someone is looking at, or one they browsed to, stays put.
+  const shownHome = useRef(homeWeek)
+  useLayoutEffect(() => {
+    if (!ready || shownHome.current === homeWeek) return
+    const was = shownHome.current
+    shownHome.current = homeWeek
+    if (onWeek || shownIso.current !== todayIso || shownWeek.current !== was) return
+    shownWeek.current = homeWeek
+    setWeek(homeWeek)
+    showWeek(homeWeek, 'instant')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, homeWeek])
 
   // The "This week" shortcut (long-press the installed app's icon) opens home scrolled down to the week, once.
   const openedOnWeek = useRef(false)
@@ -569,8 +587,8 @@ export default function Lab() {
     (which: 'day' | 'week') => {
       const strip = which === 'day' ? daysStrip.current : weeksStrip.current
       if (!strip) return
-      const target = which === 'day' ? todayIndex : WEEKS.indexOf(0)
-      const glide = () => (which === 'day' ? showDay(target, reduceMotion ? 'instant' : 'smooth') : showWeek(0, reduceMotion ? 'instant' : 'smooth'))
+      const target = which === 'day' ? todayIndex : WEEKS.indexOf(homeWeek)
+      const glide = () => (which === 'day' ? showDay(target, reduceMotion ? 'instant' : 'smooth') : showWeek(homeWeek, reduceMotion ? 'instant' : 'smooth'))
       tick('impact')
       const at = Math.round(strip.scrollLeft / pageWidth(strip))
       if (reduceMotion || Math.abs(at - target) <= 1) return glide()
@@ -588,7 +606,7 @@ export default function Lab() {
       strip.animate([{ filter: 'blur(6px)', opacity: 0.55 }, { filter: 'blur(0px)', opacity: 1 }], { duration: 320, easing: `cubic-bezier(${EASE_OUT.join(',')})` })
       requestAnimationFrame(glide)
     },
-    [todayIndex, WEEKS, showDay, showWeek, land, reduceMotion],
+    [todayIndex, WEEKS, homeWeek, showDay, showWeek, land, reduceMotion],
   )
 
   const toWeek = useCallback(() => {
@@ -799,7 +817,7 @@ export default function Lab() {
           />
           {ready && (
             <div className="pointer-events-none absolute inset-x-0 top-[max(0px,calc(env(safe-area-inset-top)-0.5rem))] z-10 flex justify-center">
-              <Bars strip={weeksStrip} labels={WEEKS.map((o) => weekTitle(o, weekStart(now, o), sem))} mark={WEEKS.indexOf(0)} onPick={(i) => showWeek(WEEKS[i], 'smooth')} label="Weeks" />
+              <Bars strip={weeksStrip} labels={WEEKS.map((o) => weekTitle(o, weekStart(now, o), sem))} mark={WEEKS.indexOf(homeWeek)} onPick={(i) => showWeek(WEEKS[i], 'smooth')} label="Weeks" />
             </div>
           )}
           {ready && (
@@ -834,9 +852,9 @@ export default function Lab() {
       </div>
       {ready && (
         <BackPill
-          show={!shown && (onWeek ? week !== 0 : dayIndex !== todayIndex)}
-          label={onWeek ? 'Back to this week' : 'Back to today'}
-          dir={onWeek ? Math.sign(WEEKS.indexOf(0) - WEEKS.indexOf(week)) : Math.sign(todayIndex - dayIndex)}
+          show={!shown && (onWeek ? week !== homeWeek : dayIndex !== todayIndex)}
+          label={onWeek ? (homeWeek === 1 ? 'Back to next week' : 'Back to this week') : 'Back to today'}
+          dir={onWeek ? Math.sign(WEEKS.indexOf(homeWeek) - WEEKS.indexOf(week)) : Math.sign(todayIndex - dayIndex)}
           onBack={() => goBack(onWeek ? 'week' : 'day')}
           // Above the cue down to the week, which holds the same spot at the foot of a day.
           lift={onWeek ? 0 : 56}
