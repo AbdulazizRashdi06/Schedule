@@ -131,7 +131,7 @@ export default function EditCourses() {
                   className={cx(
                     'flex flex-col gap-2.5 rounded-[20px] py-3 pr-2 pl-3 transition-opacity duration-200',
                     isDropped
-                      ? 'opacity-60 shadow-[inset_0_0_0_2px_rgb(11_25_87/0.12)]'
+                      ? 'opacity-60 shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_12%,transparent)]'
                       : cx('bg-paper', clash ? 'shadow-[0_1px_0_rgb(11_25_87/0.06),0_8px_20px_-14px_rgb(11_25_87/0.35),0_0_0_2px_var(--color-alert-line)]' : 'shadow-[0_1px_0_rgb(11_25_87/0.06),0_8px_20px_-14px_rgb(11_25_87/0.35)]'),
                   )}
                 >

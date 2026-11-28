@@ -103,7 +103,7 @@ export default function NotificationsSheet({ open, onClose }: { open: boolean; o
                     role="radio"
                     aria-checked={on}
                     onClick={() => run(() => save({ remindMinutes: m, changes: settings.changes }))}
-                    className={cx('press label h-10 rounded-full px-4 text-[12px]', on ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_rgb(11_25_87/0.2)]')}
+                    className={cx('press label h-10 rounded-full px-4 text-[12px]', on ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_20%,transparent)]')}
                   >
                     {m === null ? 'Off' : `${m} min`}
                   </button>

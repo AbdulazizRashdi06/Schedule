@@ -43,7 +43,7 @@ export default function EduWaveSync({ semester }: { semester: Semester }) {
   const changes = p ? p.added.length + p.updated.length + p.removed.length : 0
 
   return (
-    <section className="flex max-w-[860px] flex-col gap-3 rounded-[20px] p-4 shadow-[inset_0_0_0_2px_rgb(0_0_0/0.1)]">
+    <section className="flex max-w-[860px] flex-col gap-3 rounded-[20px] p-4 shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_10%,transparent)]">
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="text-[20px] font-extrabold">From EduWave</h2>
         {!pending && lastApplied && <span className="text-[14px] font-semibold text-muted">Last sync applied {when(lastApplied)}. Nothing new.</span>}

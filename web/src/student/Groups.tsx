@@ -70,7 +70,7 @@ export default function Groups() {
         )}
 
         {making ? (
-          <section className="flex flex-col gap-3.5 rounded-[20px] p-4 shadow-[inset_0_0_0_2px_rgb(0_0_0/0.1)]">
+          <section className="flex flex-col gap-3.5 rounded-[20px] p-4 shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_10%,transparent)]">
             <h2 className="text-[20px] font-extrabold">New group</h2>
             <div role="radiogroup" aria-label="Kind of group" className="grid grid-cols-2 gap-2">
               {(
@@ -85,7 +85,7 @@ export default function Groups() {
                   role="radio"
                   aria-checked={kind === id}
                   onClick={() => setKind(id)}
-                  className={cx('press flex flex-col items-start rounded-[16px] px-4 py-2.5 text-left', kind === id ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_rgb(11_25_87/0.16)]')}
+                  className={cx('press flex flex-col items-start rounded-[16px] px-4 py-2.5 text-left', kind === id ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_16%,transparent)]')}
                 >
                   <span className="text-[16px] font-extrabold">{label}</span>
                   <span className={cx('text-[12px] font-semibold', kind === id ? 'text-ice' : 'text-muted')}>{hint}</span>

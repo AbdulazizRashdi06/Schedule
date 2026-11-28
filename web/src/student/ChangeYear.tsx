@@ -25,7 +25,7 @@ export default function ChangeYear({ open, onClose, current }: { open: boolean; 
             role="radio"
             aria-checked={year === y}
             onClick={() => setYear(y)}
-            className={cx('press h-14 rounded-[16px] text-[17px] font-extrabold', i === 0 && 'col-span-2', year === y ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_rgb(11_25_87/0.16)]')}
+            className={cx('press h-14 rounded-[16px] text-[17px] font-extrabold', i === 0 && 'col-span-2', year === y ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_16%,transparent)]')}
           >
             {yearName(y)}
           </button>

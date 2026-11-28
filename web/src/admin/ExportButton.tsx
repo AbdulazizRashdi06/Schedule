@@ -6,7 +6,7 @@ export default function ExportButton({ semesterId }: { semesterId: number }) {
     <a
       href={`${API_BASE}/api/admin/semesters/${semesterId}/export.csv`}
       download
-      className="press inline-flex h-11 items-center gap-2 rounded-full px-4 text-[15px] font-extrabold shadow-[inset_0_0_0_2px_rgb(11_25_87/0.2)] tint"
+      className="press inline-flex h-11 items-center gap-2 rounded-full px-4 text-[15px] font-extrabold shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_20%,transparent)] tint"
     >
       Export CSV
     </a>

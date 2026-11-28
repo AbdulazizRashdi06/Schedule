@@ -1,5 +1,5 @@
 import type { Course, Section } from '../lib/types'
-import { DAY_SHORT, meetingsOverlap, meetsText, sectionsClash } from '../lib/time'
+import { DAY_SHORT, fmtTime, meetingsOverlap, meetsText, sectionsClash } from '../lib/time'
 import { Icon, cx } from './ui'
 
 /** courseId → picked sectionId (null: course ticked, no section yet). */
@@ -25,7 +25,7 @@ export function clashDetail(section: Section, courseId: number, picks: Picks, by
       const other = byId.get(cid)
       const s = other?.sections.find((x) => x.id === sid)
       const hit = s?.meetings.find((o) => meetingsOverlap(m, o))
-      if (other && hit) return { code: other.code, at: `${DAY_SHORT[m.day]} ${m.start}` }
+      if (other && hit) return { code: other.code, at: `${DAY_SHORT[m.day]} ${fmtTime(m.start)}` }
     }
   return null
 }
@@ -52,7 +52,7 @@ export function SectionChips({ course, value, clash, onPick, size = 44 }: { cour
             className={cx(
               'press grid min-w-11 place-items-center px-2 font-mono font-bold',
               size === 44 ? 'h-11 rounded-[14px] text-[16px]' : 'h-10 min-w-10 rounded-[12px] text-[15px]',
-              on ? (clash ? 'bg-alert-ink text-cream' : 'bg-navy text-cream') : 'shadow-[inset_0_0_0_2px_rgb(11_25_87/0.2)]',
+              on ? (clash ? 'bg-alert-ink text-cream' : 'bg-navy text-cream') : 'shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_20%,transparent)]',
             )}
           >
             {s.number}
@@ -110,8 +110,8 @@ export function CourseRow({
       className={cx(
         'rise flex flex-col gap-2.5 rounded-[22px] p-3.5 transition-[box-shadow,background-color,opacity] duration-200',
         picked
-          ? cx('bg-paper', clash ? 'shadow-[0_0_0_2px_var(--color-alert-line)]' : 'shadow-[0_0_0_2px_rgb(11_25_87/0.1)]')
-          : 'shadow-[inset_0_0_0_2px_rgb(11_25_87/0.12)]',
+          ? cx('bg-paper', clash ? 'shadow-[0_0_0_2px_var(--color-alert-line)]' : 'shadow-[0_0_0_2px_color-mix(in_srgb,var(--color-navy)_10%,transparent)]')
+          : 'shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_12%,transparent)]',
       )}
     >
       <div className="flex items-center gap-3">

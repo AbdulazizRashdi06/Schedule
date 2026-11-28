@@ -236,7 +236,7 @@ function AddAccount({ open, isOwner, onClose, onCreated }: { open: boolean; isOw
                   onClick={() => !off && setRole(r.id)}
                   className={cx(
                     'press flex min-h-[76px] flex-col items-start gap-1 rounded-2xl px-3.5 py-3 text-left',
-                    on ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_rgb(11_25_87/0.16)]',
+                    on ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_16%,transparent)]',
                     off && 'opacity-55',
                   )}
                 >

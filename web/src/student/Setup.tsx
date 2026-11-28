@@ -208,7 +208,7 @@ function MajorStep({ me, onNext }: { me: Me; onNext: () => Promise<void> }) {
                 style={delay(Math.min(i + 2, 8) * 50)}
                 className={cx(
                   'press rise flex min-h-[68px] items-center justify-between gap-3 rounded-[20px] py-3 pr-4 pl-[18px] text-left',
-                  on ? 'bg-navy text-cream shadow-[0_10px_24px_-12px_rgb(11_25_87/0.6)]' : 'shadow-[inset_0_0_0_2px_rgb(11_25_87/0.16)]',
+                  on ? 'bg-navy text-cream shadow-[0_10px_24px_-12px_rgb(11_25_87/0.6)]' : 'shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_16%,transparent)]',
                 )}
               >
                 <span className="flex flex-col gap-0.5">
@@ -280,7 +280,7 @@ function YearStep({ me, onNext }: { me: Me; onNext: () => Promise<void> }) {
                 'press flex flex-col items-start justify-between rounded-[24px] p-4 text-left',
                 y === 0 ? 'col-span-2 h-[104px]' : 'h-[148px]',
                 y === guess ? 'pulse-once opacity-0' : 'rise',
-                on ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_rgb(11_25_87/0.16)]',
+                on ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_16%,transparent)]',
               )}
             >
               <span className="flex w-full items-start justify-between">

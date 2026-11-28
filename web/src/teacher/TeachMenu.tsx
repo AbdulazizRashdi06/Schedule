@@ -6,16 +6,14 @@ import type { TeachMe } from '../lib/types'
 import { Confirm, Sheet, Tag, cx, useToast, Toast } from '../components/ui'
 import LogoutConfirm from '../components/LogoutConfirm'
 import CalendarSheet from '../student/CalendarSheet'
-import NotificationsSheet from '../student/NotificationsSheet'
 
-/** The teacher side's menu: who you are, your classes and details, the extras, colours, log out. */
+/** The teacher side's menu: who you are, your classes and details, the extras, settings, log out. */
 export default function TeachMenu({ open, onClose, teach }: { open: boolean; onClose: () => void; teach: TeachMe | null }) {
   const { session, refresh, logout } = useSession()
   const navigate = useNavigate()
   const [confirmOut, setConfirmOut] = useState(false)
   const [confirmDevices, setConfirmDevices] = useState(false)
   const [calendar, setCalendar] = useState(false)
-  const [notify, setNotify] = useState(false)
   const toast = useToast()
   const item = 'tint flex h-14 items-center justify-between rounded-[12px] text-[22px] font-extrabold'
   const arrow = <span aria-hidden="true" className="text-[18px]">→</span>
@@ -50,14 +48,9 @@ export default function TeachMenu({ open, onClose, teach }: { open: boolean; onC
             My changes{arrow}
           </Link>
           {personal && (
-            <>
-              <button type="button" onClick={sheet(setCalendar)} className={cx(item, 'text-left')}>
-                Calendar{arrow}
-              </button>
-              <button type="button" onClick={sheet(setNotify)} className={cx(item, 'text-left')}>
-                Notifications{arrow}
-              </button>
-            </>
+            <button type="button" onClick={sheet(setCalendar)} className={cx(item, 'text-left')}>
+              Calendar{arrow}
+            </button>
           )}
           {staff && teach.status !== 'linked' && (
             <Link to="/teach/name" onClick={onClose} className={item}>
@@ -83,13 +76,13 @@ export default function TeachMenu({ open, onClose, teach }: { open: boolean; onC
             </Link>
           )}
         </nav>
-        <Link to="/teach/colours" onClick={onClose} className="tint flex h-14 items-center justify-between rounded-[12px] border-t-[1.5px] border-navy/10 text-[18px] font-extrabold">
+        <Link to="/teach/settings" onClick={onClose} className="tint flex h-14 items-center justify-between rounded-[12px] border-t-[1.5px] border-navy/10 text-[18px] font-extrabold">
           <span className="flex items-center gap-2.5">
             <span aria-hidden="true" className="flex overflow-hidden rounded-full">
               <span className="size-5 bg-navy" />
               <span className="size-5 bg-sky" />
             </span>
-            Colours
+            Settings
           </span>
           {arrow}
         </Link>
@@ -97,12 +90,7 @@ export default function TeachMenu({ open, onClose, teach }: { open: boolean; onC
           Log out
         </button>
       </Sheet>
-      {personal && (
-        <>
-          <CalendarSheet open={calendar} onClose={() => setCalendar(false)} />
-          <NotificationsSheet open={notify} onClose={() => setNotify(false)} />
-        </>
-      )}
+      {personal && <CalendarSheet open={calendar} onClose={() => setCalendar(false)} />}
       <Confirm
         open={confirmDevices}
         onClose={() => setConfirmDevices(false)}

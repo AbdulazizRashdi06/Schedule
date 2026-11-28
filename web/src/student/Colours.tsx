@@ -3,6 +3,7 @@ import { BACKGROUNDS, CREAM, PRESETS, applyAccent, applyBackground, contrast, lo
 import { cx } from '../components/ui'
 import { Icon, RoundButton, useBack } from './timetable'
 import { useViewer } from '../lib/viewer'
+import { isDark } from '../lib/prefs'
 
 /** Pick the app's colours: a designed preset, or your own main and accent colours. Saved on this device. */
 export default function Colours() {
@@ -21,6 +22,8 @@ export default function Colours() {
     setBg(b)
     applyBackground(b, true)
   }
+  // In dark (Settings → Appearance) the page is a deep shade of the main colour, so the background isn't used.
+  const dark = isDark()
   const ratio = contrast(main, bg)
   const bgRatio = contrast(mainOf(accent), bg)
 
@@ -46,7 +49,7 @@ export default function Colours() {
                 aria-checked={on}
                 aria-label={p.name}
                 onClick={() => choose({ preset: p.id })}
-                className={cx('press relative rounded-[20px] p-2.5', on ? 'shadow-[inset_0_0_0_3px_var(--color-navy)]' : 'shadow-[inset_0_0_0_2px_rgb(0_0_0/0.1)]')}
+                className={cx('press relative rounded-[20px] p-2.5', on ? 'shadow-[inset_0_0_0_3px_var(--color-navy)]' : 'shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_10%,transparent)]')}
               >
                 <span className="flex h-16 overflow-hidden rounded-[13px]">
                   <span className="flex-[2]" style={{ background: p.main }} />
@@ -62,9 +65,10 @@ export default function Colours() {
           })}
         </div>
 
-        <section className="flex flex-col gap-3 rounded-[20px] p-4 shadow-[inset_0_0_0_2px_rgb(0_0_0/0.1)]">
+        <section className="flex flex-col gap-3 rounded-[20px] p-4 shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_10%,transparent)]">
           <h2 className="text-[20px] font-extrabold">Background</h2>
-          <div role="radiogroup" aria-label="Background" className="flex flex-wrap items-center gap-2">
+          {dark && <p className="text-[14px] font-semibold text-muted">Backgrounds show in light mode. In dark, the page is a deep shade of your main colour.</p>}
+          <div role="radiogroup" aria-label="Background" hidden={dark} className={cx('flex-wrap items-center gap-2', !dark && 'flex')}>
             {BACKGROUNDS.map((b, i) => (
               <button
                 key={b}
@@ -73,25 +77,25 @@ export default function Colours() {
                 aria-checked={bg === b}
                 aria-label={i === 0 ? 'Default background' : `Background ${b}`}
                 onClick={() => chooseBg(b)}
-                className={cx('press grid size-11 place-items-center rounded-full shadow-[inset_0_0_0_2px_rgb(0_0_0/0.12)]', bg === b && 'ring-[3px] ring-navy ring-offset-2 ring-offset-cream')}
+                className={cx('press grid size-11 place-items-center rounded-full shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_12%,transparent)]', bg === b && 'ring-[3px] ring-navy ring-offset-2 ring-offset-cream')}
                 style={{ background: b }}
               >
-                {bg === b && <Icon name="check" className="size-4 text-navy" strokeWidth={3} />}
+                {bg === b && <Icon name="check" className="size-4 text-[#0b1957]" strokeWidth={3} />}
               </button>
             ))}
-            <label className="flex items-center gap-2 rounded-full bg-paper py-1 pr-3 pl-1 shadow-[inset_0_0_0_2px_rgb(0_0_0/0.08)]">
+            <label className="flex items-center gap-2 rounded-full bg-paper py-1 pr-3 pl-1 shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_8%,transparent)]">
               <input type="color" aria-label="Any background colour" value={bg} onChange={(e) => chooseBg(e.target.value)} className="size-9 cursor-pointer rounded-full border-0 bg-transparent p-0" />
               <span className="font-mono text-[12px] font-bold">{bg}</span>
             </label>
           </div>
-          {bgRatio < 4.5 && (
+          {!dark && bgRatio < 4.5 && (
             <p className="text-[13px] font-semibold text-alert" role="status">
               Text may be hard to read on this background with your colours. A lighter background works better.
             </p>
           )}
         </section>
 
-        <section className={cx('flex flex-col gap-3.5 rounded-[20px] p-4', custom ? 'shadow-[inset_0_0_0_3px_var(--color-navy)]' : 'shadow-[inset_0_0_0_2px_rgb(0_0_0/0.1)]')}>
+        <section className={cx('flex flex-col gap-3.5 rounded-[20px] p-4', custom ? 'shadow-[inset_0_0_0_3px_var(--color-navy)]' : 'shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_10%,transparent)]')}>
           <div className="flex items-center justify-between">
             <h2 className="text-[20px] font-extrabold">Your own colours</h2>
             {custom && <Icon name="check" className="size-4" />}
@@ -117,7 +121,7 @@ export default function Colours() {
             </span>
             <span className="text-[14px] font-bold">Programming · 08:00</span>
           </div>
-          {ratio < 4.5 && (
+          {!dark && ratio < 4.5 && (
             <p className="text-[13px] font-semibold text-alert" role="status">
               That main colour is light for your background, so text may be hard to read. A darker one works better.
             </p>

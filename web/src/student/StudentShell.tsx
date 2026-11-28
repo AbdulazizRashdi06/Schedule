@@ -5,20 +5,16 @@ import type { Me } from '../lib/types'
 import { yearName } from '../lib/year'
 import { Sheet, Tag, cx } from '../components/ui'
 import LogoutConfirm from '../components/LogoutConfirm'
-import ChangeYear from './ChangeYear'
 import CalendarSheet from './CalendarSheet'
-import NotificationsSheet from './NotificationsSheet'
 import ReportSheet from './ReportSheet'
 
-/** Menu / profile sheet: who you are, where to go, colours, log out. */
+/** Menu / profile sheet: who you are, where to go, settings, log out. */
 export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () => void; me: Me | null }) {
   const { session, logout } = useSession()
   const navigate = useNavigate()
   const staff = session?.role === 'owner'
   const [confirmOut, setConfirmOut] = useState(false)
-  const [changingYear, setChangingYear] = useState(false)
   const [calendar, setCalendar] = useState(false)
-  const [notify, setNotify] = useState(false)
   const [report, setReport] = useState(false)
   const item = 'tint flex h-14 items-center justify-between rounded-[12px] text-[22px] font-extrabold'
   return (
@@ -72,26 +68,6 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
             >
               Calendar &amp; ChatGPT<span aria-hidden="true" className="text-[18px]">→</span>
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                onClose()
-                setNotify(true)
-              }}
-              className={cx(item, 'text-left')}
-            >
-              Notifications<span aria-hidden="true" className="text-[18px]">→</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                onClose()
-                setChangingYear(true)
-              }}
-              className={cx(item, 'text-left')}
-            >
-              Change my year<span aria-hidden="true" className="text-[18px]">→</span>
-            </button>
           </>
         )}
         <button
@@ -113,13 +89,14 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
           </Link>
         )}
       </nav>
-      <Link to="/colours" onClick={onClose} className="tint flex h-14 items-center justify-between rounded-[12px] border-t-[1.5px] border-navy/10 text-[18px] font-extrabold">
+      {/* Time format, home, light or dark, and the way to colours, notifications and your year. */}
+      <Link to="/settings" onClick={onClose} className="tint flex h-14 items-center justify-between rounded-[12px] border-t-[1.5px] border-navy/10 text-[18px] font-extrabold">
         <span className="flex items-center gap-2.5">
           <span aria-hidden="true" className="flex overflow-hidden rounded-full">
             <span className="size-5 bg-navy" />
             <span className="size-5 bg-sky" />
           </span>
-          Colours
+          Settings
         </span>
         <span aria-hidden="true" className="text-[18px]">
           →
@@ -133,9 +110,7 @@ export function MenuSheet({ open, onClose, me }: { open: boolean; onClose: () =>
         Log out
       </button>
       </Sheet>
-      {me && <ChangeYear key={String(changingYear)} open={changingYear} onClose={() => setChangingYear(false)} current={me.year} />}
       <CalendarSheet open={calendar} onClose={() => setCalendar(false)} />
-      <NotificationsSheet open={notify} onClose={() => setNotify(false)} />
       <ReportSheet open={report} onClose={() => setReport(false)} />
       <LogoutConfirm
         open={confirmOut}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, errorText } from '../lib/api'
-import { DAY_SHORT } from '../lib/time'
+import { DAY_SHORT, fmtTime } from '../lib/time'
 import { SLOTS, fmtDate } from '../lib/slots'
 import { ErrorText, Loading, Notice, cx } from '../components/ui'
 import { BackButton, useBack, useNow } from './timetable'
@@ -65,10 +65,10 @@ export default function FreeRooms() {
               onClick={() => setAt(t)}
               className={cx(
                 'press label h-10 shrink-0 rounded-full px-4 text-[12px]',
-                at === t ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_rgb(11_25_87/0.2)]',
+                at === t ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_20%,transparent)]',
               )}
             >
-              {t ?? 'Now'}
+              {t ? fmtTime(t) : 'Now'}
             </button>
           ))}
         </div>

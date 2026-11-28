@@ -242,7 +242,7 @@ export default function Families() {
                   setTarget(t.code)
                   setPicked(null)
                 }}
-                className={cx('press h-10 rounded-[12px] px-4 text-[14px] font-extrabold', t.code === target ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_rgb(11_25_87/0.16)]')}
+                className={cx('press h-10 rounded-[12px] px-4 text-[14px] font-extrabold', t.code === target ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_16%,transparent)]')}
               >
                 {t.label}
               </button>
@@ -342,7 +342,7 @@ export default function Families() {
                   aria-pressed={picked === c.code}
                   className={cx(
                     'press flex cursor-grab items-start gap-2 rounded-[12px] p-2 text-left active:cursor-grabbing',
-                    picked === c.code ? 'bg-navy text-cream' : 'bg-paper shadow-[inset_0_0_0_2px_rgb(11_25_87/0.08)]',
+                    picked === c.code ? 'bg-navy text-cream' : 'bg-paper shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_8%,transparent)]',
                   )}
                 >
                   <span className="flex min-w-0 flex-1 flex-col">

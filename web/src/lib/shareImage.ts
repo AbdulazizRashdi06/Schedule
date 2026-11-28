@@ -1,4 +1,4 @@
-import { DAY_LONG, DAY_SHORT, minutes } from './time'
+import { DAY_LONG, DAY_SHORT, fmtRange, fmtShort, fmtTime, minutes } from './time'
 import { SLOTS, TYPE_NAME, addDays, fmtDate, type ClassType, type Session } from './slots'
 
 export type ShareFormat = 'week' | 'story'
@@ -17,18 +17,18 @@ const SIZES: Record<ShareFormat, [number, number]> = { week: [1080, 1080], story
 const DISPLAY = '"Bricolage Grotesque", system-ui, sans-serif'
 const MONO = '"JetBrains Mono", ui-monospace, monospace'
 
-/** The page's own colours, so the picture follows the student's theme. */
+/** The student's own colours, so the picture follows their theme. Always the light look, even from a dark page. */
 function palette() {
   const css = getComputedStyle(document.documentElement)
   const v = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback
   return {
-    navy: v('--color-navy', '#0b1957'),
-    navy800: v('--color-navy-800', '#13226a'),
-    line: v('--color-navy-line', '#2c3d85'),
-    cream: v('--color-cream', '#f8f3ea'),
-    sky: v('--color-sky', '#9eccfa'),
-    ice: v('--color-ice', '#d1e8ff'),
-    paper: v('--color-paper', '#fffdf8'),
+    navy: v('--p-navy', '#0b1957'),
+    navy800: v('--p-navy-800', '#13226a'),
+    line: v('--p-navy-line', '#2c3d85'),
+    cream: v('--p-cream', '#f8f3ea'),
+    sky: v('--p-sky', '#9eccfa'),
+    ice: v('--p-ice', '#d1e8ff'),
+    paper: v('--p-paper', '#fffdf8'),
   }
 }
 type Palette = ReturnType<typeof palette>
@@ -105,7 +105,7 @@ function block(ctx: CanvasRenderingContext2D, p: Palette, s: Session, x: number,
   ctx.font = `800 ${big ? 32 : 24}px ${DISPLAY}`
   ctx.fillText(fit(ctx, s.mine ? s.cls.name : s.cls.code, max), x + inset, ty)
   // The row already says when it starts, so the room comes first where space is short.
-  const time = `${s.meeting.start}–${s.meeting.end}`
+  const time = fmtRange(s.meeting.start, s.meeting.end)
   const room = s.meeting.room || (s.mine ? '' : 'Room TBA')
   const lines = big ? [s.mine ? '' : s.cls.name, time, room] : [room, time]
   ctx.font = `700 ${big ? 22 : 17}px ${MONO}`
@@ -137,7 +137,7 @@ function drawWeek(ctx: CanvasRenderingContext2D, p: Palette, w: number, top: num
     const y = gridTop + r * (rowH + gap)
     ctx.fillStyle = p.ice
     ctx.font = `700 20px ${MONO}`
-    ctx.fillText(s, pad, y + 26)
+    ctx.fillText(fmtShort(s), pad, y + 26)
     days.forEach((_, i) => {
       roundRect(ctx, pad + timeCol + i * (colW + gap), y, colW, rowH, 16)
       ctx.fillStyle = p.navy800
@@ -187,13 +187,13 @@ function drawDay(ctx: CanvasRenderingContext2D, p: Palette, w: number, top: numb
     ctx.stroke()
     ctx.fillStyle = p.sky
     ctx.font = `800 ${Math.min(76, rowH * 0.5)}px ${DISPLAY}`
-    ctx.fillText(s.meeting.start, pad, y + rowH * 0.58)
+    ctx.fillText(fmtShort(s.meeting.start), pad, y + rowH * 0.58)
     ctx.fillStyle = p.cream
     ctx.font = `800 ${Math.min(38, rowH * 0.24)}px ${DISPLAY}`
     ctx.fillText(fit(ctx, s.cls.name, w - pad * 2 - 280), pad + 270, y + rowH * 0.45)
     ctx.fillStyle = p.ice
     ctx.font = `700 ${Math.min(22, rowH * 0.15)}px ${MONO}`
-    const meta = `${TYPE_NAME[s.type]}, ${s.meeting.room || 'Room TBA'} · until ${s.meeting.end}`.toUpperCase()
+    const meta = `${TYPE_NAME[s.type]}, ${s.meeting.room || 'Room TBA'} · until ${fmtTime(s.meeting.end)}`.toUpperCase()
     ctx.fillText(fit(ctx, meta, w - pad * 2 - 280), pad + 270, y + rowH * 0.45 + 40)
   })
 }

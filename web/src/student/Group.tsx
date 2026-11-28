@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { api, errorText } from '../lib/api'
-import { DAY_SHORT } from '../lib/time'
+import { DAY_SHORT, fmtRange } from '../lib/time'
 import { addDays, fmtDate, fmtDuration, fmtWeekRange, isoDate, weekStart, weekTitle } from '../lib/slots'
 import { KIND_NAME, inviteLink, type Group as GroupInfo, type GroupWeek } from '../lib/groups'
 import type { Me } from '../lib/types'
@@ -94,7 +94,7 @@ export default function Group() {
         )}
 
         <div className="flex items-center justify-between gap-2">
-          <RoundButton label="Previous week" onClick={() => go(offset - 1)} className="size-11 shadow-[inset_0_0_0_2px_rgb(11_25_87/0.16)]">
+          <RoundButton label="Previous week" onClick={() => go(offset - 1)} className="size-11 shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_16%,transparent)]">
             <Icon name="prev" />
           </RoundButton>
           <div className="min-w-0 text-center">
@@ -107,7 +107,7 @@ export default function Group() {
         </div>
 
         {group?.kind === 'car' && (
-          <div role="tablist" aria-label="Show" className="label grid grid-cols-2 gap-0.5 rounded-full p-1 text-[11px] shadow-[inset_0_0_0_2px_rgb(11_25_87/0.14)]">
+          <div role="tablist" aria-label="Show" className="label grid grid-cols-2 gap-0.5 rounded-full p-1 text-[11px] shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_14%,transparent)]">
             {(
               [
                 ['rides', 'Rides'],
@@ -127,7 +127,7 @@ export default function Group() {
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-[22px] font-extrabold tracking-[-0.02em]">Everyone free</h2>
-            <div role="radiogroup" aria-label="At least" className="label flex gap-0.5 rounded-full p-1 text-[10px] shadow-[inset_0_0_0_2px_rgb(11_25_87/0.14)]">
+            <div role="radiogroup" aria-label="At least" className="label flex gap-0.5 rounded-full p-1 text-[10px] shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_14%,transparent)]">
               {MIN_OPTIONS.map((m) => (
                 <button key={m} type="button" role="radio" aria-checked={atLeast === m} onClick={() => setAtLeast(m)} className={cx('press h-8 rounded-full px-2.5', atLeast === m ? 'bg-navy text-cream' : '')}>
                   {fmtDuration(m)}+
@@ -156,7 +156,7 @@ export default function Group() {
                   {free.map((w) => (
                     <p key={w.start} className="flex items-baseline justify-between gap-3 rounded-[14px] bg-sky px-3.5 py-2.5">
                       <span className="display text-[22px] tracking-[-0.03em] tabular-nums">
-                        {w.start}–{w.end}
+                        {fmtRange(w.start, w.end)}
                       </span>
                       <span className="label text-[11px]">{fmtDuration(w.minutes)} · all free</span>
                     </p>
@@ -164,7 +164,7 @@ export default function Group() {
                   {nearly.map((w) => (
                     <p key={w.start} className="flex items-baseline justify-between gap-3 rounded-[14px] bg-ice px-3.5 py-2">
                       <span className="text-[16px] font-extrabold tabular-nums">
-                        {w.start}–{w.end}
+                        {fmtRange(w.start, w.end)}
                       </span>
                       <span className="text-right text-[13px] font-semibold text-muted">
                         {fmtDuration(w.minutes)} · {w.busy.join(' and ')} busy
@@ -177,7 +177,7 @@ export default function Group() {
                       <ul className="flex flex-col gap-0.5 pl-1">
                         {d.classes.map((c, i) => (
                           <li key={i}>
-                            {c.member}: {c.label} {c.start}–{c.end}
+                            {c.member}: {c.label} {fmtRange(c.start, c.end)}
                             {c.room && `, ${c.room}`}
                           </li>
                         ))}
@@ -253,7 +253,7 @@ function MeCard({ group, onSaved }: { group: GroupInfo; onSaved: (g: GroupInfo) 
   const [error, setError] = useState('')
   const changed = name !== mine?.name || show !== mine?.showClasses
   return (
-    <section className="flex flex-col gap-3 rounded-[20px] p-4 shadow-[inset_0_0_0_2px_rgb(0_0_0/0.1)]">
+    <section className="flex flex-col gap-3 rounded-[20px] p-4 shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_10%,transparent)]">
       <h2 className="text-[20px] font-extrabold">You in this group</h2>
       <TextField label="Your name" value={name} maxLength={30} onChange={(e) => setName(e.target.value)} />
       <Checkbox checked={show} onChange={setShow} label="Show my classes to the group" />

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, errorText } from '../lib/api'
 import { SLOTS, blockOn, clock as fmtClock, fmtDay, isoDate, sessionCode, type Session } from '../lib/slots'
-import { minutes } from '../lib/time'
+import { fmtRange, fmtTime, minutes } from '../lib/time'
 import type { ChangeBody, ChangePreview, ClassChange, Timetable } from '../lib/types'
 import { useHome } from '../lib/viewer'
 import { Button, ErrorText, Icon, Notice, Sheet, TextField, cx } from '../components/ui'
@@ -35,7 +35,7 @@ const TYPES = [
   ['tutorial', 'Tutorial'],
 ] as const
 const NOTE_MAX = 200
-const chip = (on: boolean) => cx('press label h-10 shrink-0 rounded-full px-4 text-[12px]', on ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_rgb(11_25_87/0.2)]')
+const chip = (on: boolean) => cx('press label h-10 shrink-0 rounded-full px-4 text-[12px]', on ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_20%,transparent)]')
 const sameRoom = (a: string, b: string) => a.replace(/\s+/g, '').toLowerCase() === b.replace(/\s+/g, '').toLowerCase()
 
 /** A tick box with its text, as one control. */
@@ -231,7 +231,7 @@ function ChangeForm({ request, onClose, onDone }: { request: ChangeRequest; onCl
         <h2 className="text-[30px] leading-none font-extrabold tracking-[-0.03em]">{title}</h2>
         {s && nowAt && request.kind !== 'extra' && (
           <p className="text-[15px] leading-snug font-semibold text-muted">
-            {sessionCode(s, request.date)} · {fmtDay(s.off ? sessionDate : nowAt.date)} {s.off ? s.meeting.start : nowAt.start}–{s.off ? s.meeting.end : nowAt.end}
+            {sessionCode(s, request.date)} · {fmtDay(s.off ? sessionDate : nowAt.date)} {fmtRange(s.off ? s.meeting.start : nowAt.start, s.off ? s.meeting.end : nowAt.end)}
             {(s.off ? s.meeting.room : nowAt.room) ? ` · ${s.off ? s.meeting.room : nowAt.room}` : ''}
           </p>
         )}
@@ -271,7 +271,7 @@ function ChangeForm({ request, onClose, onDone }: { request: ChangeRequest; onCl
         <fieldset className="flex flex-col">
           <legend className="label mb-1 text-[11px] tracking-[0.12em]">For which classes</legend>
           {rows.length === 0 && <p className="text-[15px] font-semibold text-muted">No classes on your timetable yet. Add them under Edit my classes.</p>}
-          <div className={cx('flex flex-col', rows.length > 5 && 'max-h-[232px] overflow-y-auto rounded-[14px] px-3 shadow-[inset_0_0_0_2px_rgb(11_25_87/0.12)]')}>
+          <div className={cx('flex flex-col', rows.length > 5 && 'max-h-[232px] overflow-y-auto rounded-[14px] px-3 shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_12%,transparent)]')}>
             {rows.map((r) => (
               <Tick
                 key={r.ids.join('-')}
@@ -289,7 +289,7 @@ function ChangeForm({ request, onClose, onDone }: { request: ChangeRequest; onCl
 
       {others.length > 0 && !replacing && (
         <Tick checked={alsoOther} onChange={setAlsoOther}>
-          {others.length === 1 ? `Also the ${others[0].start} session that day` : `Also the other ${others.length} sessions that day`}
+          {others.length === 1 ? `Also the ${fmtTime(others[0].start)} session that day` : `Also the other ${others.length} sessions that day`}
         </Tick>
       )}
 
@@ -301,7 +301,7 @@ function ChangeForm({ request, onClose, onDone }: { request: ChangeRequest; onCl
             <div role="radiogroup" aria-label="Time" className="flex flex-wrap gap-1.5">
               {SLOTS.map(([from, to]) => (
                 <button key={from} type="button" role="radio" aria-checked={!custom && start === from} onClick={() => pickSlot(from, to)} className={chip(!custom && start === from)}>
-                  {from}
+                  {fmtTime(from)}
                 </button>
               ))}
               <button
@@ -319,7 +319,7 @@ function ChangeForm({ request, onClose, onDone }: { request: ChangeRequest; onCl
             </div>
             {!custom && start && (
               <p className="font-mono text-[12px] font-bold uppercase">
-                {start}–{end}
+                {fmtRange(start, end)}
               </p>
             )}
           </div>

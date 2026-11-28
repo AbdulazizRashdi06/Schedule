@@ -57,7 +57,7 @@ type Size = 'lg' | 'md' | 'sm'
 
 const VARIANTS: Record<Variant, string> = {
   primary: 'bg-navy text-cream',
-  secondary: 'bg-transparent text-navy shadow-[inset_0_0_0_2px_rgb(11_25_87/0.25)]',
+  secondary: 'bg-transparent text-navy shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_25%,transparent)]',
   ghost: 'bg-transparent text-navy tint',
   danger: 'bg-transparent text-alert tint',
   sky: 'bg-sky text-navy',

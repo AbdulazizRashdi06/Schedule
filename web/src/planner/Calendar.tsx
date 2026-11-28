@@ -1,6 +1,7 @@
 import type { DragEvent } from 'react'
 import type { Course } from '../lib/types'
 import { addDays, isoDate } from '../lib/slots'
+import { fmtRange, fmtShort } from '../lib/time'
 import { cx } from '../components/ui'
 import { courseColour, dateValue, type Entry } from './types'
 
@@ -11,9 +12,9 @@ export function EventCard({ entry: e, courses, onOpen, compact = false, condense
   const codes = e.targets.map(t => courses.find(c => c.id === t.courseId)?.code ?? 'Course').join(' / ')
   const draft = e.status === 'draft' || e.status === 'cancelled-draft'
   return <button type="button" draggable={e.kind === 'exam'} onDragStart={(event) => { event.dataTransfer.setData('application/classy-event', e.key); event.dataTransfer.effectAllowed = 'move' }} onClick={() => onOpen(e)}
-    title={`${codes}: ${e.title}, ${e.date} ${e.start}–${e.end}, ${e.room || 'Location not set'}, ${e.status}`}
+    title={`${codes}: ${e.title}, ${e.date} ${fmtRange(e.start, e.end)}, ${e.room || 'Location not set'}, ${e.status}`}
     className={cx('press flex min-h-11 w-full min-w-0 flex-col rounded-[10px] p-2 text-left leading-snug outline-1 -outline-offset-1 outline-navy/20 focus-visible:outline-3', courseColour(e.targets[0]?.courseId ?? 0), draft && 'outline-2 outline-dashed', e.stale && 'outline-alert', compact ? 'text-[11px]' : 'text-[13px]')}>
-    {condensed ? <><span className="font-extrabold">{codes}</span><span>{e.start}–<br />{e.end}</span>{e.room && <span>{e.room}</span>}</> : <><span className="font-extrabold">{e.kind === 'exam' ? 'EXAM · ' : ''}{e.start}–{e.end}</span><span className="font-bold break-words">{e.title}</span><span className="break-words">{codes}{e.room && ` · ${e.room}`}</span></>}
+    {condensed ? <><span className="font-extrabold">{codes}</span><span>{fmtShort(e.start)}–<br />{fmtShort(e.end)}</span>{e.room && <span>{e.room}</span>}</> : <><span className="font-extrabold">{e.kind === 'exam' ? 'EXAM · ' : ''}{fmtRange(e.start, e.end)}</span><span className="font-bold break-words">{e.title}</span><span className="break-words">{codes}{e.room && ` · ${e.room}`}</span></>}
     {(draft || e.stale) && <span className="mt-1 font-extrabold">{e.stale ? e.status === 'cancelled' ? 'Class changed · cancellation lapsed' : 'Source changed · review' : e.status === 'cancelled-draft' ? 'Draft cancellation' : 'Draft'}</span>}
   </button>
 }

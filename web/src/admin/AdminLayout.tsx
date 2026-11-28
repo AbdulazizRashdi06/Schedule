@@ -219,7 +219,7 @@ export function Filters<T extends string>({ value, onChange, options }: { value:
           type="button"
           aria-pressed={value === id}
           onClick={() => onChange(id)}
-          className={cx('press h-12 rounded-full px-4 text-[15px] font-extrabold', value === id ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_rgb(11_25_87/0.18)]')}
+          className={cx('press h-12 rounded-full px-4 text-[15px] font-extrabold', value === id ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_18%,transparent)]')}
         >
           {label}
         </button>

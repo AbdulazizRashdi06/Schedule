@@ -83,7 +83,7 @@ export default function CalendarSheet({ open, onClose }: { open: boolean; onClos
                   href={a.href}
                   target={a.href.startsWith('webcal:') ? undefined : '_blank'}
                   rel="noreferrer"
-                  className="press flex h-[88px] flex-col justify-between rounded-[18px] p-3.5 shadow-[inset_0_0_0_2px_rgb(11_25_87/0.14)]"
+                  className="press flex h-[88px] flex-col justify-between rounded-[18px] p-3.5 shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_14%,transparent)]"
                 >
                   <span className="flex items-center justify-between">
                     <span className="text-[20px] leading-none font-extrabold">{a.name}</span>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ENABLE_MESSAGE, enableDevice, useNotifySettings, type PushBase } from '../lib/push'
 import { Link } from 'react-router-dom'
-import { DAY_LONG, DAY_SHORT } from '../lib/time'
+import { DAY_LONG, DAY_SHORT, fmtRange, fmtTime } from '../lib/time'
 import { TYPE_NAME, addDays, changeTag, clashOn, fmtDate, fmtDay, isoDate, nowMinutes, onDate, sessionCode, type Session } from '../lib/slots'
 import { cx } from '../components/ui'
 import { counts, heldSoFar, useAbsences } from '../lib/absences'
@@ -93,7 +93,7 @@ export default function SessionPage({
   const reminders = student || !!teach?.personal
 
   return (
-    <div className="min-h-dvh bg-sky text-navy">
+    <div className="page-sky min-h-dvh bg-sky text-navy">
       <div className="mx-auto flex min-h-dvh max-w-[480px] flex-col pt-[max(1.75rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
         <header className="flex items-center justify-between gap-3 px-6">
           <RoundButton label="Back" onClick={onBack} className="bg-navy text-sky">
@@ -285,7 +285,7 @@ function Row({ s, date, live, badge, arrow }: { s: Session; date: Date; live: bo
       </span>
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className={cx('text-[18px] leading-none font-extrabold tabular-nums', s.off && 'text-ice/70 line-through decoration-2')}>
-          {s.meeting.start}–{s.meeting.end}
+          {fmtRange(s.meeting.start, s.meeting.end)}
         </span>
         <span className={cx('text-[13px] font-semibold', !live && 'text-ice')}>
           {s.meeting.room ? `Room ${s.meeting.room}` : 'Room TBA'} · {TYPE_NAME[s.type]}
@@ -311,7 +311,7 @@ function Row({ s, date, live, badge, arrow }: { s: Session; date: Date; live: bo
 function ChangeBanner({ s, all, ghosts, link }: { s: Session; all: Session[]; ghosts: Session[]; link: (s: Session, date: Date) => string }) {
   const c = s.change
   if (!c) return null
-  const at = (x: { date: string; start: string; room: string }) => `${fmtDay(x.date)} ${x.start}`
+  const at = (x: { date: string; start: string; room: string }) => `${fmtDay(x.date)} ${fmtTime(x.start)}`
   const room = (r: string) => r || 'a room to be announced'
   const label = s.off === 'cancelled' ? 'Cancelled' : c.kind === 'move' ? 'Moved' : c.kind === 'room' ? 'Room changed' : 'Extra class'
   const text =

@@ -38,7 +38,7 @@ export default function WeeksEditor({ semesterId, name }: { semesterId: number; 
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded-[20px] p-4 shadow-[inset_0_0_0_2px_rgb(11_25_87/0.12)]">
+    <section className="flex flex-col gap-3 rounded-[20px] p-4 shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_12%,transparent)]">
       <div className="flex flex-col gap-1">
         <h3 className="text-[18px] font-extrabold">Teaching weeks · {name}</h3>
         <span className="text-[14px] font-semibold text-muted">

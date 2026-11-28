@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, errorText } from '../lib/api'
 import { fmtDay } from '../lib/slots'
+import { fmtRange, fmtTime } from '../lib/time'
 import type { ClassChange } from '../lib/types'
 import { useHome } from '../lib/viewer'
 import { ErrorText, Loading, Toast, cx, useToast } from '../components/ui'
@@ -15,11 +16,11 @@ const room = (r: string) => r || 'room to be announced'
 
 /** A change in a line: what the class was, and what it is now. */
 function describe(c: ClassChange) {
-  const from = c.from ? `${fmtDay(c.from.date)} ${c.from.start}` : ''
+  const from = c.from ? `${fmtDay(c.from.date)} ${fmtTime(c.from.start)}` : ''
   if (c.kind === 'cancel') return from
-  if (c.kind === 'move') return `${from} → ${c.to ? `${fmtDay(c.to.date)} ${c.to.start}, ${room(c.to.room)}` : ''}`
+  if (c.kind === 'move') return `${from} → ${c.to ? `${fmtDay(c.to.date)} ${fmtTime(c.to.start)}, ${room(c.to.room)}` : ''}`
   if (c.kind === 'room') return `${from} · ${c.from?.room || 'no room'} → ${room(c.to?.room ?? '')}`
-  return c.to ? `${fmtDay(c.to.date)} ${c.to.start}–${c.to.end}, ${room(c.to.room)}` : ''
+  return c.to ? `${fmtDay(c.to.date)} ${fmtRange(c.to.start, c.to.end)}, ${room(c.to.room)}` : ''
 }
 
 /** Where the class is now (or was, for a cancelled one): the session page it opens. */
@@ -94,7 +95,7 @@ export default function MyChanges() {
                   <span className="text-[13px] font-semibold text-muted">{c.mine ? 'By you' : `By ${c.by}`}</span>
                 </Link>
                 {c.canUndo && (
-                  <button type="button" disabled={!!busy} onClick={() => void undo(group)} className="press label flex h-11 shrink-0 items-center rounded-full px-4 text-[12px] shadow-[inset_0_0_0_2px_rgb(11_25_87/0.25)]">
+                  <button type="button" disabled={!!busy} onClick={() => void undo(group)} className="press label flex h-11 shrink-0 items-center rounded-full px-4 text-[12px] shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_25%,transparent)]">
                     {busy === c.group ? 'Undoing…' : c.kind === 'extra' ? 'Remove' : 'Undo'}
                   </button>
                 )}

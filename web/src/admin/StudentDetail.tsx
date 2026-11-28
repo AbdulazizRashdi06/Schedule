@@ -160,7 +160,7 @@ export default function StudentDetail() {
                       role="cell"
                       className={cx(
                         'flex h-11 items-center justify-center truncate rounded-[12px] px-1 font-mono text-[12px] font-bold',
-                        here.length ? CELL[here[0].type] : 'shadow-[inset_0_0_0_1.5px_rgb(11_25_87/0.1)]',
+                        here.length ? CELL[here[0].type] : 'shadow-[inset_0_0_0_1.5px_color-mix(in_srgb,var(--color-navy)_10%,transparent)]',
                         clash && 'outline-2 -outline-offset-2 outline-alert',
                       )}
                     >

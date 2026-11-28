@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { ApiError, api, errorText } from '../lib/api'
-import { DAY_SHORT } from '../lib/time'
+import { DAY_SHORT, fmtRange } from '../lib/time'
 import { TYPE_NAME, fmtDate, type ClassType } from '../lib/slots'
 import type { TeacherPage as Page } from '../lib/types'
 import { ErrorText, Loading, Tag, cx } from '../components/ui'
 import { officeHourText } from './ClassTeachers'
-import { BackButton, useBack } from './timetable'
+import { BackButton, TimeText, useBack } from './timetable'
 
 const STATUS: Record<NonNullable<Page['classes'][number]['status']>, string> = { cancelled: 'Cancelled', moved: 'Moved', room: 'Room changed', extra: 'Extra class' }
 
@@ -132,7 +132,7 @@ export default function TeacherPage() {
                         const off = c.status === 'cancelled'
                         return (
                           <li key={i} className="grid grid-cols-[76px_minmax(0,1fr)] items-start gap-3 border-b-[1.5px] border-navy/10 py-3 last:border-b-0">
-                            <span className={cx('display text-[28px] leading-none tracking-[-0.05em] tabular-nums', off && 'text-navy/45 line-through decoration-[3px]')}>{c.start}</span>
+                            <span className={cx('display text-[28px] leading-none tracking-[-0.05em] tabular-nums', off && 'text-navy/45 line-through decoration-[3px]')}><TimeText t={c.start} stack /></span>
                             <span className="flex min-w-0 flex-col gap-0.5">
                               <span className="flex flex-wrap items-center gap-1.5">
                                 <span className={cx('text-[17px] leading-[1.15] font-extrabold', off && 'text-navy/55')}>{c.name}</span>
@@ -145,7 +145,7 @@ export default function TeacherPage() {
                                 {c.codes.length === 1 && c.section ? ` sec ${c.section}` : ''}
                               </span>
                               <span className="font-mono text-[12px] uppercase">
-                                {c.start}–{c.end} · {TYPE_NAME[c.type as ClassType] ?? c.type}, {c.room || 'Room TBA'}
+                                {fmtRange(c.start, c.end)} · {TYPE_NAME[c.type as ClassType] ?? c.type}, {c.room || 'Room TBA'}
                               </span>
                               {c.note && <span className="text-[14px] font-semibold text-muted">{c.note}</span>}
                             </span>

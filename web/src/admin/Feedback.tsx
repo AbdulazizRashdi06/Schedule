@@ -67,7 +67,7 @@ export default function Feedback() {
   return (
     <>
       <PageTitle title="Feedback." sub="Problem reports from students, and rate-us pop-ups. Both are anonymous." />
-      <section className="flex max-w-[640px] flex-col gap-3 rounded-[20px] p-4 shadow-[inset_0_0_0_2px_rgb(0_0_0/0.1)]">
+      <section className="flex max-w-[640px] flex-col gap-3 rounded-[20px] p-4 shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_10%,transparent)]">
         <label htmlFor="rate-message" className="text-[20px] font-extrabold">
           Push a rate-us message
         </label>

@@ -1,4 +1,5 @@
 import { store } from './api'
+import { syncBar } from './prefs'
 
 /** A colour theme: the main colour (replaces navy) and the accent (replaces sky). */
 export interface Preset {
@@ -21,7 +22,8 @@ export const PRESETS: Preset[] = [
 export type Accent = { preset: string } | { main: string; accent: string }
 
 const KEY = 'accent'
-const VARS = ['--color-navy', '--color-navy-700', '--color-navy-800', '--color-navy-line', '--color-navy-line-2', '--color-sky', '--color-ice', '--color-muted']
+// The palette in index.css (--p-*): light and dark are both drawn from it.
+const VARS = ['--p-navy', '--p-navy-700', '--p-navy-800', '--p-navy-line', '--p-navy-line-2', '--p-sky', '--p-ice', '--p-muted']
 
 export function loadAccent(): Accent {
   try {
@@ -42,16 +44,17 @@ export function applyAccent(a: Accent, save = false) {
   } else {
     const mix = (c: string, pct: number, with_ = 'white') => `color-mix(in srgb, ${c} ${pct}%, ${with_})`
     const set = (k: string, v: string) => root.style.setProperty(k, v)
-    set('--color-navy', a.main)
-    set('--color-navy-700', mix(a.main, 85))
-    set('--color-navy-800', mix(a.main, 92))
-    set('--color-navy-line', mix(a.main, 75))
-    set('--color-navy-line-2', mix(a.main, 65))
-    set('--color-sky', a.accent)
-    set('--color-ice', mix(a.accent, 40))
-    set('--color-muted', mix(a.main, 75, '#808080'))
+    set('--p-navy', a.main)
+    set('--p-navy-700', mix(a.main, 85))
+    set('--p-navy-800', mix(a.main, 92))
+    set('--p-navy-line', mix(a.main, 75))
+    set('--p-navy-line-2', mix(a.main, 65))
+    set('--p-sky', a.accent)
+    set('--p-ice', mix(a.accent, 40))
+    set('--p-muted', mix(a.main, 75, '#808080'))
   }
   if (save) store.set(KEY, JSON.stringify(a))
+  syncBar()
 }
 
 /** WCAG contrast ratio between two "#rrggbb" colours (1 to 21). */
@@ -76,16 +79,17 @@ export const loadBackground = (): string | null => store.get(BG_KEY)
 export function applyBackground(bg: string | null, save = false) {
   const root = document.documentElement
   if (!bg || bg === CREAM) {
-    root.style.removeProperty('--color-cream')
-    root.style.removeProperty('--color-paper')
+    root.style.removeProperty('--p-cream')
+    root.style.removeProperty('--p-paper')
   } else {
-    root.style.setProperty('--color-cream', bg)
-    root.style.setProperty('--color-paper', `color-mix(in srgb, ${bg} 55%, white)`)
+    root.style.setProperty('--p-cream', bg)
+    root.style.setProperty('--p-paper', `color-mix(in srgb, ${bg} 55%, white)`)
   }
   if (save) {
     if (!bg || bg === CREAM) store.remove(BG_KEY)
     else store.set(BG_KEY, bg)
   }
+  syncBar()
 }
 
 /** The main colour of a theme, for contrast checks. */

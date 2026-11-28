@@ -3,13 +3,14 @@ import { flushSync } from 'react-dom'
 import { AnimatePresence, animate, motion, useReducedMotion, useScroll, useTransform, type MotionValue } from 'motion/react'
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import SessionPage from './Session'
-import { DAY_LONG, DAY_SHORT, minutes } from '../lib/time'
+import { DAY_LONG, DAY_SHORT, fmtRange, fmtShort, fmtTime, minutes } from '../lib/time'
 import { SLOTS, TYPE_NAME, addDays, blockOn, changeLine, changeTag, clashOn, fmtWeekRange, inWeek, isoDate, notesOn, nowMinutes, onDate, weekDays, weekOver, weekStart, weekTitle, type ClassType, type Session } from '../lib/slots'
 import { tick } from '../lib/native'
 import { Icon, Sheet, cx } from '../components/ui'
 import { store } from '../lib/api'
 import Today, { DayHome, FitTitle } from './Today'
 import { LabNav } from './labNav'
+import { prefs } from '../lib/prefs'
 import { MenuSheet } from './StudentShell'
 import SlotSheet, { type SlotPreset } from './SlotSheet'
 import ShareSheet from './ShareSheet'
@@ -527,13 +528,20 @@ export default function Lab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, homeWeek])
 
-  // The "This week" shortcut (long-press the installed app's icon) opens home scrolled down to the week, once.
+  // The "This week" shortcut (long-press the installed app's icon) opens home scrolled down to the week, once. So does
+  // "Home opens on: The week" (Menu → Settings), each time home opens, unless the address opens a session on a day.
   const openedOnWeek = useRef(false)
+  const openedHome = useRef(false)
   useLayoutEffect(() => {
-    if (!ready || openedOnWeek.current || params.get('show') !== 'week') return
+    if (!ready || openedOnWeek.current) return
+    const asked = params.get('show') === 'week'
+    const preferred = !openedHome.current && prefs.home === 'week' && !params.get('session')
+    openedHome.current = true
+    if (!asked && !preferred) return
     openedOnWeek.current = true
     const el = weekSection.current
     if (el) page.current?.scrollTo({ top: el.offsetTop, behavior: 'instant' })
+    if (!asked) return
     // Then out of the address, so a reload or Back behaves like plain home.
     const p = new URLSearchParams(params)
     p.delete('show')
@@ -876,7 +884,7 @@ export default function Lab() {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', visualDuration: 0.35, bounce: 0 }}
-            className="fixed inset-0 z-40 overflow-y-auto overscroll-contain bg-sky shadow-[-24px_0_48px_-24px_rgb(11_25_87/0.5)]"
+            className="page-sky fixed inset-0 z-40 overflow-y-auto overscroll-contain bg-sky shadow-[-24px_0_48px_-24px_rgb(11_25_87/0.5)]"
           >
             <SessionPage s={shown.s} date={shown.date} now={now} all={all} ghosts={ghosts} tt={tt} me={me?.universityId ?? ''} link={sessionLink} onBack={closeSession} onChanged={() => void retry()} afterChange={afterChange} weeks={weeks} viewer={viewer} teach={teach} offline={offline} />
           </motion.div>
@@ -1051,7 +1059,7 @@ function WeekPage({
         </button>
       </motion.header>
 
-      {exams.length > 0 && <div className="mt-5 flex flex-col gap-2" aria-label="This week's exams">{exams.map(s => <button key={`${s.plannerEventId}-${s.meeting.date}`} type="button" onClick={() => onOpen(s, new Date(`${s.meeting.date}T12:00`))} className="press flex min-h-11 items-center justify-between gap-3 rounded-[14px] bg-sky px-3 py-2 text-left text-[13px] font-bold"><span>Exam · {DAY_SHORT[s.meeting.day]} {s.meeting.start}–{s.meeting.end}<span className="block">{s.cls.name}</span></span><span>{s.meeting.room || 'Room TBA'}</span></button>)}</div>}
+      {exams.length > 0 && <div className="mt-5 flex flex-col gap-2" aria-label="This week's exams">{exams.map(s => <button key={`${s.plannerEventId}-${s.meeting.date}`} type="button" onClick={() => onOpen(s, new Date(`${s.meeting.date}T12:00`))} className="press flex min-h-11 items-center justify-between gap-3 rounded-[14px] bg-sky px-3 py-2 text-left text-[13px] font-bold"><span>Exam · {DAY_SHORT[s.meeting.day]} {fmtRange(s.meeting.start, s.meeting.end)}<span className="block">{s.cls.name}</span></span><span>{s.meeting.room || 'Room TBA'}</span></button>)}</div>}
       <div className="mt-6 grid gap-x-[5px]" style={{ gridTemplateColumns: cols }}>
         <div />
         {days.map((d, c) => {
@@ -1079,8 +1087,8 @@ function WeekPage({
       <div className="relative grid gap-x-[5px]" style={{ gridTemplateColumns: cols, gridTemplateRows: `repeat(${SLOTS.length}, ${ROW}px)`, rowGap: GAP }}>
         {SLOTS.map(([s, e], i) => (
           <div key={i} className="label flex flex-col justify-between py-1 text-[9px] leading-none tracking-[0.04em]" style={{ gridColumn: 1, gridRow: i + 1 }}>
-            <span>{s}</span>
-            <span className="text-muted">{e}</span>
+            <span>{fmtShort(s)}</span>
+            <span className="text-muted">{fmtShort(e)}</span>
           </div>
         ))}
         {days.map((d, c) => {
@@ -1091,7 +1099,7 @@ function WeekPage({
               className={cx(
                 'grid place-items-center overflow-hidden rounded-[14px]',
                 // A day off is hatched and named down its column, so an empty day reads as a holiday, not a gap.
-                off ? 'bg-[repeating-linear-gradient(135deg,rgb(11_25_87/0.07)_0_6px,transparent_6px_12px)]' : d === today ? 'bg-navy/[0.06]' : 'bg-navy/[0.025]',
+                off ? 'bg-[repeating-linear-gradient(135deg,color-mix(in_srgb,var(--color-navy)_7%,transparent)_0_6px,transparent_6px_12px)]' : d === today ? 'bg-navy/[0.06]' : 'bg-navy/[0.025]',
               )}
               style={{ gridColumn: c + 2, gridRow: `1 / ${SLOTS.length + 1}`, y: rise[c] }}
             >
@@ -1115,7 +1123,7 @@ function WeekPage({
               <motion.button
                 key={`add-${d}-${slot}`}
                 type="button"
-                aria-label={`${addLabel} on ${DAY_LONG[d]} at ${from}`}
+                aria-label={`${addLabel} on ${DAY_LONG[d]} at ${fmtTime(from)}`}
                 onClick={() => onAdd({ day: d, date: isoDate(addDays(start, d)), start: from, end: to })}
                 className="press tint group relative z-10 grid place-items-center rounded-[12px] active:bg-navy/[0.07]"
                 style={{ gridColumn: c + 2, gridRow: slot + 1, y: rise[c] }}
@@ -1173,7 +1181,7 @@ function WeekPage({
                     <button
                       type="button"
                       onClick={() => (s.mine ? onEdit(s.mine) : onOpen(s, addDays(start, d)))}
-                      aria-label={`${codes ? `${codes.join(', ')}, ` : ''}${s.cls.name}, ${TYPE_NAME[s.type].toLowerCase()}, ${DAY_LONG[d]} ${s.meeting.start} to ${s.meeting.end}${s.meeting.room ? `, room ${s.meeting.room}` : ''}${tag ? `, ${(changeLine(s) ?? tag).toLowerCase()}` : ''}${clashOn(s, addDays(start, d)) ? ', clashes with another class' : ''}${s.cls.changed ? ', changed' : ''}`}
+                      aria-label={`${codes ? `${codes.join(', ')}, ` : ''}${s.cls.name}, ${TYPE_NAME[s.type].toLowerCase()}, ${DAY_LONG[d]} ${fmtTime(s.meeting.start)} to ${fmtTime(s.meeting.end)}${s.meeting.room ? `, room ${s.meeting.room}` : ''}${tag ? `, ${(changeLine(s) ?? tag).toLowerCase()}` : ''}${clashOn(s, addDays(start, d)) ? ', clashes with another class' : ''}${s.cls.changed ? ', changed' : ''}`}
                       // Its own length: beside a longer class that starts with it, a short one ends when it ends.
                       style={grows ? undefined : { height: s.span * ROW + (s.span - 1) * GAP }}
                       className={cx(
@@ -1182,7 +1190,7 @@ function WeekPage({
                         grows ? 'absolute inset-0' : 'relative flex-1 self-start overflow-hidden',
                         wide >= 0 && !grows && 'z-10',
                         // Not happening: the day-off hatch, faded, with the code struck through.
-                        s.off ? 'bg-[repeating-linear-gradient(135deg,rgb(11_25_87/0.16)_0_6px,rgb(11_25_87/0.05)_6px_12px)] text-navy opacity-55' : grows ? inkOf(s.type) : BLOCK[s.type],
+                        s.off ? 'bg-[repeating-linear-gradient(135deg,color-mix(in_srgb,var(--color-navy)_16%,transparent)_0_6px,color-mix(in_srgb,var(--color-navy)_5%,transparent)_6px_12px)] text-navy opacity-55' : grows ? inkOf(s.type) : BLOCK[s.type],
                         !grows && edge,
                       )}
                     >
@@ -1210,8 +1218,8 @@ function WeekPage({
                         <span className={cx('display leading-none tracking-[-0.03em]', s.office ? 'text-[13px]' : cell.length > 1 ? 'text-[12px] break-all' : 'truncate text-[16px]', s.office && cell.length > 1 && 'text-[11px] break-all', s.off && 'line-through')}>{s.office ? (cell.length > 1 ? 'Office' : 'Office hours') : s.cls.code}</span>
                       )}
                       <span className="label mt-1 text-[9px] tracking-[0.04em]">
-                        {s.meeting.start}
-                        {s.span > 1 && `–${s.meeting.end}`}
+                        {fmtShort(s.meeting.start)}
+                        {s.span > 1 && `–${fmtShort(s.meeting.end)}`}
                       </span>
                       </span>
                       {s.off ? (

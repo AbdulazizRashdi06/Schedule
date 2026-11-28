@@ -1,7 +1,7 @@
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { api, errorText } from '../lib/api'
 import type { CustomSlot } from '../lib/types'
-import { DAY_LONG } from '../lib/time'
+import { DAY_LONG, fmtShort, fmtTime } from '../lib/time'
 import { SLOTS } from '../lib/slots'
 import { useViewer } from '../lib/viewer'
 import { Button, ErrorText, Icon, Select, Sheet, TextField, cx } from '../components/ui'
@@ -163,7 +163,7 @@ export function TimeButton({ label, value, open, invalid, onOpen }: { label: str
       <button
         type="button"
         aria-expanded={open}
-        aria-label={`${label} ${value}, change`}
+        aria-label={`${label} ${fmtTime(value)}, change`}
         onClick={onOpen}
         data-invalid={invalid || undefined}
         className={cx(
@@ -171,7 +171,7 @@ export function TimeButton({ label, value, open, invalid, onOpen }: { label: str
           open && 'shadow-[inset_0_0_0_2.5px_var(--color-navy),0_0_0_4px_var(--color-ice)]!',
         )}
       >
-        {value}
+        {fmtTime(value)}
         <Icon name="clock" className="size-[18px]" />
       </button>
     </div>
@@ -235,7 +235,7 @@ export function Clock({ label, value, onChange, chips, onDone }: { label: string
   const chosen = part === 'h' ? h : m
 
   return (
-    <div role="group" aria-label={label} className="open flex flex-col items-center gap-3 rounded-[24px] bg-paper p-4 shadow-[inset_0_0_0_2px_rgb(11_25_87/0.12)]">
+    <div role="group" aria-label={label} className="open flex flex-col items-center gap-3 rounded-[24px] bg-paper p-4 shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_12%,transparent)]">
       <div className="flex w-full items-center justify-between">
         <div className="flex items-center font-mono text-[30px] leading-none font-bold">
           {(['h', 'm'] as const).map((p, i) => (
@@ -308,9 +308,9 @@ export function Clock({ label, value, onChange, chips, onDone }: { label: string
             key={t}
             type="button"
             onClick={() => onChange(t)}
-            className={cx('press label h-9 rounded-full px-3 text-[11px] tracking-[0.06em]', t === value ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_rgb(11_25_87/0.2)]')}
+            className={cx('press label h-9 rounded-full px-3 text-[11px] tracking-[0.06em]', t === value ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_20%,transparent)]')}
           >
-            {t}
+            {fmtShort(t)}
           </button>
         ))}
       </div>

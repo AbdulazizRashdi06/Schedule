@@ -28,12 +28,63 @@
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-/* Colour themes (Menu → Colours). Navy is the default above; each preset swaps the main colour family and the accent. */
-html[data-accent="forest"] { --color-navy: #103b2c; --color-navy-700: #22513f; --color-navy-800: #174634; --color-navy-line: #2f6150; --color-navy-line-2: #3d7461; --color-sky: #9fdcb8; --color-ice: #d4f1e0; --color-muted: #3b5a4d; }
-html[data-accent="plum"] { --color-navy: #3a1350; --color-navy-700: #52296a; --color-navy-800: #461d5d; --color-navy-line: #5e3577; --color-navy-line-2: #6f468a; --color-sky: #d3a8f0; --color-ice: #ecdcf8; --color-muted: #5a4568; }
-html[data-accent="maroon"] { --color-navy: #5a1020; --color-navy-700: #742637; --color-navy-800: #67192b; --color-navy-line: #803346; --color-navy-line-2: #924558; --color-sky: #f4a7b2; --color-ice: #fadde2; --color-muted: #6a4148; }
-html[data-accent="teal"] { --color-navy: #0b4650; --color-navy-700: #1f5e68; --color-navy-800: #13525c; --color-navy-line: #2c6c76; --color-navy-line-2: #3c7f89; --color-sky: #8fd8df; --color-ice: #d0f0f3; --color-muted: #36585e; }
-html[data-accent="charcoal"] { --color-navy: #1f2328; --color-navy-700: #353a41; --color-navy-800: #2a2f35; --color-navy-line: #444a52; --color-navy-line-2: #565d66; --color-sky: #b8c4d4; --color-ice: #e1e7ef; --color-muted: #4a5058; }
+/*
+ * The palette (--p-*): the colours as designed, on a light page. Themes and the student's own colours and background
+ * (lib/theme.ts) change these; the --color-* the page is drawn with come from them, for light and for dark.
+ */
+:root {
+  --p-navy: #0b1957; --p-navy-700: #1f2f74; --p-navy-800: #13226a; --p-navy-line: #2c3d85; --p-navy-line-2: #3a4e9c;
+  --p-cream: #f8f3ea; --p-paper: #fffdf8; --p-sky: #9eccfa; --p-ice: #d1e8ff; --p-muted: #3a4675;
+}
+/* Colour themes (Menu → Settings → Colours). Navy is the default above; each preset swaps the main colour family and the accent. */
+html[data-accent="forest"] { --p-navy: #103b2c; --p-navy-700: #22513f; --p-navy-800: #174634; --p-navy-line: #2f6150; --p-navy-line-2: #3d7461; --p-sky: #9fdcb8; --p-ice: #d4f1e0; --p-muted: #3b5a4d; }
+html[data-accent="plum"] { --p-navy: #3a1350; --p-navy-700: #52296a; --p-navy-800: #461d5d; --p-navy-line: #5e3577; --p-navy-line-2: #6f468a; --p-sky: #d3a8f0; --p-ice: #ecdcf8; --p-muted: #5a4568; }
+html[data-accent="maroon"] { --p-navy: #5a1020; --p-navy-700: #742637; --p-navy-800: #67192b; --p-navy-line: #803346; --p-navy-line-2: #924558; --p-sky: #f4a7b2; --p-ice: #fadde2; --p-muted: #6a4148; }
+html[data-accent="teal"] { --p-navy: #0b4650; --p-navy-700: #1f5e68; --p-navy-800: #13525c; --p-navy-line: #2c6c76; --p-navy-line-2: #3c7f89; --p-sky: #8fd8df; --p-ice: #d0f0f3; --p-muted: #36585e; }
+html[data-accent="charcoal"] { --p-navy: #1f2328; --p-navy-700: #353a41; --p-navy-800: #2a2f35; --p-navy-line: #444a52; --p-navy-line-2: #565d66; --p-sky: #b8c4d4; --p-ice: #e1e7ef; --p-muted: #4a5058; }
+
+/* Light: the palette as it is. */
+html {
+  --color-navy: var(--p-navy); --color-navy-700: var(--p-navy-700); --color-navy-800: var(--p-navy-800); --color-navy-line: var(--p-navy-line); --color-navy-line-2: var(--p-navy-line-2);
+  --color-cream: var(--p-cream); --color-paper: var(--p-paper); --color-sky: var(--p-sky); --color-ice: var(--p-ice); --color-muted: var(--p-muted);
+}
+
+/*
+ * Dark (Menu → Settings → Appearance). The page swaps roles: "cream" is a deep shade of the main colour, "navy" is
+ * the light ink on it, so every text-navy / border-navy / bg-cream on a page reads right without touching the screens.
+ * Ice becomes a dim tint to sit under light text.
+ */
+html[data-mode="dark"] {
+  color-scheme: dark;
+  --color-cream: color-mix(in srgb, var(--p-navy) 30%, #06080f);
+  --color-paper: color-mix(in srgb, var(--p-navy) 42%, #0d1019);
+  --color-navy: color-mix(in srgb, var(--p-ice) 30%, #f7f3ec);
+  --color-navy-700: color-mix(in srgb, var(--color-navy) 85%, var(--color-cream));
+  --color-navy-800: color-mix(in srgb, var(--color-navy) 92%, var(--color-cream));
+  --color-navy-line: color-mix(in srgb, var(--color-navy) 75%, var(--color-cream));
+  --color-navy-line-2: color-mix(in srgb, var(--color-navy) 65%, var(--color-cream));
+  --color-sky: var(--p-sky);
+  --color-ice: color-mix(in srgb, var(--p-sky) 17%, var(--color-cream));
+  --color-muted: color-mix(in srgb, var(--color-navy) 66%, var(--color-cream));
+  --color-alert: #ff8f80; --color-alert-bg: #3b1613; --color-alert-ink: #ffb9ae; --color-alert-line: #8a3a30;
+}
+/*
+ * Navy cards and buttons, and sky fills, were designed dark-on-light already: inside one, the palette is itself again
+ * (cream text, sky and ice accents, navy text on sky), with the navy lifted a little so it stands off the dark page.
+ */
+html[data-mode="dark"] :is([class~="bg-navy"], [class~="bg-navy-700"], [class~="bg-navy-800"], [class~="bg-sky"]:not(.page-sky)) {
+  --color-navy: color-mix(in srgb, var(--p-navy) 78%, var(--p-sky));
+  --color-navy-700: color-mix(in srgb, var(--p-navy) 66%, var(--p-sky));
+  --color-navy-800: color-mix(in srgb, var(--p-navy) 72%, var(--p-sky));
+  --color-navy-line: color-mix(in srgb, var(--p-navy) 58%, var(--p-sky));
+  --color-navy-line-2: color-mix(in srgb, var(--p-navy) 50%, var(--p-sky));
+  --color-cream: var(--p-cream); --color-paper: var(--p-paper); --color-sky: var(--p-sky); --color-ice: var(--p-ice); --color-muted: var(--p-muted);
+  --color-alert: #b42318; --color-alert-bg: #fbe3df; --color-alert-ink: #8f1d12; --color-alert-line: #e9a99f;
+}
+/* A whole page in sky (a session, a course) is too bright in the dark: there it is a page like any other. */
+html[data-mode="dark"] .page-sky { background-color: var(--color-cream); }
+/* A scrim darkens whatever the theme. */
+html[data-mode="dark"] .scrim { background-color: rgb(0 0 0 / 0.6); }
 
 html { -webkit-tap-highlight-color: transparent; }
 body { @apply bg-cream font-display text-navy antialiased; }
@@ -54,13 +105,13 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 .press:active:not(:disabled):not([aria-disabled="true"]) { transform: scale(0.97); }
 .tint { transition: background-color 160ms ease; }
 @media (hover: hover) and (pointer: fine) {
-  .tint:hover { background-color: rgb(11 25 87 / 0.05); }
+  .tint:hover { background-color: color-mix(in srgb, var(--color-navy) 5%, transparent); }
   .tint-dark:hover { background-color: var(--color-navy-700); }
   .link-hover:hover { text-decoration: underline; text-underline-offset: 3px; }
 }
 
 /* Input fields: paper with a navy ring when focused. */
-.field { transition: box-shadow 200ms ease; box-shadow: inset 0 0 0 2px rgb(11 25 87 / 0.2); }
+.field { transition: box-shadow 200ms ease; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--color-navy) 20%, transparent); }
 .field:focus-within { box-shadow: inset 0 0 0 2.5px var(--color-navy), 0 0 0 4px var(--color-ice) !important; }
 .field[data-invalid="true"] { box-shadow: inset 0 0 0 2.5px var(--color-alert); }
 
@@ -99,9 +150,9 @@ input:focus-visible, textarea:focus-visible { outline: none; }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 
 /* ---- Skeleton loader: linear shimmer sweep, never a spinner for page loads ---- */
-.sk { position: relative; overflow: hidden; display: block; background: rgb(11 25 87 / 0.08); }
+.sk { position: relative; overflow: hidden; display: block; background: color-mix(in srgb, var(--color-navy) 8%, transparent); }
 .sk.on-navy { background: var(--color-navy-800); }
-.sk::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, rgb(255 253 248 / 0.65) 50%, transparent 70%); transform: translateX(-100%); animation: sweep 1400ms linear infinite; }
+.sk::after { content: ""; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 30%, color-mix(in srgb, var(--color-paper) 65%, transparent) 50%, transparent 70%); transform: translateX(-100%); animation: sweep 1400ms linear infinite; }
 .sk.on-navy::after { background: linear-gradient(100deg, transparent 30%, rgb(158 204 250 / 0.22) 50%, transparent 70%); }
 /* Waiting screen: an empty week with a slow shimmer. */
 .cell-shimmer { position: relative; overflow: hidden; }

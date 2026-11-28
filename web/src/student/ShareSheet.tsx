@@ -66,7 +66,7 @@ export default function ShareSheet({ open, onClose, input }: { open: boolean; on
             role="radio"
             aria-checked={format === id}
             onClick={() => setFormat(id)}
-            className={cx('press flex flex-col items-start rounded-[16px] px-4 py-2.5 text-left', format === id ? 'bg-navy text-cream' : 'text-navy shadow-[inset_0_0_0_2px_rgb(11_25_87/0.16)]')}
+            className={cx('press flex flex-col items-start rounded-[16px] px-4 py-2.5 text-left', format === id ? 'bg-navy text-cream' : 'text-navy shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_16%,transparent)]')}
           >
             <span className="text-[16px] font-extrabold">{label}</span>
             <span className={cx('text-[12px] font-semibold', format === id ? 'text-ice' : 'text-muted')}>{hint}</span>

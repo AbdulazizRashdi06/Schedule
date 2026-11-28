@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Navigate, useParams } from 'react-router-dom'
-import { DAY_SHORT } from '../lib/time'
+import { DAY_SHORT, fmtRange } from '../lib/time'
 import { TYPE_NAME, addDays, changeLine, changeTag, clashOn, fmtDate, inWeek, isoDate, nowMinutes, onDate, type Session } from '../lib/slots'
 import { ErrorText, Sk, cx } from '../components/ui'
 import ClassNotes from './ClassNotes'
@@ -58,7 +58,7 @@ export default function Course() {
   if (!error && me && tt && !cls) return <NotFound course />
 
   return (
-    <div className="min-h-dvh bg-sky text-navy">
+    <div className="page-sky min-h-dvh bg-sky text-navy">
       <div className="mx-auto flex min-h-dvh max-w-[480px] flex-col pt-[max(1.75rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
         <header className="flex items-center justify-between gap-3 px-6">
           <RoundButton label="Back" onClick={back} className="bg-navy text-sky">
@@ -108,7 +108,7 @@ export default function Course() {
             )}
 
             <section className="mx-3 mt-[18px] mb-2 flex flex-1 flex-col gap-[18px] rounded-[32px] bg-navy p-5 text-cream">
-              {all.some(s => s.type === 'exam' && s.meeting.date! >= isoDate(now)) && <div className="flex flex-col gap-2" aria-label="Course exams"><h2 className="text-[18px] font-extrabold">Upcoming exams</h2>{all.filter(s => s.type === 'exam' && s.meeting.date! >= isoDate(now)).sort((a, b) => a.meeting.date!.localeCompare(b.meeting.date!)).map(s => <div key={`${s.plannerEventId}-${s.meeting.date}`} className="rounded-[14px] bg-sky p-3 text-[14px] font-bold text-navy"><p>{s.cls.name}</p><p>{s.meeting.date} · {s.meeting.start}–{s.meeting.end}</p><p>{s.meeting.room || 'Location not set'}</p>{s.plannerNotes && <p className="mt-1 font-semibold whitespace-pre-wrap">{s.plannerNotes}</p>}</div>)}</div>}
+              {all.some(s => s.type === 'exam' && s.meeting.date! >= isoDate(now)) && <div className="flex flex-col gap-2" aria-label="Course exams"><h2 className="text-[18px] font-extrabold">Upcoming exams</h2>{all.filter(s => s.type === 'exam' && s.meeting.date! >= isoDate(now)).sort((a, b) => a.meeting.date!.localeCompare(b.meeting.date!)).map(s => <div key={`${s.plannerEventId}-${s.meeting.date}`} className="rounded-[14px] bg-sky p-3 text-[14px] font-bold text-navy"><p>{s.cls.name}</p><p>{s.meeting.date} · {fmtRange(s.meeting.start, s.meeting.end)}</p><p>{s.meeting.room || 'Location not set'}</p>{s.plannerNotes && <p className="mt-1 font-semibold whitespace-pre-wrap">{s.plannerNotes}</p>}</div>)}</div>}
               <div className="flex flex-col gap-2">
                 <h2 className="text-[18px] font-extrabold">When &amp; where</h2>
                 {from !== today && <p className="text-[13px] font-semibold text-ice">Nothing in the coming week. From {fmtDate(from)}:</p>}
@@ -129,7 +129,7 @@ export default function Course() {
                         <span className={cx('label text-[12px] tracking-normal', !isLive && 'text-ice')}>{DAY_SHORT[s.meeting.day]}</span>
                         <span className="flex min-w-0 flex-col gap-0.5">
                           <span className={cx('text-[18px] leading-none font-extrabold tabular-nums', ghost && 'text-ice/70 line-through decoration-2')}>
-                            {s.meeting.start}–{s.meeting.end}
+                            {fmtRange(s.meeting.start, s.meeting.end)}
                           </span>
                           <span className={cx('text-[13px] font-semibold', !isLive && 'text-ice')}>
                             {s.meeting.room ? `Room ${s.meeting.room}` : 'Room TBA'} · {TYPE_NAME[s.type]}

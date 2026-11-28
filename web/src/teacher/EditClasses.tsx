@@ -123,7 +123,7 @@ export default function EditClasses() {
                 const on = isOn(r)
                 const tag = r.state === 'own' ? 'Under my name' : r.state === 'added' ? 'Added by me' : r.state === 'hidden' ? 'Not mine · hidden for me only' : 'Removed'
                 return (
-                  <div key={r.id} className={cx('flex items-center gap-3 rounded-[20px] py-3 pr-2 pl-3 transition-opacity duration-200', on ? card : 'opacity-60 shadow-[inset_0_0_0_2px_rgb(11_25_87/0.12)]')}>
+                  <div key={r.id} className={cx('flex items-center gap-3 rounded-[20px] py-3 pr-2 pl-3 transition-opacity duration-200', on ? card : 'opacity-60 shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_12%,transparent)]')}>
                     <Checkbox checked={on} onChange={(v) => void tick(r.id, v)} label={`${r.code} section ${r.number}, on my timetable`} />
                     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                       <span className={cx('text-[16px] leading-[1.15] font-extrabold', !on && 'line-through')}>
@@ -156,7 +156,7 @@ export default function EditClasses() {
                         type="button"
                         onClick={() => void tick(p.id, true)}
                         aria-label={`Add ${p.code} section ${p.number} again`}
-                        className="press flex h-11 items-center gap-2 rounded-full pr-3.5 pl-4 text-[14px] font-extrabold shadow-[inset_0_0_0_2px_rgb(11_25_87/0.2)]"
+                        className="press flex h-11 items-center gap-2 rounded-full pr-3.5 pl-4 text-[14px] font-extrabold shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_20%,transparent)]"
                       >
                         {p.code} · {p.number}
                         <span className="label text-[10px] underline underline-offset-[3px]">Add again</span>

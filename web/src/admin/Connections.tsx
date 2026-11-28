@@ -124,7 +124,7 @@ function ConnectionCard({ initial }: { initial: Connection }) {
     })
 
   return (
-    <section className="flex max-w-[760px] flex-col gap-4 rounded-[20px] p-5 shadow-[inset_0_0_0_2px_rgb(0_0_0/0.1)]">
+    <section className="flex max-w-[760px] flex-col gap-4 rounded-[20px] p-5 shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_10%,transparent)]">
       <div className="flex flex-col gap-1">
         <h2 className="text-[24px] font-extrabold tracking-[-0.02em]">{TEXT[kind].title}</h2>
         <p className="text-[15px] font-semibold text-muted">{TEXT[kind].sub}</p>

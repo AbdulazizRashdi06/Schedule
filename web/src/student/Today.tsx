@@ -1,12 +1,12 @@
 import { useContext, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { Link, Navigate } from 'react-router-dom'
-import { DAY_LONG, DAY_SHORT } from '../lib/time'
+import { DAY_LONG, DAY_SHORT, fmtTime } from '../lib/time'
 import { TYPE_NAME, addDays, changeLine, changeTag, clashOn, clock, fmtDate, fmtDuration, isoDate, nowMinutes, onDate, sessionCode, sessionHref, type Session } from '../lib/slots'
 import { Button, ErrorText, Sk, cx } from '../components/ui'
 import { useHome, useViewer } from '../lib/viewer'
 import TeachBanner from '../teacher/TeachBanner'
 import { MenuSheet } from './StudentShell'
-import { Icon, NeedsSection, useNow } from './timetable'
+import { Icon, NeedsSection, TimeText, useNow } from './timetable'
 import { LabNav } from './labNav'
 import RatePrompt from './RatePrompt'
 
@@ -128,7 +128,7 @@ export default function Today() {
               ) : today.length > 0 ? (
                 <>
                   <Card tone="navy" title="That’s it." size={72}>
-                    Your last class ended at {today[today.length - 1].meeting.end}. Nothing else on today.
+                    Your last class ended at {fmtTime(today[today.length - 1].meeting.end)}. Nothing else on today.
                   </Card>
                   {off.length > 0 && <List title="Not on today" sessions={[]} ghosts={off} date={now} />}
                   {nextDate && (
@@ -260,16 +260,16 @@ function DayCard({ s, count, end, date }: { s: Session; count: number; end: stri
         <span className="label text-[12px] tracking-[0.14em] text-ice">First class · {sessionCode(s, date)}</span>
         <Tags s={s} date={date} dark />
       </span>
-      <span className="display text-[96px] leading-[0.8] tracking-[-0.06em] text-sky tabular-nums">{s.meeting.start}</span>
+      <span className="display text-[96px] leading-[0.8] tracking-[-0.06em] text-sky tabular-nums"><TimeText t={s.meeting.start} /></span>
       <span className="flex flex-col gap-1">
         <span className="display text-[30px] leading-none tracking-[-0.02em] break-words hyphens-auto">{s.cls.name}</span>
         <span className="text-[15px] text-ice">
           {TYPE_NAME[s.type]}
-          {s.meeting.room ? ` in ${s.meeting.room}` : ''}, ends {s.meeting.end}
+          {s.meeting.room ? ` in ${s.meeting.room}` : ''}, ends {fmtTime(s.meeting.end)}
         </span>
       </span>
       <span className="border-t-[1.5px] border-navy-line pt-3 text-[14px] font-semibold text-ice">
-        {count === 1 ? `One class, done by ${end}.` : `${count} classes, done by ${end}.`}
+        {count === 1 ? `One class, done by ${fmtTime(end)}.` : `${count} classes, done by ${fmtTime(end)}.`}
       </span>
     </Link>
   )
@@ -298,7 +298,7 @@ function LiveCard({ s, nowMin, date }: { s: Session; nowMin: number; date: Date 
         <span className="label text-[12px] tracking-[0.14em] text-ice">● Now · {sessionCode(s, date)}</span>
         <Tags s={s} date={date} dark />
       </span>
-      <span className="display text-[96px] leading-[0.8] tracking-[-0.06em] text-sky tabular-nums">{s.meeting.start}</span>
+      <span className="display text-[96px] leading-[0.8] tracking-[-0.06em] text-sky tabular-nums"><TimeText t={s.meeting.start} /></span>
       <span className="flex flex-col gap-1">
         <span className="display text-[30px] leading-none tracking-[-0.02em] break-words hyphens-auto">{s.cls.name}</span>
         <span className="text-[15px] text-ice">
@@ -320,9 +320,9 @@ function LiveCard({ s, nowMin, date }: { s: Session; nowMin: number; date: Date 
           <span className="block h-full rounded-full bg-sky transition-[width] duration-300 ease-in-out" style={{ width: `${(done / total) * 100}%` }} />
         </span>
         <span className="flex justify-between font-mono text-[12px] text-ice">
-          <span>{s.meeting.start}</span>
+          <span>{fmtTime(s.meeting.start)}</span>
           <span className="font-bold text-cream uppercase">{left} min left</span>
-          <span>{s.meeting.end}</span>
+          <span>{fmtTime(s.meeting.end)}</span>
         </span>
       </span>
     </Link>
@@ -340,7 +340,7 @@ function NextCard({ s, nowMin, date }: { s: Session; nowMin: number; date: Date 
         ? 'Time for a coffee first.'
         : s.start >= 12 * 60 && s.start <= 15 * 60
           ? 'Time for lunch first.'
-          : `Plenty of time. It starts at ${s.meeting.start}.`
+          : `Plenty of time. It starts at ${fmtTime(s.meeting.start)}.`
   return (
     <Link {...link(s)} className="press mx-3 flex flex-col gap-3.5 rounded-[32px] bg-navy p-[22px] text-cream">
       <span className="flex flex-wrap items-center gap-2">
@@ -358,7 +358,7 @@ function NextCard({ s, nowMin, date }: { s: Session; nowMin: number; date: Date 
         <span className="display text-[30px] leading-none tracking-[-0.02em] break-words hyphens-auto">{s.cls.name}</span>
         <span className="text-[15px] text-ice">
           {TYPE_NAME[s.type]}
-          {s.meeting.room ? ` in ${s.meeting.room}` : ''}, starts {s.meeting.start}
+          {s.meeting.room ? ` in ${s.meeting.room}` : ''}, starts {fmtTime(s.meeting.start)}
         </span>
       </span>
       <span className="border-t-[1.5px] border-navy-line pt-3 text-[14px] font-semibold text-ice">{hint}</span>
@@ -380,7 +380,7 @@ function Card({ tone, title, size, children }: { tone: 'navy' | 'sky'; title: st
 function NoClasses({ semester, teacher }: { semester?: string; teacher?: boolean }) {
   return (
     <>
-      <section className="mx-3 flex flex-col gap-3.5 rounded-[32px] px-[22px] py-[26px] shadow-[inset_0_0_0_2.5px_rgb(11_25_87/0.18)]">
+      <section className="mx-3 flex flex-col gap-3.5 rounded-[32px] px-[22px] py-[26px] shadow-[inset_0_0_0_2.5px_color-mix(in_srgb,var(--color-navy)_18%,transparent)]">
         <h2 className="display text-[64px] leading-[0.86] tracking-[-0.05em]">No classes yet.</h2>
         <p className="text-[17px] leading-[1.4] font-semibold">
           {teacher ? 'Add the classes you teach' : 'You haven’t picked any courses'}
@@ -444,7 +444,7 @@ function List({ title, sessions, ghosts = [], date, children }: { title: string;
         {rows.map((s, i) => (
           <li key={i}>
             <Link {...link(s, date)} className="grid grid-cols-[84px_minmax(0,1fr)_24px] items-center gap-3 border-t-[2.5px] border-navy py-3.5">
-              <span className={cx('display text-[34px] leading-none tracking-[-0.05em] tabular-nums', s.off && 'text-navy/45 line-through decoration-[3px]')}>{s.meeting.start}</span>
+              <span className={cx('display text-[34px] leading-none tracking-[-0.05em] tabular-nums', s.off && 'text-navy/45 line-through decoration-[3px]')}><TimeText t={s.meeting.start} stack /></span>
               <span className="flex min-w-0 flex-col gap-0.5">
                 <span className="flex flex-wrap items-center gap-1.5">
                   <span className={cx('text-[18px] leading-[1.1] font-extrabold', s.off && 'text-navy/55')}>{s.cls.name}</span>
@@ -480,7 +480,7 @@ function OfflineBanner({ savedAt, retry }: { savedAt: Date; retry: () => Promise
     <div role="status" className="mx-3 mb-1 flex items-center gap-2.5 rounded-[24px] bg-navy py-3.5 pr-3 pl-[18px] text-cream">
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="text-[16px] font-extrabold">{tries ? 'Still offline' : 'You’re offline'}</span>
-        <span className="text-[13px] font-semibold text-ice">Showing what we saved at {clock(savedAt.getHours() * 60 + savedAt.getMinutes())}. It may be out of date.</span>
+        <span className="text-[13px] font-semibold text-ice">Showing what we saved at {fmtTime(clock(savedAt.getHours() * 60 + savedAt.getMinutes()))}. It may be out of date.</span>
       </span>
       <Button
         variant="sky"

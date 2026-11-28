@@ -229,7 +229,7 @@ export default function Upload() {
             />
           )}
           {(file || paste) && (checking || preview) && (
-            <div className="pane flex flex-col gap-3 rounded-[20px] bg-paper px-5 py-[18px] shadow-[inset_0_0_0_2px_rgb(11_25_87/0.12)]">
+            <div className="pane flex flex-col gap-3 rounded-[20px] bg-paper px-5 py-[18px] shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_12%,transparent)]">
               <div className="flex items-baseline justify-between gap-3">
                 <span className="text-[17px] font-extrabold [overflow-wrap:anywhere]">{paste ? 'Pasted rows' : file?.name}</span>
                 <span className="label shrink-0 text-[12px] tracking-normal" aria-live="polite">
@@ -382,7 +382,7 @@ function Choice({ on, onClick, name, meta }: { on: boolean; onClick: () => void;
       role="radio"
       aria-checked={on}
       onClick={onClick}
-      className={cx('press flex h-[60px] items-center justify-between rounded-[18px] px-[18px] text-left', on ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_rgb(11_25_87/0.16)]')}
+      className={cx('press flex h-[60px] items-center justify-between rounded-[18px] px-[18px] text-left', on ? 'bg-navy text-cream' : 'shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_16%,transparent)]')}
     >
       <span className="text-[17px] font-extrabold">{name}</span>
       <span className="label text-[11px]">{meta}</span>
@@ -463,7 +463,7 @@ export function CheckStep({ p, onBack, onNext, backLabel = 'Back' }: { p: Previe
               onClick={() => setTab(k)}
               className={cx(
                 'press flex min-h-[84px] flex-col items-start justify-between rounded-[18px] px-3.5 py-3 text-left',
-                on ? (bad ? 'bg-alert-ink text-cream' : 'bg-navy text-cream') : bad ? 'bg-alert-bg text-alert-ink' : 'shadow-[inset_0_0_0_2px_rgb(11_25_87/0.14)]',
+                on ? (bad ? 'bg-alert-ink text-cream' : 'bg-navy text-cream') : bad ? 'bg-alert-bg text-alert-ink' : 'shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_14%,transparent)]',
               )}
             >
               <span className="text-[34px] leading-none font-extrabold tracking-[-0.03em] tabular-nums">{DATA[k].n}</span>

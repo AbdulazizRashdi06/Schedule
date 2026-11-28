@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, errorText } from '../lib/api'
 import { DAY_SHORT } from '../lib/time'
+import { TimeText } from './timetable'
 import { addDays, fmtDate, fmtDuration } from '../lib/slots'
 import type { Group, GroupRides } from '../lib/groups'
 import { Button, ErrorText, Sk, TextField } from '../components/ui'
@@ -52,7 +53,7 @@ export default function Rides({ group, start, startIso, onSaved }: { group: Grou
                   ).map(([label, time]) => (
                     <span key={label} className="flex flex-col gap-0.5">
                       <span className="label text-[10px] text-ice">{label}</span>
-                      <span className="display text-[26px] leading-none tracking-[-0.03em] text-sky tabular-nums">{time}</span>
+                      <span className="display text-[26px] leading-none tracking-[-0.03em] text-sky tabular-nums"><TimeText t={time} stack /></span>
                     </span>
                   ))}
                 </div>
@@ -81,7 +82,7 @@ export default function Rides({ group, start, startIso, onSaved }: { group: Grou
         ))
       )}
 
-      <section className="flex flex-col gap-3 rounded-[20px] p-4 shadow-[inset_0_0_0_2px_rgb(0_0_0/0.1)]">
+      <section className="flex flex-col gap-3 rounded-[20px] p-4 shadow-[inset_0_0_0_2px_color-mix(in_srgb,var(--color-navy)_10%,transparent)]">
         <h2 className="text-[20px] font-extrabold">The drive</h2>
         <div className="grid grid-cols-2 gap-2.5">
           <TextField label="Minutes to uni" inputMode="numeric" value={travel} onChange={(e) => setTravel(e.target.value.replace(/\D/g, ''))} />

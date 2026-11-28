@@ -1,5 +1,5 @@
 import type { ClassChange, CustomSlot, Meeting, OfficeHour, Timetable, TimetableClass, Weeks } from './types'
-import { DAY_SHORT, meetingsOverlap, minutes } from './time'
+import { DAY_SHORT, fmtTime, meetingsOverlap, minutes } from './time'
 
 /** Class slots: every class is 1h30 with 15-minute breaks. The week grid is laid out by slot, not by hour. */
 export const SLOTS = [
@@ -169,9 +169,9 @@ export const fmtDay = (iso: string) => {
 
 /** A time another day, as short as stays clear: "11:30" the same day, "Wed 11:30" within a week, else "Wed 9 Dec 11:30". */
 function whenFrom(here: string, there: { date: string; start: string }) {
-  if (here === there.date) return there.start
+  if (here === there.date) return fmtTime(there.start)
   const days = Math.abs(new Date(`${there.date}T12:00`).getTime() - new Date(`${here}T12:00`).getTime()) / 86_400_000
-  return days < 7 ? `${DAY_SHORT[new Date(`${there.date}T12:00`).getDay()]} ${there.start}` : `${fmtDay(there.date)} ${there.start}`
+  return days < 7 ? `${DAY_SHORT[new Date(`${there.date}T12:00`).getDay()]} ${fmtTime(there.start)}` : `${fmtDay(there.date)} ${fmtTime(there.start)}`
 }
 
 /** The short name of what a change did to a session: "Cancelled", "Moved", "Room changed", "Extra class". */

@@ -4,6 +4,7 @@ import { api } from '../lib/api'
 import type { Me, Timetable } from '../lib/types'
 import { buildGhosts, buildSessions, campusNow } from '../lib/slots'
 import { createHomeStore } from '../lib/homeStore'
+import { timeParts } from '../lib/time'
 import { Icon, cx } from '../components/ui'
 
 export { Icon }
@@ -55,6 +56,18 @@ export function useBack(fallback = '/') {
   // React Router numbers its history entries in history.state.idx. A replace (the invite flow, the week arrows) keeps
   // the number, so only idx > 0 means there is a Classy page to go back to; otherwise go to the fallback in place.
   return () => ((window.history.state as { idx?: number } | null)?.idx ? navigate(-1) : navigate(fallback, { replace: true }))
+}
+
+/** A class time in display type: the clock big, and AM/PM small beside it (under it with `stack`, where the column is narrow). */
+export function TimeText({ t, stack }: { t: string; stack?: boolean }) {
+  const [clock, suffix] = timeParts(t)
+  if (!suffix) return <>{clock}</>
+  return (
+    <>
+      {clock}
+      <span className={cx('font-mono font-bold tracking-[0.04em] no-underline', stack ? 'mt-1 block text-[11px] leading-none' : 'ml-[0.1em] text-[0.26em]')}>{suffix}</span>
+    </>
+  )
 }
 
 /** 48px round icon button. */

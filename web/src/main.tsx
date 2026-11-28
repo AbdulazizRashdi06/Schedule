@@ -3,8 +3,10 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import './index.css'
 import { applyAccent, applyBackground, loadAccent, loadBackground } from './lib/theme'
+import { setUpMode } from './lib/prefs'
 import { setUpNative } from './lib/native'
 import Colours from './student/Colours'
+import Settings from './student/Settings'
 import Groups from './student/Groups'
 import FreeRooms from './student/FreeRooms'
 import Group from './student/Group'
@@ -46,7 +48,7 @@ import MyChanges from './teacher/MyChanges'
 import TeacherPage from './student/TeacherPage'
 
 /** A teacher who lands on a student page goes to the teacher's version of it; anything without one, to their home. */
-const TEACHER_PAGE: Record<string, string> = { '/': '/teach', '/rooms': '/teach/rooms', '/colours': '/teach/colours' }
+const TEACHER_PAGE: Record<string, string> = { '/': '/teach', '/rooms': '/teach/rooms', '/colours': '/teach/colours', '/settings': '/teach/settings' }
 
 function StudentOnly({ children }: { children: ReactNode }) {
   const { session } = useSession()
@@ -82,6 +84,7 @@ function SignedIn({ children }: { children: ReactNode }) {
 // The saved colour theme, before the first paint.
 applyAccent(loadAccent())
 applyBackground(loadBackground())
+setUpMode()
 setUpNative()
 
 // Keeps the app itself on the device, so the installed app opens offline (with the timetable it saved), and shows
@@ -104,6 +107,7 @@ createRoot(document.getElementById('root')!).render(
           <Route path="/course/:courseId" element={<StudentOnly><Course /></StudentOnly>} />
           <Route path="/setup" element={<StudentOnly><Setup /></StudentOnly>} />
           <Route path="/edit" element={<StudentOnly><EditCourses /></StudentOnly>} />
+          <Route path="/settings" element={<StudentOnly><Settings /></StudentOnly>} />
           <Route path="/colours" element={<StudentOnly><Colours /></StudentOnly>} />
           <Route path="/groups" element={<StudentOnly><Groups /></StudentOnly>} />
           <Route path="/rooms" element={<StudentOnly><FreeRooms /></StudentOnly>} />
@@ -118,6 +122,7 @@ createRoot(document.getElementById('root')!).render(
           {/* A teacher as students see them: their office hours and this week's classes. */}
           <Route path="/teacher/:key" element={<SignedIn><TeacherPage /></SignedIn>} />
           <Route path="/teach/rooms" element={<TeacherScope><FreeRooms /></TeacherScope>} />
+          <Route path="/teach/settings" element={<TeacherScope><Settings /></TeacherScope>} />
           <Route path="/teach/colours" element={<TeacherScope><Colours /></TeacherScope>} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/password" element={<ChangePassword />} />

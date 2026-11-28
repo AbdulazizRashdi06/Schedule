@@ -1,10 +1,10 @@
 import { Link } from 'react-router-dom'
-import { DAY_SHORT } from '../lib/time'
+import { DAY_SHORT, fmtRange } from '../lib/time'
 import { initials } from '../lib/slots'
 import type { TeacherRef, TimetableClass } from '../lib/types'
 
 /** "Sun 10:00–11:00 · B-204" */
-export const officeHourText = (h: { day: number; start: string; end: string; room: string }) => `${DAY_SHORT[h.day]} ${h.start}–${h.end}${h.room ? ` · ${h.room}` : ''}`
+export const officeHourText = (h: { day: number; start: string; end: string; room: string }) => `${DAY_SHORT[h.day]} ${fmtRange(h.start, h.end)}${h.room ? ` · ${h.room}` : ''}`
 
 /**
  * Who teaches a class, on the navy panel of the class and session pages: the name on the university timetable, then
